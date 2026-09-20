@@ -1,9 +1,9 @@
 {
-  "name": "create-tw-app",
+  "name": "create-tw-framework",
   "version": "1.0.0",
   "description": "The easiest way to get started with TW Framework — scaffolds a complete, ready-to-run TW application in seconds.",
   "bin": {
-    "create-tw-app": "./dist/create.mjs"
+    "create-tw-framework": "./dist/create.mjs"
   },
   "files": [
     "dist",

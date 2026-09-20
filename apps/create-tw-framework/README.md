@@ -1,11 +1,11 @@
 # Create TW App
 
-The easiest way to get started with [TW Framework](https://github.com/tw-origin/tw-framework) is by using `create-tw-app`. This CLI tool enables you to quickly start building a new TW application, with everything set up for you — project scaffold, git repository and installed dependencies.
+The easiest way to get started with [TW Framework](https://github.com/tw-origin/tw-framework) is by using `create-tw-framework`. This CLI tool enables you to quickly start building a new TW application, with everything set up for you — project scaffold, git repository and installed dependencies.
 
 To get started, use the following command:
 
 ```
-npx create-tw-app@latest my-app
+npx create-tw-framework@latest my-app
 # or
 npm create tw-app@latest my-app
 # or
@@ -13,13 +13,13 @@ yarn create tw-app my-app
 # or
 pnpm create tw-app my-app
 # or
-bunx create-tw-app my-app
+bunx create-tw-framework my-app
 ```
 
-You can also pass command line arguments to set up a new project non-interactively. See `create-tw-app --help`:
+You can also pass command line arguments to set up a new project non-interactively. See `create-tw-framework --help`:
 
 ```
-Usage: create-tw-app [project-directory] [options]
+Usage: create-tw-framework [project-directory] [options]
 
 Options:
   -V, --version          output the version number
@@ -31,13 +31,13 @@ Options:
 
 ## Why use Create TW App?
 
-`create-tw-app` lets you create a new TW app within seconds. It is officially maintained by the creators of TW Framework, and includes a number of benefits:
+`create-tw-framework` lets you create a new TW app within seconds. It is officially maintained by the creators of TW Framework, and includes a number of benefits:
 
 - **Zero Configuration**: No configuration needed — the scaffold is complete, correct and buildable the moment it lands.
 - **Sensible Defaults**: `tw dev`, `tw build` and `tw serve` scripts are wired into the generated `package.json` from the start.
 - **Git Ready**: A fresh git repository is initialized in your project automatically (skip with `--disable-git`).
 - **Installs For You**: Dependencies are installed as part of creation (skip with `--skip-install`).
-- **Same Tool, One Command**: `create-tw-app` runs the same `tw create` command shipped inside TW Framework, so the scaffold is always in sync with the version you install.
+- **Same Tool, One Command**: `create-tw-framework` runs the same `tw create` command shipped inside TW Framework, so the scaffold is always in sync with the version you install.
 
 ## Manual Installation
 

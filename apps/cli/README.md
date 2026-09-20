@@ -14,7 +14,7 @@ The CLI runs on Node 18+ for `tw create`, `tw build`, `tw test` and `tw adapter`
 
 ```bash
 # scaffold an app
-npx create-tw-app@latest my-site
+npx create-tw-framework@latest my-site
 cd my-site
 
 # develop (http://localhost:3000)

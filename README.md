@@ -107,7 +107,7 @@ New to TW? **[GETTING-STARTED.md](GETTING-STARTED.md)** walks the full journey â
 
 ```bash
 # Create a new app â€” scaffold, git init and install in one command
-npx create-tw-app@latest my-app
+npx create-tw-framework@latest my-app
 cd my-app
 
 # Start the dev server

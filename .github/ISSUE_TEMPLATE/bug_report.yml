@@ -18,7 +18,7 @@ body:
     attributes:
       label: Steps to reproduce
       placeholder: |
-        1. Run `npx create-tw-app@latest my-app`
+        1. Run `npx create-tw-framework@latest my-app`
         2. Add a page ...
         3. Run `npm run build`
     validations:

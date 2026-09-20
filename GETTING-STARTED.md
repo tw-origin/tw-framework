@@ -27,20 +27,20 @@ bun --version    # 1.0 or newer
 ### Step 1: Create the Project
 
 ```bash
-npx create-tw-app@latest my-app
+npx create-tw-framework@latest my-app
 cd my-app
 npm run dev
 ```
 
-`create-tw-app` scaffolds the project, initializes a git repository and installs dependencies in one command. Skip either with `--skip-install` / `--disable-git`. (`npx tw-framework create my-app` is the same tool without the extra package; `bunx`, `yarn` and `pnpm create tw-app` work too.)
+`create-tw-framework` scaffolds the project, initializes a git repository and installs dependencies in one command. Skip either with `--skip-install` / `--disable-git`. (`npx tw-framework create my-app` is the same tool without the extra package; `bunx`, `yarn` and `pnpm create tw-app` work too.)
 
 Templates:
 
 ```bash
-npx create-tw-app@latest my-app --template minimal     # bare minimum
-npx create-tw-app@latest my-app --template blog        # dynamic routes
-npx create-tw-app@latest my-app --template dashboard   # sidebar layout
-npx create-tw-app@latest my-app --template default     # full example
+npx create-tw-framework@latest my-app --template minimal     # bare minimum
+npx create-tw-framework@latest my-app --template blog        # dynamic routes
+npx create-tw-framework@latest my-app --template dashboard   # sidebar layout
+npx create-tw-framework@latest my-app --template default     # full example
 ```
 
 To use the `tw` command directly, install once globally:

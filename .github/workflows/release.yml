@@ -39,8 +39,8 @@ jobs:
         env:
           NODE_AUTH_TOKEN: ${{ secrets.NPM_TOKEN }}
 
-      - name: Publish create-tw-app
-        run: cd apps/create-tw-app && npm publish --access public
+      - name: Publish create-tw-framework
+        run: cd apps/create-tw-framework && npm publish --access public
         env:
           NODE_AUTH_TOKEN: ${{ secrets.NPM_TOKEN }}
 

@@ -15,4 +15,4 @@ npm install
 npm run dev
 ```
 
-More guides live in [docs/](../docs) — and `npx create-tw-app@latest my-app --template blog` scaffolds the blog starter directly.
+More guides live in [docs/](../docs) — and `npx create-tw-framework@latest my-app --template blog` scaffolds the blog starter directly.
