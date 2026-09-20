@@ -350,6 +350,7 @@ function parseTWSelector(
       cursor.advance();
       // Read class name -- may include hyphens (nav-link)
       let classVal = "";
+      let prevWasMinus = false;
       const classStart = cursor.peek()?.pos;
       while (!cursor.done) {
         const ct = cursor.peek();
@@ -360,8 +361,15 @@ function parseTWSelector(
           const after = cursor.peek(1);
           if (after && after.type === "COLON") break;
         }
+        if (
+          ct.type === "IDENT" && !prevWasMinus && classVal.length > 0 &&
+          (CLASS_BOUNDARY_BOOLEAN_ATTRS.has(ct.value) || inlineAttrStartsAt(cursor))
+        ) {
+          break;
+        }
         if (ct.type === "IDENT" || ct.type === "TEXT" || ct.type === "KEYWORD") {
           classVal += ct.value;
+          prevWasMinus = false;
           cursor.advance();
         } else if (ct.type === "NUMBER") {
           // Utility classes carry numbers: gap-4, w-64, p-2
@@ -373,6 +381,7 @@ function parseTWSelector(
           cursor.advance();
         } else if (ct.type === "MINUS") {
           classVal += "-";
+          prevWasMinus = true;
           cursor.advance();
         } else {
           break;
@@ -382,11 +391,19 @@ function parseTWSelector(
       while (!cursor.done && cursor.peek()?.type === "DOT") {
         cursor.advance();
         let nextClass = "";
+        let nextPrevMinus = false;
         while (!cursor.done) {
           const ct = cursor.peek();
           if (!ct) break;
+          if (
+            ct.type === "IDENT" && !nextPrevMinus && nextClass.length > 0 &&
+            (CLASS_BOUNDARY_BOOLEAN_ATTRS.has(ct.value) || inlineAttrStartsAt(cursor))
+          ) {
+            break;
+          }
           if (ct.type === "IDENT" || ct.type === "TEXT" || ct.type === "KEYWORD") {
             nextClass += ct.value;
+            nextPrevMinus = false;
             cursor.advance();
           } else if (ct.type === "NUMBER") {
             nextClass += ct.value;
@@ -433,7 +450,10 @@ function parseTWSelector(
     // A void/head element name followed by IDENT/STRING starts the NEXT
     // element (e.g. `meta charset "utf-8" link rel "stylesheet" ...`),
     // not another attribute of this one.
-    if (t.type === "IDENT" && VOID_HEAD_TAGS_ATTR.has(t.value)) {
+    if (
+      t.type === "IDENT" && VOID_HEAD_TAGS_ATTR.has(t.value) &&
+      (el.voidElement || VOID_HEAD_TAGS_ATTR.has(tag.toLowerCase()))
+    ) {
       const after = cursor.peek(1);
       if (after && (after.type === "IDENT" || after.type === "STRING")) break;
     }
@@ -505,13 +525,21 @@ function parseTWSelector(
       // attribute of this one — bare-word props (`priority`) must not swallow
       // the prop written on the next line.
       if (t.pos.line > tagToken.pos.line) break;
-      const attrName = t.value;
+      let attrName = t.value;
       cursor.advance();
+      while (cursor.peek() && cursor.peek()!.type === "MINUS") {
+        const hyphNext = cursor.peek(1);
+        if (hyphNext && (hyphNext.type === "IDENT" || hyphNext.type === "TEXT" || hyphNext.type === "KEYWORD")) {
+          cursor.advance();
+          cursor.advance();
+          attrName += "-" + hyphNext.value;
+        } else break;
+      }
       const vToken = cursor.peek();
       if (vToken && (vToken.type === "STRING" || vToken.type === "NUMBER")) {
         cursor.advance();
         el.attrs.push(createAttribute(attrName, vToken.value, t.pos.line, t.pos.col));
-      } else if (vToken && (vToken.type === "IDENT" || vToken.type === "KEYWORD")) {
+      } else if (vToken && (vToken.type === "IDENT" || vToken.type === "KEYWORD") && vToken.pos.line === t.pos.line) {
         cursor.advance();
         el.attrs.push(createAttribute(attrName, vToken.value, t.pos.line, t.pos.col));
       } else {
@@ -662,6 +690,25 @@ function parseTextFromString(cursor: TokenCursor): TextNode | null {
 }
 
 // --- Element Parser ----------------------------------------------------------
+
+
+const CLASS_BOUNDARY_BOOLEAN_ATTRS = new Set([
+  "disabled", "required", "readonly", "checked", "selected", "autofocus",
+  "hidden", "multiple", "muted", "loop", "controls", "defer", "async",
+  "autoplay", "reversed", "open", "inert", "itemscope", "novalidate",
+  "allowfullscreen", "formnovalidate", "playsinline",
+]);
+
+function inlineAttrStartsAt(cursor) {
+  let k = 1;
+  for (;;) {
+    const a = cursor.peek(k);
+    if (!a) return false;
+    if (a.type === "STRING") return true;
+    if (a.type === "MINUS") { k += 2; continue; }
+    return false;
+  }
+}
 
 function parseElement(
   cursor: TokenCursor,

@@ -30,7 +30,9 @@ export const helpText = `
 
     ship [target]          Deploy to platform
     adapter [name]         Generate deployment adapter files (node, bun, docker, vercel)
-      targets: vercel, netlify, cloudflare, docker, static
+      targets: node, bun, docker, vercel, netlify, cloudflare,
+                          aws, digitalocean, render, railway, fly,
+                          github-pages, firebase, nginx, caddy
       (default: auto-detect)
 
     plugin <action>        Manage plugins
