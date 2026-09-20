@@ -1,6 +1,6 @@
 {
   "name": "create-tw-framework",
-  "version": "1.0.2",
+  "version": "1.0.3",
   "description": "The easiest way to get started with TW Framework — scaffolds a complete, ready-to-run TW application in seconds.",
   "bin": {
     "create-tw-framework": "./dist/create.mjs"

@@ -1,4 +1,5 @@
 import { createContext } from "./types";
+import { TW_GENERATOR_META } from "./version.js";
 import { collectBuiltinImports, generateBuiltinTag, generateImageTag, resolveBuiltin } from "./builtin-components";
 import { evaluate, isTruthy as evalTruthy } from "../eval";
 import { compileTSS, validatePlainCss as _validatePlainCss } from "./tss";
@@ -313,6 +314,12 @@ function generateHead(program: Program, ctx: CodegenContext): string {
   }
   if (!/name="viewport"/i.test(headChildren)) {
     parts.push('  <meta name="viewport" content="width=device-width, initial-scale=1.0">');
+  }
+
+  // Generator meta: identifies the technology that built the page
+  // (industry convention -- Astro, Gatsby, WordPress emit the same).
+  if (!/name="generator"/i.test(headChildren)) {
+    parts.push(`  ${TW_GENERATOR_META}`);
   }
 
   // Description from page directive

@@ -25,6 +25,7 @@
  */
 
 import type { Program, ASTNode } from "../ast/nodes";
+import { TW_GENERATOR_META } from "./version.js";
 import type { CodegenContext } from "./types";
 
 // --- Buffer Pool -----------------------------------------------------
@@ -512,6 +513,7 @@ function emitHeadContent(gen: StreamingHTMLGenerator, program: Program, ctx: Cod
   gen.emit("head-content", `<title>${escapeHTML(title)}</title>`, { critical: true });
   gen.emit("head-content", '<meta charset="UTF-8">', { critical: true });
   gen.emit("head-content", '<meta name="viewport" content="width=device-width, initial-scale=1.0">', { critical: true });
+  gen.emit("head-content", TW_GENERATOR_META, { critical: true });
 
   // Critical CSS (inline styles)
   if (ctx.inlineStyles.length > 0) {
