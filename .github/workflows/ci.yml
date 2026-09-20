@@ -103,6 +103,7 @@ jobs:
           cd demo-app
           node $GITHUB_WORKSPACE/apps/cli/dist/tw.mjs build
           test -f .tw/index.html
+          test -f .tw/__tw_runtime.js
 
       - name: Example projects build
         run: |

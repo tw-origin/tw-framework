@@ -765,6 +765,12 @@ function wrapInterpolations(rendered: string, raw: string): string {
   for (const seg of segs) {
     if (/^\{[^{}]+\}$/.test(seg)) {
       const expr = seg.slice(1, -1);
+      // <title> is an RCDATA element: markup inside it is parsed as text,
+      // so live spans are invalid there. Emit plain resolved text instead.
+      if (ctx_global_inhead) {
+        out += escapeHTML(interpolate(seg, lastStateVars));
+        continue;
+      }
       out += (`<span data-tw-i="${escapeHTML(expr)}"${dataTwSFor(expr)}>${escapeHTML(interpolate(seg, lastStateVars))}</span>`);
     } else if (seg) {
       out += escapeHTML(seg);
@@ -773,10 +779,12 @@ function wrapInterpolations(rendered: string, raw: string): string {
   return out;
 }
 let ctx_global_interactive = false;
+let ctx_global_inhead = false;
 let lastStateVars: Record<string, string> = {};
 
 function generateText(text: TextNode, ctx: CodegenContext): string {
   ctx_global_interactive = ctx.interactive === true;
+  ctx_global_inhead = ctx.inHead === true;
   lastStateVars = ctx.stateVars;
   if (text.isInterpolated) {
     // The parser already strips the surrounding `{ }` for a pure-interpolated
@@ -784,7 +792,7 @@ function generateText(text: TextNode, ctx: CodegenContext): string {
     // interpolate() expects brace-wrapped input (it's designed for strings
     // that mix literal text and `{expr}` placeholders, like attribute
     // values) -- re-wrap it so the existing regex actually matches.
-    if (ctx.interactive) {
+    if (ctx.interactive && ctx.inHead !== true) {
       return (`<span data-tw-i="${escapeHTML(text.value)}"${dataTwSFor(text.value)}>${escapeHTML(interpolate(`{${text.value}}`, ctx.stateVars))}</span>`);
     }
     return escapeHTML(interpolate(`{${text.value}}`, ctx.stateVars));

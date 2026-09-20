@@ -643,7 +643,7 @@ const _bundleDir = (globalThis as any).__TW_BUNDLE_DIR;
 const _fu = import.meta.url.replace("file://", "");
 const _srcDir = _fu.substring(0, _fu.lastIndexOf("/"));
 const runtimeSrc = _bundleDir
-  ? resolve(_bundleDir, "../../..", "packages/runtime/tw/client/hydration-runtime.js")
+  ? resolve(_bundleDir, "hydration-runtime.js")
   : resolve(_srcDir, "../../../..", "packages/runtime/tw/client/hydration-runtime.js");
     if (existsSync(runtimeSrc)) {
       copyFileSync(runtimeSrc, join(outDir, "__tw_runtime.js"));

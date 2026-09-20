@@ -83,3 +83,7 @@ chmodSync(out, 0o755);
   console.log("  \x1b[32mOK\x1b[0m node-adapter -> dist/node-adapter.ts");
 }
 console.log("  \x1b[32mOK\x1b[0m " + out + " — run with: node apps/cli/dist/tw.mjs <command>");
+
+// Ship the hydration runtime so tw build (npm installs) can copy it into .tw/__tw_runtime.js
+copyFileSync(join(repoRoot, "packages", "runtime", "tw", "client", "hydration-runtime.js"), join(cliDir, "dist", "hydration-runtime.js"));
+console.log("  OK dist/hydration-runtime.js");
