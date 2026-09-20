@@ -1,0 +1,14 @@
+rule "api-rate-limit" {
+  match "/api/**"
+  rate_limit { requests 60, window 60, identity "path" }
+  response { status 429, json { error "Too many requests" } }
+}
+
+rule "blocked-bots" {
+  match "/**"
+  user_agent {
+    block ["curl/", "wget/", "python-requests", "scrapy"]
+    empty_is_blocked false
+  }
+  response { status 403, html "<h1>403 Forbidden</h1>" }
+}

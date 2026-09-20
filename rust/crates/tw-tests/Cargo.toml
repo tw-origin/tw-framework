@@ -1,0 +1,13 @@
+[package]
+name = "tw-tests"
+version.workspace = true
+edition.workspace = true
+license.workspace = true
+authors.workspace = true
+description = "TW Framework Rust compiler tests"
+
+[dependencies]
+tw-lexer.workspace = true
+tw-parser.workspace = true
+tw-codegen.workspace = true
+tw-bridge.workspace = true

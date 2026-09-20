@@ -1,0 +1,26 @@
+{
+  "name": "@tw/sdk",
+  "private": true,
+  "version": "1.0.0",
+  "description": "TW Framework SDK \u2014 createApp, defineComponent, full public API for building production TW applications",
+  "type": "module",
+  "main": "./tw/index.ts",
+  "types": "./tw/index.ts",
+  "exports": {
+    ".": "./tw/index.ts",
+    "./types": "./tw/types.ts",
+    "./app": "./tw/app.ts",
+    "./component": "./tw/component.ts",
+    "./helpers": "./tw/helpers.ts",
+    "./vdom-types": "./tw/vdom-types.ts"
+  },
+  "dependencies": {
+    "@tw/shared": "workspace:*",
+    "@tw/compiler": "workspace:*",
+    "@tw/runtime": "workspace:*",
+    "@tw/server": "workspace:*",
+    "@tw/security": "workspace:*",
+    "@tw/plugins": "workspace:*"
+  },
+  "license": "MIT"
+}

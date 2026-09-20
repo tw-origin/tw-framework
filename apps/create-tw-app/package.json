@@ -1,0 +1,40 @@
+{
+  "name": "create-tw-app",
+  "version": "1.0.0",
+  "description": "The easiest way to get started with TW Framework — scaffolds a complete, ready-to-run TW application in seconds.",
+  "bin": {
+    "create-tw-app": "./dist/create.mjs"
+  },
+  "files": [
+    "dist",
+    "README.md",
+    "LICENSE"
+  ],
+  "keywords": [
+    "tw",
+    "tw-framework",
+    "create",
+    "scaffold",
+    "cli",
+    "framework",
+    "ssr",
+    "streaming",
+    "web"
+  ],
+  "repository": {
+    "type": "git",
+    "url": "https://github.com/tw-origin/tw-framework.git"
+  },
+  "homepage": "https://github.com/tw-origin/tw-framework#readme",
+  "bugs": {
+    "url": "https://github.com/tw-origin/tw-framework/issues"
+  },
+  "author": "Mlk Raj",
+  "license": "MIT",
+  "dependencies": {
+    "tw-framework": "^1.0.0"
+  },
+  "engines": {
+    "node": ">=18"
+  }
+}

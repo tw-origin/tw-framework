@@ -1,0 +1,50 @@
+{
+  "name": "tw-framework",
+  "version": "1.0.0",
+  "description": "Full-stack web framework \u2014 own template language (.tw), styling (.tss), compiler and VDOM; runs on Bun and Node",
+  "type": "module",
+  "main": "./dist/tw.mjs",
+  "bin": {
+    "tw": "./dist/tw.mjs"
+  },
+  "dependencies": {
+    "esbuild": "^0.21.0"
+  },
+  "license": "MIT",
+  "engines": {
+    "node": ">=18",
+    "bun": ">=1.0.0"
+  },
+  "files": [
+    "dist",
+    "README.md",
+    "LICENSE"
+  ],
+  "author": "Mlk Raj",
+  "keywords": [
+    "tw-framework",
+    "web-framework",
+    "fullstack",
+    "typescript",
+    "bun",
+    "node",
+    "ssr",
+    "spa",
+    "ssg",
+    "hmr",
+    "vdom",
+    "compiler",
+    "template-language"
+  ],
+  "devDependencies": {
+    "@tw/runtime": "workspace:*"
+  },
+  "repository": {
+    "type": "git",
+    "url": "https://github.com/tw-origin/tw-framework.git"
+  },
+  "homepage": "https://github.com/tw-origin/tw-framework",
+  "bugs": {
+    "url": "https://github.com/tw-origin/tw-framework/issues"
+  }
+}

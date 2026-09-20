@@ -1,0 +1,6 @@
+{
+  "buildCommand": "bunx tw build",
+  "outputDirectory": ".tw",
+  "installCommand": "bun install",
+  "cleanUrls": true
+}

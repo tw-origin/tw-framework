@@ -1,0 +1,30 @@
+{
+  "name": "@tw/compiler",
+  "private": true,
+  "version": "1.0.0",
+  "description": "TW Framework compiler \u2014 lexer, parser, AST, codegen, optimizer, transforms, eval, diagnostics, semantic, cache, grammar",
+  "type": "module",
+  "main": "./tw/index.ts",
+  "exports": {
+    ".": "./tw/index.ts",
+    "./lexer": "./tw/lexer/index.ts",
+    "./ast": "./tw/ast/index.ts",
+    "./parser": "./tw/parser/index.ts",
+    "./codegen": "./tw/codegen/index.ts",
+    "./optimizer": "./tw/optimizer/index.ts",
+    "./transform": "./tw/transform/index.ts",
+    "./eval": "./tw/eval/index.ts",
+    "./diagnostics": "./tw/diagnostics/index.ts",
+    "./semantic": "./tw/semantic/index.ts",
+    "./cache": "./tw/cache/index.ts",
+    "./grammar": "./tw/grammar/index.ts",
+    "./utils": "./tw/utils/index.ts",
+    "./native": "./tw/native/index.ts"
+  },
+  "dependencies": {
+    "@tw/shared": "workspace:*",
+    "@tw/RouterLink": "workspace:*",
+    "@tw/optImage": "workspace:*"
+  },
+  "license": "MIT"
+}

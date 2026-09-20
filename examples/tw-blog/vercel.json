@@ -1,0 +1,6 @@
+{
+  "buildCommand": "npx tw build",
+  "outputDirectory": ".tw",
+  "installCommand": "bun install",
+  "framework": null
+}

@@ -1,0 +1,22 @@
+[package]
+name = "tw-bridge"
+version.workspace = true
+edition.workspace = true
+license.workspace = true
+authors.workspace = true
+description = "TW Framework Rust-TS bridge — CLI binary that calls the Rust compiler"
+
+[lib]
+name = "tw_bridge"
+path = "src/lib.rs"
+
+[[bin]]
+name = "tw-rust"
+path = "src/main.rs"
+
+[dependencies]
+tw-lexer.workspace = true
+tw-parser.workspace = true
+tw-codegen.workspace = true
+serde = { version = "1", features = ["derive"] }
+serde_json = "1"

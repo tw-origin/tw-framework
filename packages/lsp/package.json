@@ -1,0 +1,15 @@
+{
+  "name": "@tw/lsp",
+  "private": true,
+  "version": "1.0.0",
+  "description": "TW Framework language server \u2014 completion, hover, go-to-def, formatting",
+  "type": "module",
+  "main": "./tw/index.ts",
+  "dependencies": {
+    "@tw/compiler": "workspace:*"
+  },
+  "license": "MIT",
+  "exports": {
+    ".": "./tw/index.ts"
+  }
+}

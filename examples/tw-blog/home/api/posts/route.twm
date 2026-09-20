@@ -1,0 +1,11 @@
+fn get(request) {
+  return {
+    status: 200,
+    json: {
+      data: [
+        { id: 1, title: "First Post", slug: "first-post" },
+        { id: 2, title: "Second Post", slug: "second-post" }
+      ]
+    }
+  }
+}

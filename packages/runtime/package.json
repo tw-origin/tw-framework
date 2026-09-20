@@ -1,0 +1,13 @@
+{
+  "name": "@tw/runtime",
+  "private": true,
+  "version": "1.0.0",
+  "description": "TW Framework runtime \u2014 VDOM engine, diff/patch, reactivity, hydration",
+  "type": "module",
+  "main": "./tw/index.ts",
+  "dependencies": {},
+  "license": "MIT",
+  "exports": {
+    ".": "./tw/index.ts"
+  }
+}

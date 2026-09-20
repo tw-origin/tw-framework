@@ -1,0 +1,13 @@
+{
+  "name": "@tw/RouterLink",
+  "private": true,
+  "version": "1.0.0",
+  "description": "TW Framework link engine \u2014 RouterLink component, external detection, SPA navigation attributes",
+  "type": "module",
+  "main": "./tw/index.ts",
+  "dependencies": {},
+  "license": "MIT",
+  "exports": {
+    ".": "./tw/index.ts"
+  }
+}

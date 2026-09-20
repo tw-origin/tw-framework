@@ -1,0 +1,30 @@
+import Header from "@./components/Header.tw"
+import "@./style/home.tss"
+
+page {
+  title "hello-tw"
+  description "Built with TW Framework"
+  render static
+}
+
+state {
+  count = 0
+  name = "World"
+}
+
+div.container {
+
+  Header { }
+
+  h1 "Hello {name}"
+  p "Built with TW Framework"
+
+  button.btn on:click "count++" {
+    "Clicked {count} times"
+  }
+
+  a.nav-link "About" {
+    href "/about"
+  }
+
+}

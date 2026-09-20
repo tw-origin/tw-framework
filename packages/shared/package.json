@@ -1,0 +1,15 @@
+{
+  "name": "@tw/shared",
+  "private": true,
+  "version": "1.0.0",
+  "description": "TW Framework shared utilities \u2014 constants, hashing, logger, fs, config, types, env",
+  "type": "module",
+  "main": "./tw/index.ts",
+  "exports": {
+    ".": "./tw/index.ts",
+    "./tw/*": "./tw/*",
+    "./tw/node-import": "./tw/node-import.ts"
+  },
+  "dependencies": {},
+  "license": "MIT"
+}

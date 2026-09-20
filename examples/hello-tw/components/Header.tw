@@ -1,0 +1,14 @@
+import "@./style/header.tss"
+
+header.site-header {
+
+  nav.nav {
+    a.nav-link "Home" {
+      href "/"
+    }
+    a.nav-link "About" {
+      href "/about"
+    }
+  }
+
+}

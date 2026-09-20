@@ -1,0 +1,27 @@
+[workspace]
+members = ["crates/tw-lexer", "crates/tw-parser", "crates/tw-codegen", "crates/tw-bridge", "crates/tw-tests", "crates/tw-native"]
+resolver = "2"
+
+[workspace.package]
+version = "0.0.1"
+edition = "2021"
+license = "MIT"
+authors = ["Mlk Raj"]
+description = "TW Framework — Rust compiler core"
+repository = "https://github.com/ffakraj-ui/twlang"
+
+[workspace.dependencies]
+tw-lexer = { path = "crates/tw-lexer" }
+tw-parser = { path = "crates/tw-parser" }
+tw-codegen = { path = "crates/tw-codegen" }
+tw-bridge = { path = "crates/tw-bridge" }
+
+[profile.release]
+opt-level = 3
+lto = true
+codegen-units = 1
+panic = "abort"
+
+[profile.dev]
+opt-level = 0
+debug = true

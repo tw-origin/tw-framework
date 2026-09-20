@@ -1,0 +1,14 @@
+import "@./style/post.tss"
+
+page {
+  title "Blog Post"
+  render ssr
+}
+
+article.post {
+  h1 "Blog Post"
+  p "This is a blog post page."
+  a.nav-link "← Back home" {
+    href "/"
+  }
+}

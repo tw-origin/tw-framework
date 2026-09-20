@@ -1,0 +1,27 @@
+# TW Framework — static-site Docker image (no .twm API routes).
+# Runtime is zero-dependency Node 20 alpine serving the compiled .tw/ output.
+
+# ---- Stage 1: build ----
+FROM oven/bun:1 AS build
+WORKDIR /app
+
+COPY package.json bun.lock* ./
+RUN bun install
+RUN bun add -d tw-framework
+
+COPY . .
+RUN bunx tw build
+
+# ---- Stage 2: run (tiny) ----
+FROM node:20-alpine
+WORKDIR /app
+
+ENV NODE_ENV=production
+ENV PORT=8000
+ENV HOST=0.0.0.0
+
+COPY --from=build /app/.tw ./.tw
+COPY server.mjs ./server.mjs
+
+EXPOSE 8000
+CMD ["node", "server.mjs"]

@@ -1,0 +1,13 @@
+{
+  "name": "@tw/optImage",
+  "private": true,
+  "version": "1.0.0",
+  "description": "TW Framework image engine \u2014 optImage component, on-demand resize, WebP/AVIF, disk cache",
+  "type": "module",
+  "main": "./tw/index.ts",
+  "dependencies": {},
+  "license": "MIT",
+  "exports": {
+    ".": "./tw/index.ts"
+  }
+}

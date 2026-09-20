@@ -1,0 +1,15 @@
+{
+  "name": "@tw/security",
+  "private": true,
+  "version": "1.0.0",
+  "description": "TW Framework security \u2014 CSP builder, HTML sanitizer, CSRF, rate limiter, input validation",
+  "type": "module",
+  "main": "./tw/index.ts",
+  "dependencies": {
+    "@tw/shared": "workspace:*"
+  },
+  "license": "MIT",
+  "exports": {
+    ".": "./tw/index.ts"
+  }
+}

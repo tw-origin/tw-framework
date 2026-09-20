@@ -1,0 +1,28 @@
+import "@./style/blog.tss"
+
+page {
+  title "tw-live-demo"
+  render static
+}
+
+state {
+  posts = [
+    { title: "First Post", slug: "first-post" },
+    { title: "Second Post", slug: "second-post" }
+  ]
+}
+
+div.blog {
+
+  h1 "tw-live-demo"
+
+  for post in {posts} {
+    article.post-card {
+      h2 "{post.title}"
+      a.nav-link "Read more →" {
+        href "/blog/{post.slug}"
+      }
+    }
+  }
+
+}

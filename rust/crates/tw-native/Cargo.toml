@@ -1,0 +1,27 @@
+[package]
+name = "tw-native"
+version.workspace = true
+edition.workspace = true
+license.workspace = true
+authors.workspace = true
+description = "TW Framework native binding — napi-rs for direct Node/Bun calls"
+
+[lib]
+crate-type = ["cdylib"]
+
+[dependencies]
+tw-lexer.workspace = true
+tw-parser.workspace = true
+tw-codegen.workspace = true
+napi = { version = "2", features = ["napi8"] }
+napi-derive = "2"
+serde_json = "1"
+
+[build-dependencies]
+napi-build = "2"
+
+[profile.release]
+opt-level = 3
+lto = true
+codegen-units = 1
+strip = true

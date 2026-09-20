@@ -1,0 +1,12 @@
+# Don't publish these
+tests/
+docs/
+.github/
+scripts/
+.tw/
+.git/
+node_modules/
+
+# Only publish source
+!packages/
+!apps/

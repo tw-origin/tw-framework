@@ -1,0 +1,8 @@
+import "@./style/header.tss"
+
+header.site-header {
+  nav.nav {
+    a.nav-link "Home" { href "/" }
+    a.nav-link "Posts" { href "/api/posts" }
+  }
+}

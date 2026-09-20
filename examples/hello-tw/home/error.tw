@@ -1,0 +1,4 @@
+div.error-boundary {
+  h1 "Something went wrong"
+  p "Please try again."
+}

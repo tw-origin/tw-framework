@@ -1,0 +1,62 @@
+name: "\U0001F41B Bug report"
+description: Report something that is broken
+labels: ["bug"]
+body:
+  - type: markdown
+    attributes:
+      value: |
+        Thanks for taking the time to report a bug. Please fill in the sections below.
+  - type: textarea
+    id: description
+    attributes:
+      label: Description
+      description: A clear description of what is broken and what you expected instead.
+    validations:
+      required: true
+  - type: textarea
+    id: reproduction
+    attributes:
+      label: Steps to reproduce
+      placeholder: |
+        1. Run `npx create-tw-app@latest my-app`
+        2. Add a page ...
+        3. Run `npm run build`
+    validations:
+      required: true
+  - type: textarea
+    id: expected
+    attributes:
+      label: Expected behavior
+      description: What did you expect to happen?
+    validations:
+      required: true
+  - type: textarea
+    id: actual
+    attributes:
+      label: Actual behavior
+      description: What actually happened? Include error output where possible.
+    validations:
+      required: true
+  - type: input
+    id: version
+    attributes:
+      label: TW Framework version
+      placeholder: "1.0.0"
+    validations:
+      required: true
+  - type: dropdown
+    id: runtime
+    attributes:
+      label: Runtime
+      options:
+        - Bun
+        - Node
+    validations:
+      required: true
+  - type: textarea
+    id: environment
+    attributes:
+      label: Environment (OS, runtime version)
+      placeholder: "Windows 11, Bun 1.1.x / Node 20.x"
+    validations:
+      required: false

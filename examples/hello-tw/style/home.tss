@@ -1,0 +1,4 @@
+.container { max-width 800px; margin 0 auto; padding 2rem }
+.btn { p 0.5rem 1rem; bg #2563eb; color white; border none; br 4px; cursor pointer }
+.btn:hover { bg #1d4ed8 }
+.nav-link { color #58a6ff; d inline-block; m 0 0.5rem }

@@ -1,0 +1,76 @@
+{
+  "compilerOptions": {
+    "target": "ES2022",
+    "module": "ESNext",
+    "moduleResolution": "bundler",
+    "strict": false,
+    "noImplicitAny": false,
+    "strictNullChecks": false,
+    "strictFunctionTypes": false,
+    "strictBindCallApply": false,
+    "strictPropertyInitialization": false,
+    "noImplicitThis": false,
+    "alwaysStrict": false,
+    "esModuleInterop": true,
+    "skipLibCheck": true,
+    "forceConsistentCasingInFileNames": true,
+    "resolveJsonModule": true,
+    "declaration": false,
+    "declarationMap": false,
+    "sourceMap": true,
+    "outDir": "./dist",
+    "rootDir": ".",
+    "baseUrl": ".",
+    "paths": {
+      "@tw/compiler": [
+        "./packages/compiler/tw"
+      ],
+      "@tw/runtime": [
+        "./packages/runtime/tw"
+      ],
+      "@tw/builder": [
+        "./packages/builder/tw"
+      ],
+      "@tw/dev-server": [
+        "./packages/dev-server/tw"
+      ],
+      "@tw/lsp": [
+        "./packages/lsp/tw"
+      ],
+      "@tw/plugins": [
+        "./packages/plugins/tw"
+      ],
+      "@tw/shared": [
+        "./packages/shared/tw"
+      ],
+      "@tw/sdk": [
+        "./packages/sdk/tw"
+      ],
+      "@tw/server": [
+        "./packages/server/tw"
+      ],
+      "@tw/cli": [
+        "./apps/cli/tw"
+      ],
+      "@tw/adapters": [
+        "./packages/adapters/tw"
+      ]
+    },
+    "types": [
+      "node",
+      "bun"
+    ],
+    "allowImportingTsExtensions": true,
+    "noEmit": true
+  },
+  "include": [
+    "packages/**/*",
+    "apps/**/*"
+  ],
+  "exclude": [
+    "node_modules",
+    "dist",
+    "tests",
+    "examples"
+  ]
+}

@@ -1,0 +1,22 @@
+
+// Enhanced lexer modules
+
+export { detectBlockType, matchBraces, matchBrackets, matchParens, readBlock, readCDATA, readComment, readDoctype, readNestedBlocks, readRawText, readScriptBlock, readStyleBlock, readTwmBlock } from "./blocks";
+export type { BlockReadResult } from "./blocks";
+export { PositionTracker, TABLE_DIGIT, TABLE_IDENT_PART, TABLE_IDENT_START, TABLE_LINE_TERM, TABLE_OP_CHAR, TABLE_PUNCT, TABLE_STRING_DELIM, TABLE_VOID_TAG, TABLE_WHITESPACE, charCode, fromCode, isAlpha, isAlphaLower, isAlphaUpper, isAttrNameChar, isAttrNameStart, isBinaryDigit, isControlChar, isDigit, isHexDigit, isIdentPart, isIdentStart, isLineTerm, isLineTerminator, isOctalDigit, isOpChar, isPrintable, isPunct, isRawTextTag, isStringDelim, isStringDelimiter, isTagChar, isVoidTag, isWhitespace, matchOperator, toHexDigit } from "./char-utils";
+export { TokenClusterer, clusterTokens, tokenizeIncremental } from "./clustering";
+export type { ClusterType, TokenCluster } from "./clustering";
+export { ErrorRecovery, SYNC_POINTS, panicRecovery, recoverMissingBrace, recoverUnclosedTag, recoverUnterminatedString } from "./error-recovery";
+export type { ErrorStrategy, RecoveryPoint, RecoveryResult, RecoveryStrategy } from "./error-recovery";
+export { LexerModeStack, ModeRules, ModeStack, TSS_SHORTHANDS, expandTSS, tokenizeCSS, tokenizeTSS } from "./modes";
+export type { LexerMode, ModeFrame } from "./modes";
+export { SourceMapBuilder, decodeMappings, decodeVLQ, encodeVLQ, mergeSourceMaps } from "./source-map";
+export type { SourceMapEntry } from "./source-map";
+export { escapeString, getStringDelimiter, readNumber, readRegex, readString, unescapeString, validateString } from "./strings";
+export type { NumberReadResult, RegexReadResult, StringReadResult, TemplateExpression } from "./strings";
+export { CONTEXTUAL_KEYWORDS, KEYWORDS, KeywordType, MULTI_CHAR_PUNCTUATORS, PUNCTUATORS, RESERVED_WORDS, SINGLE_CHAR_PUNCTUATORS, STRICT_MODE_RESERVED, TokenType, adjacentTokens, cloneToken, cloneTokens, comparePrecedence, compareTokens, countComments, countIdentifiers, countKeywords, countLiterals, countNewlines, countOperators, countPunctuators, countTokens, countTokensByValue, countWhitespace, createEOFToken, createToken, createUnknownToken, deduplicateTokens, filterComments, filterNewlines, filterOutTokens, filterOutTokensByType, filterTokens, filterTokensByType, filterWhitespace, filterWhitespaceAndComments, findLastToken, findLastTokenIndex, findToken, findTokenByValue, findTokenIndex, findTokenIndexByValue, getAssociativity, getAverageTokenLength, getMaxTokenLength, getMinTokenLength, getMostFrequentTokenTypes, getMostFrequentTokens, getOperatorPrecedence, getTokenAtLineColumn, getTokenAtPosition, getTokenBoundingBox, getTokenColumnCount, getTokenColumnDistance, getTokenDensity, getTokenDescription, getTokenDistance, getTokenFrequency, getTokenLengths, getTokenLineCount, getTokenLineDistance, getTokenName, getTokenRanges, getTokenStats, getTokenSummary, getTokenTypeFrequency, getTokenValue, getTokenValueFrequency, getTokensInLineRange, getTokensInRange, getTotalTokenLength, groupTokens, hasEqualPrecedence, hasHigherPrecedence, hasLowerPrecedence, isAssignmentToken, isAssociative, isBinaryOperatorToken, isBitwiseOperatorToken, isCommentToken, isCommutative, isComparisonToken, isContextualKeyword, isDistributive, isEOFToken, isIdentifierPart, isIdentifierStart, isIdentifierToken, isKeyword, isKeywordToken, isLeftAssociative, isLineBreak, isLiteralToken, isLogicalOperatorToken, isNewlineToken, isOperatorToken, isPunctuator, isPunctuatorToken, isReservedWord, isRightAssociative, isStrictModeReserved, isTokenAdjacent, isTokenAfter, isTokenBefore, isUnaryOperatorToken, isUnknownToken, isWhitespaceToken, mergeTokens, pairwiseTokens, sortTokens, splitTokens, splitTokensByValue, stringToTokenType, tokenToJSON, tokenToString, tokenTypeToString, tokensToArray, tokensToCSV, tokensToJSON, tokensToString, tokensToTable, uniqueTokens } from "./token-types";
+export type { Token, TokenComment } from "./token-types";
+export { tokenize, tokenizeArray } from "./tokenizer";
+export type { TokenizerError, TokenizerOptions, TokenizerResult } from "./tokenizer";
+export { TokenStream, describeToken, isArithmetic, isAssignment, isCloseToken, isComparison, isIdentifier, isLiteral, isLogical, isOpenToken, isOperator, isPunctuation, makeToken, matchingPair, tokenTypeName } from "./tokens";
+export type { SourceLocation, SourceSpan, TokenFlags, TokenPosition } from "./tokens";

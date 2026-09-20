@@ -1,0 +1,5 @@
+div.loading-skeleton {
+  div.skeleton-line { }
+  div.skeleton-line { }
+  div.skeleton-line { }
+}

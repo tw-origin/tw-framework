@@ -1,0 +1,8 @@
+{
+  "name": "@tw/adapters",
+  "version": "1.0.0",
+  "private": true,
+  "description": "Deployment adapters for TW Framework apps (Node, Bun, Docker, Vercel)",
+  "type": "module",
+  "main": "./tw/index.ts"
+}

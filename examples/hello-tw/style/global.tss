@@ -1,0 +1,4 @@
+* { margin 0; padding 0; box-sizing border-box }
+body { font-family system-ui, sans-serif; bg #0d1117; color #c9d1d9; line-height 1.6 }
+a { color #58a6ff; text-decoration none }
+a:hover { text-decoration underline }

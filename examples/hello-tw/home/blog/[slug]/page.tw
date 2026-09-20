@@ -1,0 +1,27 @@
+import "@./style/post.tss"
+
+page {
+  title "{post.title}"
+  render ssr
+}
+
+state {
+  post = { title: "Hello World", body: "My first post", date: "2026-09-07" }
+}
+
+article.post {
+
+  header.post-header {
+    h1 "{post.title}"
+    p.post-date "{post.date}"
+  }
+
+  div.post-body {
+    p "{post.body}"
+  }
+
+  a.nav-link "← Back to blog" {
+    href "/"
+  }
+
+}

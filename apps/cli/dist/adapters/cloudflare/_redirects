@@ -1,0 +1,4 @@
+# Cloudflare Pages redirects — one per line:
+#   /old-path  /new-path  301
+#
+# Netlify-style syntax: source, destination, status code.

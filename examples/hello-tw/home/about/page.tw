@@ -1,0 +1,16 @@
+import "@./style/about.tss"
+
+page {
+  title "About - hello-tw"
+  render static
+}
+
+div.container {
+
+  h1 "About"
+  p "This is the about page."
+  a.nav-link "← Back home" {
+    href "/"
+  }
+
+}

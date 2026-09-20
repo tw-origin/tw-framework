@@ -1,0 +1,13 @@
+{
+  "name": "@tw/plugins",
+  "private": true,
+  "version": "1.0.0",
+  "description": "TW Framework plugin system \u2014 lifecycle hooks, plugin API, middleware injection",
+  "type": "module",
+  "main": "./tw/index.ts",
+  "dependencies": {},
+  "license": "MIT",
+  "exports": {
+    ".": "./tw/index.ts"
+  }
+}

@@ -1,0 +1,112 @@
+name: CI
+
+on:
+  push:
+    branches: [main, master]
+  pull_request:
+
+jobs:
+  test:
+    name: Test & Typecheck (Bun)
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: oven-sh/setup-bun@v2
+        with:
+          bun-version: latest
+
+      - name: Install dependencies
+        run: bun install
+
+      - name: Typecheck
+        run: bash scripts/typecheck.sh
+
+      - name: Tests
+        run: bun test
+
+  node-bundle:
+    name: Node bundle (Node 20)
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: oven-sh/setup-bun@v2
+        with:
+          bun-version: latest
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 20
+
+      - name: Install dependencies
+        run: bun install
+
+      - name: Build node bundle
+        run: cd apps/cli && bun scripts/build-node.ts
+
+      - name: Smoke test (version + help)
+        run: |
+          node apps/cli/dist/tw.mjs --version
+          node apps/cli/dist/tw.mjs help > /dev/null
+
+  browser-e2e:
+    name: Browser E2E (Chromium)
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: oven-sh/setup-bun@v2
+        with:
+          bun-version: latest
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 20
+
+      - name: Install dependencies
+        run: bun install
+
+      - name: Install Chromium
+        run: |
+          cd scripts && npm init -y >/dev/null && npm i playwright-core && npx playwright-core install chromium
+
+      - name: Run browser E2E
+        run: |
+          export NODE_PATH="$PWD/scripts/node_modules"
+          node scripts/browser-e2e.mjs
+
+  scaffold:
+    name: Scaffold & Examples
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: oven-sh/setup-bun@v2
+        with:
+          bun-version: latest
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 20
+
+      - name: Install dependencies
+        run: bun install
+
+      - name: Build node bundle
+        run: cd apps/cli && bun scripts/build-node.ts
+
+      - name: Fresh scaffold builds (static home page present)
+        run: |
+          cd /tmp
+          node $GITHUB_WORKSPACE/apps/cli/dist/tw.mjs create demo-app --skip-install --disable-git
+          cd demo-app
+          node $GITHUB_WORKSPACE/apps/cli/dist/tw.mjs build
+          test -f .tw/index.html
+
+      - name: Example projects build
+        run: |
+          for ex in hello-tw tw-blog; do
+            cd $GITHUB_WORKSPACE/examples/$ex
+            node $GITHUB_WORKSPACE/apps/cli/dist/tw.mjs build
+          done

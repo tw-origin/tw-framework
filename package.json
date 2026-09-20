@@ -1,0 +1,57 @@
+{
+  "name": "tw-framework",
+  "version": "1.0.0",
+  "description": "TW Framework \u2014 full-stack web framework with its own template language, styling language, compiler and VDOM",
+  "private": true,
+  "type": "module",
+  "workspaces": [
+    "packages/*",
+    "apps/*"
+  ],
+  "bin": {
+    "tw": "./apps/cli/tw/bin.ts"
+  },
+  "scripts": {
+    "postinstall": "bun run scripts/link-workspaces.ts",
+    "dev": "bun run apps/cli/tw/bin.ts dev",
+    "build": "bun run scripts/build.ts",
+    "test": "bun test",
+    "lint": "bash scripts/typecheck.sh",
+    "format": "prettier --write .",
+    "format:check": "prettier --check .",
+    "publish:all": "bun run scripts/publish-all.ts"
+  },
+  "devDependencies": {
+    "@happy-dom/global-registrator": "^15.0.0",
+    "@types/bun": "^1.4.2",
+    "@types/node": "^20.0.0",
+    "esbuild": "^0.21.0",
+    "prettier": "^3.3.0",
+    "typescript": "^5.4.0"
+  },
+  "engines": {
+    "node": ">=18",
+    "bun": ">=1.0.0"
+  },
+  "license": "MIT",
+  "keywords": [
+    "framework",
+    "web",
+    "ssr",
+    "ssg",
+    "compiler",
+    "typescript",
+    "bun",
+    "template",
+    "vdom"
+  ],
+  "repository": {
+    "type": "git",
+    "url": "https://github.com/tw-origin/tw-framework.git"
+  },
+  "homepage": "https://github.com/tw-origin/tw-framework",
+  "bugs": {
+    "url": "https://github.com/tw-origin/tw-framework/issues"
+  },
+  "author": "Mlk Raj"
+}
