@@ -10,8 +10,20 @@ import { pluginCommand } from "./plugin";
 import { lspCommand } from "./lsp";
 import { helpText } from "../help";
 import { parseArgs, colors } from "../args";
+import { readFileSync } from "node:fs";
+import { join } from "node:path";
 
-const VERSION = "1.0.0";
+// Read the version from package.json at runtime so it never drifts from
+// the published version (bundled CLI: dist/../package.json, source: ../../package.json).
+const VERSION = (() => {
+  try {
+    const bd = (globalThis as any).__TW_BUNDLE_DIR as string | undefined;
+    const pj = bd ? join(bd, "..", "package.json") : new URL("../../package.json", import.meta.url).pathname;
+    return (JSON.parse(readFileSync(pj, "utf-8")).version as string) ?? "0.0.0";
+  } catch {
+    return "0.0.0";
+  }
+})();
 
 const commands: Record<string, () => Promise<void>> = {
   create: createCommand,

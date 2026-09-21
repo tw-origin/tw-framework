@@ -711,13 +711,18 @@ async function ensureDevClientBundle(rootDir: string, pageSource: string, layout
         const _fu = import.meta.url.replace("file://", "");
         const _srcDir = _fu.substring(0, _fu.lastIndexOf("/"));
         const _bd = (globalThis as any).__TW_BUNDLE_DIR;
-        const runtimePath = _bd
-          ? resolve(_bd, "../../..", "packages/runtime/tw/client/hydration-runtime.js")
-          : resolve(_srcDir, "../../../..", "packages/runtime/tw/client/hydration-runtime.js");
-        if (existsSync(runtimePath)) {
-          return new Response(readFileSync(runtimePath, "utf-8"), {
-            headers: { "Content-Type": "application/javascript; charset=utf-8" },
-          });
+        // Bundled (npm) CLI ships the runtime next to tw.mjs as
+        // dist/hydration-runtime.js (same resolution as build.ts).
+        // Source run keeps the repo-relative path.
+        const runtimeCandidates = _bd
+          ? [resolve(_bd, "hydration-runtime.js"), resolve(_srcDir, "../../../..", "packages/runtime/tw/client/hydration-runtime.js")]
+          : [resolve(_srcDir, "../../../..", "packages/runtime/tw/client/hydration-runtime.js")];
+        for (const runtimePath of runtimeCandidates) {
+          if (existsSync(runtimePath)) {
+            return new Response(readFileSync(runtimePath, "utf-8"), {
+              headers: { "Content-Type": "application/javascript; charset=utf-8" },
+            });
+          }
         }
         return new Response("// runtime not found", { status: 404 });
       }
