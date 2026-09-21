@@ -114,8 +114,8 @@ describe("Form Validation", () => {
 
   test("email validator", () => {
     const { validators } = require("../packages/runtime/tw/form-validation");
-    expect(validators.email("not-an-email")).toBeTruthy();
-    expect(validators.email("test@example.com")).toBe(true);
+    expect(validators.email()("not-an-email")).not.toBe(true);
+    expect(validators.email()("test@example.com")).toBe(true);
   });
 
   test("minLength validator", () => {
