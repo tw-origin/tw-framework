@@ -705,7 +705,7 @@ ${devScript}
             status,
             renderMode: "ssr",
             durationMs: performance.now() - startTime,
-          } as RouteRenderResult;
+          } as unknown as RouteRenderResult;
         }
       } catch { /* fall back to the built-in error page */ }
     }

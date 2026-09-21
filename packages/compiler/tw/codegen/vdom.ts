@@ -86,15 +86,12 @@ export function generateWithLayoutChain(
     }
   };
 
-  {
-    let pageTitle = "TW Page";
-    for (const dir of pageProgram.directives || []) {
-      if (dir.type === "PageDirective" && (dir as any).key === "title") {
-        const t = (dir as any).value;
-        if (t != null && String(t) !== "") pageTitle = String(t);
-      }
+  let pageTitle = "TW Page";
+  for (const dir of pageProgram.directives || []) {
+    if (dir.type === "PageDirective" && (dir as any).key === "title") {
+      const t = (dir as any).value;
+      if (t != null && String(t) !== "") pageTitle = String(t);
     }
-    try { ctx.stateVars["page"] = JSON.stringify({ title: pageTitle }); } catch { /* ignore */ }
   }
 
   // ONE shared context for all levels: import-driven styles collected while
@@ -102,6 +99,9 @@ export function generateWithLayoutChain(
   // generateHTML call (the outermost layout emits the document).
   const pageCtx: any = createContext("ssr");
   seedCtx(pageCtx);
+  // Seed the canonical layout 'page.title' -- previously a TDZ use of ctx
+  // (the alias declared much further down) swallowed by try/catch always.
+  try { pageCtx.stateVars["page"] = JSON.stringify({ title: pageTitle }); } catch { /* ignore */ }
   // Builtin component imports (import Image from "@tw/optImage") — page first,
   // then layouts as fallback.
   {

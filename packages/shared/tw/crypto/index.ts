@@ -218,7 +218,7 @@ export async function encryptString(data: string, password: string, salt: string
 export async function decryptString(encryptedData: string, password: string, salt: string): Promise<string> {
   const [ivHex, dataHex] = encryptedData.split(":");
   const iv = new Uint8Array(ivHex.match(/.{2}/g)!.map((byte) => parseInt(byte, 16)));
-  const encrypted = new Uint8Array(dataHex.match(/.{2}/g)!.map((byte) => parseInt(byte, 16))).buffer;
+  const encrypted = new Uint8Array(dataHex.match(/.{2}/g)!.map((byte) => parseInt(byte, 16))).buffer as ArrayBuffer;
   const key = await deriveKey(password, salt);
   return decryptAES(encrypted, key, iv);
 }
@@ -541,7 +541,7 @@ export class CryptoManager {
     if (!key) throw new Error(`Key "${keyName}" not found`);
     const [ivHex, dataHex] = encryptedData.split(":");
     const iv = new Uint8Array(ivHex.match(/.{2}/g)!.map((byte) => parseInt(byte, 16)));
-    const encrypted = new Uint8Array(dataHex.match(/.{2}/g)!.map((byte) => parseInt(byte, 16))).buffer;
+    const encrypted = new Uint8Array(dataHex.match(/.{2}/g)!.map((byte) => parseInt(byte, 16))).buffer as ArrayBuffer;
     return decryptAES(encrypted, key, iv);
   }
 
