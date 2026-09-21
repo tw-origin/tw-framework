@@ -1,0 +1,22 @@
+// About page styles (imported by home/about/page.tw).
+
+.container {
+  maxw 640px
+  m 0 auto
+  p 2rem 1rem
+
+  h1 {
+    fs 2rem
+    mb 1rem
+  }
+
+  p {
+    lh 1.6
+    mb 1rem
+  }
+
+  .nav-link {
+    c #58a6ff
+    td none
+  }
+}

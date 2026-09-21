@@ -67,7 +67,7 @@ tw dev
 | `middleware.twm` | rules reload |
 | `tw.config.ts` | config reloads |
 
-The HMR client is injected automatically in dev mode. It connects over WebSocket and applies patches in place — component state in the browser survives style-only changes.
+Edits are picked up on the next request — no WebSocket connection or manual refresh needed. The dev server watches file times (pages, components, middleware, lib/) and recompiles what changed before rendering; see docs/hot-reload.md for exactly what reloads live.
 
 ---
 

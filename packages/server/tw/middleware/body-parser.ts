@@ -281,9 +281,29 @@ export class BodyParser {
 export function validateBody(schema: Record<string, { type: string; required?: boolean; min?: number; max?: number; pattern?: RegExp }>): (req: Request, res: Response, next: () => void) => Promise<void> {
   return async (req: Request, res: Response, next: () => void) => {
     const body = (req as unknown as { body: Record<string, unknown> }).body;
+    const fail400 = (payload: string): void => {
+      // The documented contract (docs/request-validation.md): the middleware
+      // answers 400 with the problem list and the route never runs. Support
+      // both callback-style responses (res.status(400).json/end) and plain
+      // property-style response objects.
+      const r = res as any;
+      if (typeof r.status === "function") {
+        try { r.status(400); } catch { /* plain object */ }
+        if (typeof r.json === "function") { try { r.json(JSON.parse(payload)); return; } catch { /* fall through */ } }
+        if (typeof r.end === "function") { try { r.end(payload); return; } catch { /* fall through */ } }
+        r.body = payload;
+        return;
+      }
+      if (typeof r.end === "function") {
+        r.statusCode = 400;
+        try { r.end(payload); } catch { /* plain object */ }
+        return;
+      }
+      r.status = 400;
+      r.body = payload;
+    };
     if (!body) {
-      (res as any).status = 400;
-      (res as any).body = JSON.stringify({ error: "No body provided" });
+      fail400(JSON.stringify({ error: "No body provided" }));
       return;
     }
     const errors: string[] = [];
@@ -310,9 +330,9 @@ export function validateBody(schema: Record<string, { type: string; required?: b
       }
     }
     if (errors.length > 0) {
-      (res as any).status = 400;
-      res.headers.set("content-type", "application/json");
-      (res as any).body = JSON.stringify({ errors });
+      const r = res as any;
+      try { if (r.headers && typeof r.headers.set === "function") r.headers.set("content-type", "application/json"); } catch { /* optional */ }
+      fail400(JSON.stringify({ errors }));
       return;
     }
     next();

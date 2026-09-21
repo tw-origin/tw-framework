@@ -1,0 +1,20 @@
+// Site header styles (imported by components/Header.tw).
+
+.site-header {
+  bd-b 1px solid #30363d
+  p 1rem 1.5rem
+
+  .nav {
+    d flex
+    g 1.25rem
+
+    .nav-link {
+      c #c9d1d9
+      fw 500
+
+      &:hover {
+        c #58a6ff
+      }
+    }
+  }
+}

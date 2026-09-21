@@ -25,7 +25,7 @@
 
 import { readFileSync, existsSync } from "node:fs";
 import { dirname } from "node:path";
-import { compileSync, type CompileResult } from "@tw/compiler";
+import { compileSync, registerComponentTemplate, type CompileResult } from "@tw/compiler";
 import { sha256 } from "@tw/shared";
 import { executeRouteHandler } from "./twm-loader";
 import type {
@@ -37,7 +37,7 @@ import type {
   RenderPipelineOptions,
 } from "@tw/shared";
 import { scanRouteTree, matchRoute } from "./scanner";
-import { resolveLayoutChain, findGlobalError, findRootNotFound } from "./layout-chain";
+import { resolveLayoutChain, findGlobalError, findRootError, findRootNotFound, collectParallelPages } from "./layout-chain";
 import { join } from "../../../sdk/tw/helpers";
 import { loadTWMModule } from "../index";
 import { shouldMatchMiddleware } from "./twm-loader";
@@ -105,10 +105,18 @@ export class RenderPipeline {
    * @returns RouteRenderResult with complete HTML
    */
   render(pathname: string, stateVars?: Record<string, string>): RouteRenderResult {
+    // Unicode routes: the request pathname arrives percent-encoded (browsers
+    // always encode non-ASCII); the route tree stores decoded segments.
+    // Decode each segment so Hindi/emoji route folders match.
+    pathname = pathname.split("/").map(seg => {
+      try { return decodeURIComponent(seg); } catch { return seg; }
+    }).join("/");
     const startTime = performance.now();
 
     // Check render cache
-    const cacheKey = sha256(`${pathname}:${JSON.stringify(stateVars ?? {})}`);
+    // SPA navigations render `(.)page.tw` interceptors -- a different result
+      // than a direct visit, so the nav flag must be part of the cache key.
+      const cacheKey = sha256(`${pathname}:${JSON.stringify(stateVars ?? {})}:${(this as any).navRequest ? "nav" : ""}`);
     if (this.enableCache) {
       const cached = this.renderCache.get(cacheKey);
       if (cached && Date.now() < cached.expiresAt) {
@@ -150,7 +158,13 @@ export class RenderPipeline {
       const rootNotFound = findRootNotFound(tree);
       if (rootNotFound) {
         const compiled = this.compileFile(rootNotFound);
-        const html = this.assembleHTML(compiled.html, compiled.css, "", "Not Found");
+        // not-found.tw compiles to a full document; keep only its body
+        // content so it does not nest a second <html> inside the
+        // assembled 404 page.
+        let nf = String(compiled.html || "");
+        const nfm = nf.match(/<body[^>]*>([\s\S]*)<\/body>/i);
+        nf = (nfm ? nfm[1] : nf).replace(/<\/?html[^>]*>/gi, "").replace(/<\/?body[^>]*>/gi, "");
+        const html = this.assembleHTML(nf, compiled.css, "", "Not Found");
         const result: RouteRenderResult = {
           html,
           css: compiled.css,
@@ -167,6 +181,15 @@ export class RenderPipeline {
 
     // Resolve the full context (layouts, loading, error, etc.)
     const ctx = resolveLayoutChain(match);
+
+    // Intercepting routes (docs/intercepting-routes.md): an SPA navigation
+    // (the client runtime's link fetch sends X-TW-Navigate: 1) renders the
+    // `(.)page.tw` interceptor instead of the full page -- the modal case.
+    // Direct visits keep the full page.
+    if ((this as any).navRequest && match.node) {
+      const interceptor = match.node.files.find(f => (f as any).type === "intercept-page");
+      if (interceptor) (ctx as any).page = interceptor;
+    }
 
     // If no page file found, check if it's a route.twm (API endpoint)
     if (!ctx.page) {
@@ -193,11 +216,54 @@ export class RenderPipeline {
       // {slug} from /blog/[slug]) into the state so interpolations resolve.
       // Params are exposed BOTH flat ({slug}) and as an object ({params.slug}).
       const pageState: Record<string, any> = { ...(stateVars ?? {}), ...(match.params ?? {}), params: match.params ?? {} };
+      // Request-time vars (route params, caller stateVars) win over
+      // compile-time state defaults -- snapshot the keys BEFORE compiling.
+      const requestVarKeys = new Set(Object.keys({ ...(stateVars ?? {}), ...(match.params ?? {}) }));
       const pageCompiled = this.compileFile(ctx.page, pageState);
+      // State-block defaults (state { count = 0 }) must seed __tw_state on
+      // SSR pages exactly like the static build does (result.stateSeed) --
+      // without them every handler referencing a state var throws
+      // "x is not defined" and interpolation spans render empty.
+      // NOTE: compileFile(stateVars=pageState) MUTATES pageState -- the
+      // compiler writes raw declaration STRINGS into it (ctx.stateVars =
+      // stateVars; decl.value is always a string), so `count = 0` would
+      // become "0" and `count = count + 1` would do string concatenation.
+      // Re-apply the PARSED values from stateSeed afterwards, keeping
+      // request-time vars untouched.
+      {
+        const seed: Record<string, any> = (pageCompiled as any).stateSeed;
+        if (seed && typeof seed === "object") {
+          for (const [k, v] of Object.entries(seed)) {
+            if (!requestVarKeys.has(k)) pageState[k] = v;
+          }
+        }
+      }
 
       // Start with the page HTML
       let bodyHTML = pageCompiled.html;
       let allCSS = pageCompiled.css;
+
+      // Parallel routes (docs/parallel-routes.md): @slot folders beside the
+      // matched page render their trees into the matching capitalized
+      // component usage (`Stats { }` for @stats). Without this the raw
+      // <Stats> element ships empty.
+      try {
+        const parentNode = (match as any)?.node as any;
+        if (parentNode && Array.isArray(parentNode.children)) {
+          const parallelPages = collectParallelPages(parentNode, pathname.split("/").filter(Boolean), 0);
+          for (const [slotName, slotFile] of parallelPages) {
+            const slotCompiled = this.compileFile(slotFile as any);
+            let slotBody = String(slotCompiled.html || "");
+            const sbm = slotBody.match(/<body[^>]*>([\s\S]*)<\/body>/i);
+            if (sbm) slotBody = sbm[1];
+            slotBody = slotBody.replace(/<\/?html[^>]*>/gi, "").replace(/<\/?body[^>]*>/gi, "");
+            const comp = slotName.charAt(0).toUpperCase() + slotName.slice(1);
+            const slotRe = new RegExp(`<${comp}(\s[^>]*)?>([\s\S]*?)<\/${comp}>|<${comp}(\s[^>]*)?/>`, "gi");
+            bodyHTML = bodyHTML.replace(slotRe, slotBody);
+            if (slotCompiled.css) allCSS = slotCompiled.css + "\n" + allCSS;
+          }
+        }
+      } catch { /* parallel slots are optional */ }
       let allJS = pageCompiled.js;
 
       // Compile and apply layouts (.tw -- full pipeline, root -> leaf = outermost first)
@@ -218,6 +284,29 @@ export class RenderPipeline {
         bodyHTML = this.wrapInLayout(templateCompiled.html, bodyHTML);
       }
 
+      let layoutTitle: string | undefined;
+      const liftedParts: string[] = [];
+      {
+        for (const headMatch of bodyHTML.matchAll(/<head[^>]*>([\s\S]*?)<\/head>/gi)) {
+          const headInner = headMatch[1];
+          const tMatch = headInner.match(/<title>([^<]*)<\/title>/i);
+          if (tMatch) layoutTitle = tMatch[1].trim();
+          const kids = headInner
+            .replace(/<title>[^<]*<\/title>/gi, "")
+            .replace(/<meta[^>]+charset[^>]*>/gi, "")
+            .replace(/<meta[^>]+viewport[^>]*>/gi, "")
+            .trim();
+          if (kids) liftedParts.push(kids);
+        }
+        bodyHTML = bodyHTML.replace(/<head[^>]*>[\s\S]*?<\/head>/gi, "");
+        bodyHTML = bodyHTML.replace(/<\/?(?:html|body)[^>]*>/gi, "");
+        // Layout/page composition can stack multiple document shells;
+        // every stray <!DOCTYPE> must go -- only the outermost document
+        // (assembleHTML) may carry one.
+        bodyHTML = bodyHTML.replace(/<!DOCTYPE[^>]*>/gi, "");
+      }
+      const liftedHead = liftedParts.join("\n");
+
       // Wrap in error boundary if error.twm exists (markup only -- no JS)
       if (ctx.error) {
         const errorCompiled = this.compileFile(ctx.error);
@@ -225,15 +314,25 @@ export class RenderPipeline {
         bodyHTML = `<div data-error-boundary>${bodyHTML}</div>`;
       }
 
-      // Wrap in loading boundary if loading.twm exists (markup only)
+      // Wrap in loading boundary if loading.twm exists (markup only).
+      // loading.tw compiles to a FULL document -- embed only its body
+      // content, or a nested <!DOCTYPE html>/<html>/<body> lands inside
+      // the page body.
       if (ctx.loading) {
         const loadingCompiled = this.compileFile(ctx.loading);
         allCSS = loadingCompiled.css + "\n" + allCSS;
-        bodyHTML = `<div data-loading-boundary data-loading-style="display:none">${loadingCompiled.html}</div>\n${bodyHTML}`;
+        let lh = String(loadingCompiled.html || "");
+        const lm = lh.match(/<body[^>]*>([\s\S]*)<\/body>/i);
+        lh = (lm ? lm[1] : lh).replace(/<\/?html[^>]*>/gi, "").replace(/<\/?body[^>]*>/gi, "");
+        bodyHTML = `<div data-loading-boundary data-loading-style="display:none" style="display:none">${lh}</div>\n${bodyHTML}`;
       }
 
-      // Extract page title from page config or use default
-      const title = this.extractTitle(ctx.page) || "TW App";
+      const pageTitle = this.extractTitle(ctx.page) || "TW Page";
+      let title = pageTitle;
+      if (layoutTitle !== undefined) {
+        title = layoutTitle.replace(/\{\s*page\.title\s*\}/g, pageTitle);
+        if (!title.trim()) title = pageTitle;
+      }
 
       // Metadata API: frontmatter description/keywords/og_* -> <meta> tags
       const metaTags = this.buildMetaTags(ctx.page);
@@ -253,10 +352,24 @@ export class RenderPipeline {
           const m = headCompiled.html.match(/<body>([\s\S]*)<\/body>/);
           if (m && m[1].trim()) headExtra += m[1].trim() + "\n";
         }
+        if (liftedHead) headExtra += liftedHead + "\n";
       } catch { /* head.tw is optional */ }
 
       // Assemble the full HTML document
-      const fullHTML = this.assembleHTML(bodyHTML, allCSS, allJS, title, metaTags + headExtra);
+      let fullHTML = this.assembleHTML(bodyHTML, allCSS, allJS, title, metaTags + headExtra);
+
+      // Client runtime + state seed (matches the static build output):
+      // without these an SSR page ships ZERO scripts -- no SPA navigation,
+      // no hydration, no events. (Interceptors, RouterLink, bindings all
+      // depend on this.)
+      if (!/__tw_runtime\.js/.test(fullHTML)) {
+        let stateSeed = "{}";
+        try { stateSeed = JSON.stringify(pageState ?? {}); } catch { /* ignore */ }
+        fullHTML = fullHTML.replace(
+          "</body>",
+          `  <script id="__tw_state" type="application/json">${stateSeed}</script>\n  <script defer src="/__tw_runtime.js"></script>\n</body>`
+        );
+      }
 
       const result: RouteRenderResult = {
         html: fullHTML,
@@ -312,7 +425,34 @@ export class RenderPipeline {
    * .tw files go through full compileSync (HTML + CSS + JS)
    * .twm files go through compileSync but we only use HTML (no JS needed for markup)
    */
+  private __compsRegistered = false;
+
+  /**
+   * SSR/serve compiles must expand `components/*.tw` exactly like the build
+   * does (docs/syntax-components.md: "Components are expanded at compile
+   * time" -- true for static pages, and required for SSR pages too).
+   * Without this, `<Header>` on an SSR page ships as a raw empty tag.
+   */
+  private ensureComponentsRegistered(): void {
+    if (this.__compsRegistered) return;
+    this.__compsRegistered = true;
+    try {
+      const { readdirSync } = require("node:fs") as typeof import("node:fs");
+      const { join } = require("node:path") as typeof import("node:path");
+      const dir = join(this.rootDir, "components");
+      if (!require("node:fs").existsSync(dir)) return;
+      for (const f of readdirSync(dir).filter(f => f.endsWith(".tw"))) {
+        try {
+          const src = require("node:fs").readFileSync(join(dir, f), "utf-8");
+          const r: any = compileSync(src, { filePath: join(dir, f), transforms: false, optimize: false, diagnostics: false });
+          if (r.ast) registerComponentTemplate(f.replace(/\.tw$/, ""), r.ast);
+        } catch { /* skip broken component -- diagnostics cover it in build */ }
+      }
+    } catch { /* components dir optional */ }
+  }
+
   private compileFile(file: RouteFile, stateVars?: Record<string, string>): CompileResult {
+    this.ensureComponentsRegistered();
     // Cache key MUST include stateVars: dynamic routes like /blog/[slug]
     // compile the same file with different param values.
     const cacheKey = file.absolutePath + ":" + JSON.stringify(stateVars ?? {});
@@ -544,6 +684,31 @@ ${devScript}
   }
 
   private renderError(message: string, status: number, startTime: number): RouteRenderResult {
+    // The project convention (docs/commands-reference.md): error.tw is the
+    // user's error page. 5xx render errors use it before the built-in page;
+    // the error message itself never leaks to the client (log only).
+    if (status >= 500) {
+      try {
+        const tree = this.getRouteTree();
+        const errFile = tree ? findRootError(tree) : null;
+        if (errFile) {
+          const compiled = this.compileFile(errFile, {});
+          let eh = String(compiled.html || "");
+          const em = eh.match(/<body[^>]*>([\s\S]*)<\/body>/i);
+          eh = (em ? em[1] : eh).replace(/<\/?html[^>]*>/gi, "").replace(/<\/?body[^>]*>/gi, "").replace(/<!DOCTYPE[^>]*>/gi, "");
+          const html = this.assembleHTML(eh, compiled.css, "", `Error ${status}`);
+          console.error(`[render] ${status}: ${message}`);
+          return {
+            html,
+            css: compiled.css,
+            js: "",
+            status,
+            renderMode: "ssr",
+            durationMs: performance.now() - startTime,
+          } as RouteRenderResult;
+        }
+      } catch { /* fall back to the built-in error page */ }
+    }
     const html = `<!DOCTYPE html>
 <html lang="en">
 <head>

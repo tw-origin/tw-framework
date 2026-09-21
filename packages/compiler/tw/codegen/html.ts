@@ -178,11 +178,24 @@ function cssChunkId(css: string): string {
 }
 export { cssChunkId as hashCss };
 
+/** Short deterministic hash (djb2, hex) for scoped class names. */
+function twShortHash(input: string): string {
+  let h = 5381;
+  for (let i = 0; i < input.length; i++) h = ((h << 5) + h + input.charCodeAt(i)) | 0;
+  return (h >>> 0).toString(36).slice(0, 6);
+}
+
 /**
  * Resolve `import "@./style/x.tss"` side-effect imports for the given
  * programs: read each .tss file (relative to the importing .tw file),
  * compile it to CSS. With a route capture active the css is recorded as a
  * stylesheet chunk; otherwise it is added to the page's inline styles.
+ *
+ * `.module.tss` / `.module.css` imports (docs/scoped-styles.md) are SCOPED:
+ * every class in the stylesheet is rewritten to a hashed name and the
+ * class map is recorded on the context so markup class attributes are
+ * rewritten to the same hashed names -- two components can each have their
+ * own `.btn` and never collide.
  */
 
 export function collectTssImports(programs: Program[], ctx: CodegenContext): void {
@@ -199,26 +212,39 @@ export function collectTssImports(programs: Program[], ctx: CodegenContext): voi
           // root, while the importing .tw may be nested deep in home/).
           // Walk up the ancestors of the importing file to find the first match.
           const abs = resolveTssPath(_dirname(base), rel);
-          if (!abs) continue;
+          if (!abs) {
+            throw new Error(
+              "TW302: imported stylesheet not found: '" + dir.source + "'\n" +
+              "  imported by: " + base
+            );
+          }
           if (seen.has(abs)) continue;
           seen.add(abs);
           try {
             const src = readFileSync(abs, "utf-8");
-            const css = /\.scss$/.test(abs) ? compileSCSS(src)
+            let css = /\.scss$/.test(abs) ? compileSCSS(src)
               : (/\.tss$/.test(abs) ? compileTSS(src) : _validatePlainCss(src, abs));
+            if (css && /\.module\.(tss|css)$/.test(abs)) {
+              const scopeMap: Record<string, string> = ((ctx as any).scopedClasses ??= {});
+              css = css.replace(/\.(-?[A-Za-z_][\w-]*)/g, (_m: string, name: string) => {
+                const scopedName = "tw-" + name + "-" + twShortHash(abs + ":" + name);
+                if (!(name in scopeMap)) scopeMap[name] = scopedName;
+                return "." + scopedName;
+              });
+            }
             if (css) {
               if (CSS_CAPTURE.active) recordCssChunk(css);
               else ctx.inlineStyles.push(css);
             }
           } catch (e: any) {
-            if (e && typeof e.message === "string" && e.message.startsWith("TW301")) throw e;
+            if (e && typeof e.message === "string" && /^TW30[12]/.test(e.message)) throw e;
             /* missing .tss file -- skip */
           }
         }
       }
     }
   } catch (e: any) {
-    if (e && typeof e.message === "string" && e.message.startsWith("TW301")) throw e;
+    if (e && typeof e.message === "string" && /^TW30[12]/.test(e.message)) throw e;
     /* fs unavailable */
   }
 }
@@ -661,7 +687,16 @@ function generateElement(el: ElementNode, ctx: CodegenContext): string {
 
 function renderAttrs(el: ElementNode, ctx: CodegenContext): string {
   const parts: string[] = [];
-  for (const attr of el.attrs) {
+  for (let attr of el.attrs) {
+    // Scoped styles (docs/scoped-styles.md): a `class` written in markup is
+    // rewritten to the hashed module class when a `.module.tss` import
+    // defines it. Plain names pass through untouched.
+    if (attr.name === "class" && typeof attr.value === "string" && !attr.isInterpolated) {
+      const scoped = (ctx as any).scopedClasses as Record<string, string> | undefined;
+      if (scoped && Object.keys(scoped).length > 0) {
+        attr = { ...attr, value: attr.value.split(/\s+/).map(t => scoped[t] ?? t).join(" ") };
+      }
+    }
     if (attr.value === true || BOOLEAN_ATTRS.has(attr.name)) {
       parts.push(attr.name);
     } else if (attr.isInterpolated) {

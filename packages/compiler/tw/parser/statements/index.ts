@@ -169,6 +169,7 @@ export function parseStatements(
           nextTok.type === "NUMBER" ||
           (nextTok.type === "IDENT" && VOID_HEAD_TAGS.has(token.value)) ||
           (nextTok.type === "IDENT" && KNOWN_ATTRS.has(nextTok.value) && nextNext && nextNext.type === "STRING") ||
+          (nextTok.type === "IDENT" && nextNext && nextNext.type === "MINUS") ||
           // Event binding after the tag name: `button on:click "handler" { ... }`
           (nextTok.type === "IDENT" && nextTok.value === "on" && nextNext && nextNext.type === "COLON") ||
           (nextTok.type === "IDENT" && nextTok.value === "bind" && nextNext && nextNext.type === "COLON") ||
@@ -336,7 +337,7 @@ function parseTWSelector(
 
   const tag = tagToken.value;
   const el = createElement(tag, tagToken.pos.line, tagToken.pos.col);
-  el.voidElement = VOID_TAGS.has(tag.toLowerCase());
+  el.voidElement = VOID_TAGS.has(tag); // case-sensitive: capitalized names are components, not void tags
 
   state.pushTag(tag);
 
@@ -413,6 +414,10 @@ function parseTWSelector(
             cursor.advance();
           } else if (ct.type === "MINUS") {
             nextClass += "-";
+            // A hyphen continues the class name: the IDENT after it must
+            // NOT be treated as a class boundary / inline attribute start
+            // (`.c-d "x"` used to break into class "c-" + attr d="x").
+            nextPrevMinus = true;
             cursor.advance();
           } else {
             break;
@@ -432,7 +437,19 @@ function parseTWSelector(
       const idToken = cursor.peek();
       if (idToken && (idToken.type === "IDENT" || idToken.type === "TEXT")) {
         cursor.advance();
-        el.attrs.push(createAttribute("id", idToken.value, idToken.pos.line, idToken.pos.col));
+        // Hyphenated ids: #name-out tokenizes as IDENT MINUS IDENT. Join
+        // the segments -- a stray `-out` would otherwise parse as a
+        // phantom <out> element.
+        let idValue = idToken.value;
+        while (cursor.peek() && cursor.peek()!.type === "MINUS") {
+          const hyphNext = cursor.peek(1);
+          if (hyphNext && (hyphNext.type === "IDENT" || hyphNext.type === "TEXT")) {
+            cursor.advance(); // MINUS
+            cursor.advance(); // name segment
+            idValue += "-" + hyphNext.value;
+          } else break;
+        }
+        el.attrs.push(createAttribute("id", idValue, idToken.pos.line, idToken.pos.col));
       }
       continue;
     }
@@ -776,7 +793,7 @@ function parseElement(
   }
   
   const el = createElement(tag, tagToken.pos.line, tagToken.pos.col);
-  el.voidElement = VOID_TAGS.has(tag.toLowerCase());
+  el.voidElement = VOID_TAGS.has(tag); // case-sensitive: capitalized names are components, not void tags
 
   state.pushTag(tag);
 
@@ -851,7 +868,16 @@ function parseElement(
     // Attribute name
     if (token.type === "ATTR_NAME" || token.type === "IDENT") {
       cursor.advance();
-      const attr = parseAttribute(token, cursor);
+      let attrName = token.value;
+      while (cursor.peek() && cursor.peek()!.type === "MINUS") {
+        const hyphNext = cursor.peek(1);
+        if (hyphNext && (hyphNext.type === "IDENT" || hyphNext.type === "TEXT" || hyphNext.type === "KEYWORD")) {
+          cursor.advance(); // MINUS
+          cursor.advance(); // name segment
+          attrName += "-" + hyphNext.value;
+        } else break;
+      }
+      const attr = parseAttribute({ ...token, value: attrName } as any, cursor);
       if (attr) el.attrs.push(attr);
       continue;
     }

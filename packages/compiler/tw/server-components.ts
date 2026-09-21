@@ -151,6 +151,17 @@ export async function renderServerComponent(
   // Server components: render to HTML, no JS
   // Client components: render island placeholder, add to island registry, ship JS bundle
   let html = result.html;
+  // Components are FRAGMENTS: compile emits a full document (DOCTYPE/
+  // html/head/body); strip the shell so a component never nests a whole
+  // document inside a page body.
+  {
+    const bm = html.match(/<body[^>]*>([\s\S]*)<\/body>/i);
+    if (bm) {
+      html = bm[1].replace(/<\/?html[^>]*>/gi, "").replace(/<\/?body[^>]*>/gi, "");
+    } else {
+      html = html.replace(/<\/?html[^>]*>/gi, "").replace(/<\/?body[^>]*>/gi, "").replace(/^<!DOCTYPE[^>]*>/i, "");
+    }
+  }
 
   // Extract islands from the rendered HTML
   // Islands are marked with data-tw-island attribute

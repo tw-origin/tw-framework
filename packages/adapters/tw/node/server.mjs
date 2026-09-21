@@ -124,6 +124,7 @@ const server = createServer((req, res) => {
   }
 
   const file = resolveFile(pathname);
+  const spaFallback = file === null;
   const finalPath = file ?? ((existsSync(join(ROOT, "index.html")) && pathname !== "/") ? join(ROOT, "index.html") : null);
   if (!finalPath) {
     // Custom 404 page if the build produced one.
@@ -135,6 +136,17 @@ const server = createServer((req, res) => {
     }
     res.writeHead(404, { "content-type": "text/plain", ...SECURITY_HEADERS });
     return res.end("Not Found");
+  }
+  // Unknown routes served through the SPA fallback must answer 404 -- a
+  // 200 soft-404 hides broken links from crawlers and uptime checks. The
+  // built 404.html takes priority; otherwise the shell is served WITH the
+  // 404 status so client-side routing still works.
+  if (spaFallback) {
+    const notFoundPage = join(ROOT, "404.html");
+    const spaPath = existsSync(notFoundPage) ? notFoundPage : finalPath;
+    res.writeHead(404, { "content-type": "text/html; charset=utf-8", ...SECURITY_HEADERS });
+    if (req.method === "HEAD") return res.end();
+    return createReadStream(spaPath).pipe(res);
   }
 
   const stat = statSync(finalPath);

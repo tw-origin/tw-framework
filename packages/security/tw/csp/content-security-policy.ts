@@ -387,6 +387,18 @@ export class CSRFProtection {
     return this.token;
   }
 
+  /**
+   * docs/security.md API: `csrf.generate()` and `csrf.verify(token, submitted)`
+   * are the documented surface -- thin aliases over the internal methods.
+   */
+  generate(): string {
+    return this.generateToken();
+  }
+
+  verify(token: string, submitted: string): boolean {
+    return !!token && !!submitted && token === submitted && this.validateToken(submitted);
+  }
+
   getToken(): string {
     if (!this.token) {
       return this.generateToken();

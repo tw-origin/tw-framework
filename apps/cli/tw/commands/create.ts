@@ -531,6 +531,92 @@ a:hover { text-decoration underline }
   await writeFile(join(dir, "style", "home.tss"), homeTss);
   console.log("  \u2713 style/home.tss");
 
+  // style/header.tss -- imported by the generated pages/components; written so
+  // the import never dangles.
+  const headerTss = `// Site header styles (imported by components/Header.tw).
+
+.site-header {
+  bd-b 1px solid #30363d
+  p 1rem 1.5rem
+
+  .nav {
+    d flex
+    g 1.25rem
+
+    .nav-link {
+      c #c9d1d9
+      fw 500
+
+      &:hover {
+        c #58a6ff
+      }
+    }
+  }
+}
+`;
+  await writeFile(join(dir, "style", "header.tss"), headerTss);
+  console.log("  \u2713 style/header.tss");
+
+  // style/about.tss -- imported by the generated pages/components; written so
+  // the import never dangles.
+  const aboutTss = `// About page styles (imported by home/about/page.tw).
+
+.container {
+  maxw 640px
+  m 0 auto
+  p 2rem 1rem
+
+  h1 {
+    fs 2rem
+    mb 1rem
+  }
+
+  p {
+    lh 1.6
+    mb 1rem
+  }
+
+  .nav-link {
+    c #58a6ff
+    td none
+  }
+}
+`;
+  await writeFile(join(dir, "style", "about.tss"), aboutTss);
+  console.log("  \u2713 style/about.tss");
+
+  // style/post.tss -- imported by the generated pages/components; written so
+  // the import never dangles.
+  const postTss = `// Single post page styles (imported by home/blog/[slug]/page.tw).
+
+.post {
+  maxw 640px
+  m 0 auto
+  p 2rem 1rem
+
+  h1 {
+    fs 1.75rem
+    mb 1rem
+  }
+
+  .post-body {
+    lh 1.6
+
+    p {
+      mb 1rem
+    }
+  }
+
+  .nav-link {
+    c #58a6ff
+    td none
+  }
+}
+`;
+  await writeFile(join(dir, "style", "post.tss"), postTss);
+  console.log("  \u2713 style/post.tss");
+
+
   // middleware.twm -- root middleware
   const middlewareTwm = `rule "api-rate-limit" {
   match "/api/**"
@@ -611,6 +697,14 @@ body { font-family system-ui, sans-serif; d flex; align-items center; justify-co
 
   await writeFile(join(dir, "style", "global.tss"), globalTss);
   console.log("  \u2713 style/global.tss");
+
+  // style/home.tss -- imported by home/page.tw above; a minimal starter
+  // stylesheet so the import never dangles.
+  const homeTss = `div { text-align center }
+h1 { fs 2.25rem; mb 0.5rem }
+`;
+  await writeFile(join(dir, "style", "home.tss"), homeTss);
+  console.log("  \u2713 style/home.tss");
 }
 
 // --- Blog Template -----------------------------------------------------
@@ -730,6 +824,99 @@ a { color #58a6ff; text-decoration none }
 
   await writeFile(join(dir, "style", "global.tss"), globalTss);
   console.log("  \u2713 style/global.tss");
+
+  // style/header.tss -- imported by the generated pages/components; written so
+  // the import never dangles.
+  const headerTss = `// Site header styles (imported by components/Header.tw).
+
+.site-header {
+  bd-b 1px solid #30363d
+  p 1rem 1.5rem
+
+  .nav {
+    d flex
+    g 1.25rem
+
+    .nav-link {
+      c #c9d1d9
+      fw 500
+
+      &:hover {
+        c #58a6ff
+      }
+    }
+  }
+}
+`;
+  await writeFile(join(dir, "style", "header.tss"), headerTss);
+  console.log("  \u2713 style/header.tss");
+
+  // style/blog.tss -- imported by the generated pages/components; written so
+  // the import never dangles.
+  const blogTss = `// Blog listing page styles (imported by home/page.tw).
+
+.blog {
+  maxw 640px
+  m 0 auto
+  p 2rem 1rem
+
+  h1 {
+    fs 2rem
+    mb 1.5rem
+  }
+}
+
+.post-card {
+  bd 1px solid #30363d
+  radius 8px
+  p 1rem 1.25rem
+  mb 1rem
+
+  h2 {
+    fs 1.25rem
+    mb 0.5rem
+  }
+
+  .nav-link {
+    c #58a6ff
+    td none
+  }
+}
+`;
+  await writeFile(join(dir, "style", "blog.tss"), blogTss);
+  console.log("  \u2713 style/blog.tss");
+
+  // style/post.tss -- imported by the generated pages/components; written so
+  // the import never dangles.
+  const postTss = `// Single post page styles (imported by home/blog/[slug]/page.tw).
+
+.post {
+  maxw 640px
+  m 0 auto
+  p 2rem 1rem
+
+  h1 {
+    fs 1.75rem
+    mb 1rem
+  }
+
+  .post-body {
+    lh 1.6
+
+    p {
+      mb 1rem
+    }
+  }
+
+  .nav-link {
+    c #58a6ff
+    td none
+  }
+}
+`;
+  await writeFile(join(dir, "style", "post.tss"), postTss);
+  console.log("  \u2713 style/post.tss");
+
 }
 
 // --- Dashboard Template -------------------------------------------------

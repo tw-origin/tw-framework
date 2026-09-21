@@ -213,6 +213,11 @@ export async function copyToClipboard(text: string, options?: ClipboardOptions):
   return getClipboardManager().copyText(text, options);
 }
 
+// docs/clipboard.md documents `copyText` as the primary clipboard API.
+export async function copyText(text: string, options?: ClipboardOptions): Promise<boolean> {
+  return getClipboardManager().copyText(text, options);
+}
+
 export async function copyHTML(html: string, plainText?: string, options?: ClipboardOptions): Promise<boolean> {
   return getClipboardManager().copyHTML(html, plainText, options);
 }

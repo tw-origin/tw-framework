@@ -99,6 +99,10 @@ export function findGlobalError(rootNode: RouteNode): RouteFile | undefined {
  * Find the root not-found.twm file.
  * This is used when no route matches at all (404).
  */
+export function findRootError(rootNode: RouteNode): RouteFile | undefined {
+  return (rootNode.files || []).find(f => f.type === "error");
+}
+
 export function findRootNotFound(rootNode: RouteNode): RouteFile | undefined {
   return rootNode.files.find(f => f.type === "not-found");
 }

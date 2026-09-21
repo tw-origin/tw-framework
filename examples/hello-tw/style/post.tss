@@ -1,0 +1,25 @@
+// Single post page styles (imported by home/blog/[slug]/page.tw).
+
+.post {
+  maxw 640px
+  m 0 auto
+  p 2rem 1rem
+
+  h1 {
+    fs 1.75rem
+    mb 1rem
+  }
+
+  .post-body {
+    lh 1.6
+
+    p {
+      mb 1rem
+    }
+  }
+
+  .nav-link {
+    c #58a6ff
+    td none
+  }
+}

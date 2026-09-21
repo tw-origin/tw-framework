@@ -68,7 +68,8 @@ export type RouteFileType =
   | "default"
   | "head"
   | "route"
-  | "middleware";
+  | "middleware"
+  | "intercept-page";
 
 /**
  * Map of special file base names (without extension) to their type.
@@ -76,6 +77,9 @@ export type RouteFileType =
 export const SPECIAL_FILES: Record<string, RouteFileType> = {
   "page": "page",
   "index": "page",
+  // Intercepting routes (docs/intercepting-routes.md): a `(.)page.tw`
+  // beside a page renders INSTEAD of it on SPA navigation (X-TW-Navigate).
+  "(.)page": "intercept-page",
   "layout": "layout",
   "template": "template",
   "loading": "loading",
@@ -94,6 +98,7 @@ export const SPECIAL_FILES: Record<string, RouteFileType> = {
  */
 export const TW_FILE_TYPES = new Set<RouteFileType>([
   "page",
+  "intercept-page",
   "layout",
   "template",
   "loading",

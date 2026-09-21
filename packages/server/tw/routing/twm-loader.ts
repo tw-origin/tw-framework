@@ -119,8 +119,11 @@ function compileTwm(source: string): string {
     // (`fn get(...)`) and natural-JS (`export function get(...)`) forms.
     .replace(/\bexport\s+(?=(async\s+)?(function|const|let|var|class))/g, "")
     // Rename ONLY the DSL handler declaration -- see note above.
-    .replace(/\bfn\s+delete\b/g, "function deleteFn")
-    .replace(/\bfn\s+/g, "function ");
+    // Handlers compile to ASYNC functions: docs (sessions, cookies.sign,
+    // data fetching) all show `await` inside `fn` bodies, and async
+    // wrappers are transparent for sync returns (executor awaits both).
+    .replace(/\bfn\s+delete\b/g, "async function deleteFn")
+    .replace(/\bfn\s+/g, "async function ");
 }
 
 function extractImports(source: string): { names: string[]; module: string }[] {
@@ -188,7 +191,51 @@ export async function loadTWMModule(filePath: string, rootDir?: string): Promise
         else if (name === "revalidateRoute") injected.revalidateRoute = revalidateRoute;
         else if (name === "setSignal") injected.setSignal = setSignal;
       }
+      // The documented `import { ... } from "@tw/server"` surface (bodyParse,
+      // generateSecurityHeaders, scanRouteTree, ...) resolves from the
+      // server package itself (docs/api-routes.md, security-headers-api.md).
+      try {
+        const server: any = await import("../index");
+        for (const name of imp.names) {
+          if (!(name in injected) && name in server) injected[name] = server[name];
+        }
+      } catch { /* not available in this build */ }
       continue;
+    }
+    // `import { initI18n, t } from "@tw/runtime"` (docs/i18n.md): the
+    // vendored client runtime bundle carries the public surface; resolve
+    // it from the published package's dist/ (bundle mode: __TW_BUNDLE_DIR).
+    if (imp.module === "@tw/runtime") {
+      let runtime: any = null;
+      try {
+        const base = (globalThis as any).__TW_BUNDLE_DIR;
+        if (base) runtime = await import(base + "tw-runtime-client.mjs");
+      } catch { runtime = null; }
+      if (!runtime) {
+        try {
+          const { pathToFileURL } = await import("node:url");
+          const { join } = await import("node:path");
+          runtime = await import(pathToFileURL(join(rd, "node_modules", "tw-framework", "dist", "tw-runtime-client.mjs")).href);
+        } catch { runtime = null; }
+      }
+      if (runtime) {
+        for (const name of imp.names) {
+          if (name in runtime) injected[name] = runtime[name];
+        }
+        continue;
+      }
+    }
+    // `import { createSessionManager } from "@tw/security"` (docs/sessions.md,
+    // docs/cookie-manager-api.md): the framework bundles @tw/security --
+    // resolve it from the bundle instead of requiring a lib/ shim.
+    if (imp.module === "@tw/security") {
+      try {
+        const security: any = await import("@tw/security");
+        for (const name of imp.names) {
+          if (name in security) injected[name] = security[name];
+        }
+        continue;
+      } catch { /* fall through to lib/ lookup */ }
     }
     try {
       const mod = await loadLibModule(rd, imp.module);
@@ -361,7 +408,26 @@ export async function executeRouteHandler(
   // Normalize the raw Request into a plain object handlers expect:
   // request.body = parsed JSON, request.query = URL search params.
   let parsedBody: any = {};
-  if (typeof request?.json === "function") {
+  // multipart/form-data (docs/multipart-forms.md): request.body.multipart =
+  // { fields: {...}, files: [{ filename, contentType, data }] }. Plain JSON
+  // bodies parse as before; multipart arrives via request.formData().
+  const __ct = String((request as any)?.headers?.get?.("content-type") ?? "").toLowerCase();
+  if (__ct.includes("multipart/form-data") && typeof request?.formData === "function") {
+    try {
+      const fd = await request.formData();
+      const fields: Record<string, string> = {};
+      const files: any[] = [];
+      for (const [k, v] of (fd as any).entries()) {
+        if (v && typeof v === "object" && typeof (v as any).arrayBuffer === "function") {
+          const data = Buffer.from(await (v as any).arrayBuffer());
+          files.push({ filename: (v as any).name, contentType: (v as any).type, data });
+        } else {
+          fields[k] = String(v);
+        }
+      }
+      parsedBody = { ...fields, multipart: { fields, files } };
+    } catch { parsedBody = {}; }
+  } else if (typeof request?.json === "function") {
     try { parsedBody = await request.json(); } catch { parsedBody = {}; }
   } else if (request?.body && typeof request.body === "object") {
     parsedBody = request.body;

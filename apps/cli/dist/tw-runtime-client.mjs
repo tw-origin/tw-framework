@@ -79,7 +79,7 @@ var SignalImpl = class {
 };
 function signal(value, equals) {
   const impl = new SignalImpl(value, equals);
-  const getter = () => impl.get();
+  const getter = (() => impl.get());
   getter.set = (v) => impl.set(v);
   getter.update = (fn) => impl.update(fn);
   getter.peek = () => impl.peek();
@@ -163,7 +163,7 @@ var ComputedImpl = class {
 };
 function computed(fn, equals) {
   const impl = new ComputedImpl(fn, equals);
-  const getter = () => impl.get();
+  const getter = (() => impl.get());
   getter.set = (v) => impl.set(v);
   getter.update = (fn2) => impl.update(fn2);
   getter.peek = () => impl.peek();
@@ -801,6 +801,7 @@ var SuspenseManager = class {
     });
     this.boundaries.push(boundary);
     this.currentBoundary = boundary;
+    void promise;
     return boundary;
   }
   /**
@@ -1036,10 +1037,10 @@ var CacheManager = class {
   get(key) {
     const memValue = this.memoryCache.get(key);
     if (memValue !== void 0) return memValue;
-    const sessionValue = this.sessionCache.get(key);
-    if (sessionValue !== void 0) {
-      this.memoryCache.set(key, sessionValue);
-      return sessionValue;
+    const sessionValue2 = this.sessionCache.get(key);
+    if (sessionValue2 !== void 0) {
+      this.memoryCache.set(key, sessionValue2);
+      return sessionValue2;
     }
     const persistentValue = this.persistentCache.get(key);
     if (persistentValue !== void 0) {
@@ -1330,6 +1331,9 @@ function getClipboardManager() {
 async function copyToClipboard(text, options) {
   return getClipboardManager().copyText(text, options);
 }
+async function copyText(text, options) {
+  return getClipboardManager().copyText(text, options);
+}
 async function copyHTML(html, plainText, options) {
   return getClipboardManager().copyHTML(html, plainText, options);
 }
@@ -1338,6 +1342,162 @@ async function copyJSON(data, options) {
 }
 async function pasteFromClipboard() {
   return getClipboardManager().readText();
+}
+
+// packages/runtime/tw/performance/metrics.ts
+var LCP_THRESHOLDS = { good: 2500, poor: 4e3 };
+var FID_THRESHOLDS = { good: 100, poor: 300 };
+var CLS_THRESHOLDS = { good: 0.1, poor: 0.25 };
+var INP_THRESHOLDS = { good: 200, poor: 500 };
+var TTFB_THRESHOLDS = { good: 800, poor: 1800 };
+var FCP_THRESHOLDS = { good: 1800, poor: 3e3 };
+function getRating(value, thresholds) {
+  if (value <= thresholds.good) return "good";
+  if (value <= thresholds.poor) return "needs-improvement";
+  return "poor";
+}
+var clsValue = 0;
+var sessionValue = 0;
+var sessionEntries = [];
+function observeLCP(callback) {
+  if (typeof PerformanceObserver === "undefined") return () => {
+  };
+  const observer = new PerformanceObserver((list) => {
+    const entries = list.getEntries();
+    const lastEntry = entries[entries.length - 1];
+    const value = lastEntry.startTime;
+    callback({
+      name: "LCP",
+      value,
+      rating: getRating(value, LCP_THRESHOLDS),
+      delta: value,
+      entries,
+      id: "v3-" + Date.now()
+    });
+  });
+  observer.observe({ type: "largest-contentful-paint", buffered: true });
+  return () => observer.disconnect();
+}
+function observeFID(callback) {
+  if (typeof PerformanceObserver === "undefined") return () => {
+  };
+  const observer = new PerformanceObserver((list) => {
+    const entries = list.getEntries();
+    for (const entry of entries) {
+      const value = entry.processingStart - entry.startTime;
+      callback({
+        name: "FID",
+        value,
+        rating: getRating(value, FID_THRESHOLDS),
+        delta: value,
+        entries: [entry],
+        id: "v3-" + Date.now()
+      });
+    }
+  });
+  observer.observe({ type: "first-input", buffered: true });
+  return () => observer.disconnect();
+}
+function observeCLS(callback) {
+  if (typeof PerformanceObserver === "undefined") return () => {
+  };
+  const observer = new PerformanceObserver((list) => {
+    const entries = list.getEntries();
+    for (const entry of entries) {
+      if (!entry.hadRecentInput) {
+        const firstSessionEntry = sessionEntries[0];
+        const lastSessionEntry = sessionEntries[sessionEntries.length - 1];
+        if (firstSessionEntry && lastSessionEntry && entry.startTime - lastSessionEntry.startTime < 1e3 && entry.startTime - firstSessionEntry.startTime < 5e3) {
+          sessionValue += entry.value;
+        } else {
+          sessionValue = entry.value;
+          sessionEntries = [];
+        }
+        sessionEntries.push(entry);
+        clsValue = sessionValue;
+        callback({
+          name: "CLS",
+          value: clsValue * 1e3,
+          rating: getRating(clsValue, CLS_THRESHOLDS),
+          delta: entry.value * 1e3,
+          entries: [entry],
+          id: "v3-" + Date.now()
+        });
+      }
+    }
+  });
+  observer.observe({ type: "layout-shift", buffered: true });
+  return () => observer.disconnect();
+}
+function observeINP(callback) {
+  if (typeof PerformanceObserver === "undefined") return () => {
+  };
+  const observer = new PerformanceObserver((list) => {
+    const entries = list.getEntries();
+    let maxDuration = 0;
+    for (const entry of entries) {
+      const duration = entry.duration;
+      if (duration > maxDuration) maxDuration = duration;
+    }
+    callback({
+      name: "INP",
+      value: maxDuration,
+      rating: getRating(maxDuration, INP_THRESHOLDS),
+      delta: maxDuration,
+      entries,
+      id: "v3-" + Date.now()
+    });
+  });
+  observer.observe({ type: "event", buffered: true });
+  return () => observer.disconnect();
+}
+function observeTTFB(callback) {
+  if (typeof performance === "undefined") return () => {
+  };
+  const navEntry = performance.getEntriesByType("navigation")[0];
+  if (navEntry) {
+    const value = navEntry.responseStart - navEntry.requestStart;
+    callback({
+      name: "TTFB",
+      value,
+      rating: getRating(value, TTFB_THRESHOLDS),
+      delta: value,
+      entries: [navEntry],
+      id: "v3-" + Date.now()
+    });
+  }
+  return () => {
+  };
+}
+function observeFCP(callback) {
+  if (typeof PerformanceObserver === "undefined") return () => {
+  };
+  const observer = new PerformanceObserver((list) => {
+    const entries = list.getEntries();
+    for (const entry of entries) {
+      callback({
+        name: "FCP",
+        value: entry.startTime,
+        rating: getRating(entry.startTime, FCP_THRESHOLDS),
+        delta: entry.startTime,
+        entries: [entry],
+        id: "v3-" + Date.now()
+      });
+    }
+  });
+  observer.observe({ type: "paint", buffered: true });
+  return () => observer.disconnect();
+}
+function observeAllVitals(callback) {
+  const cleanups = [
+    observeLCP(callback),
+    observeFID(callback),
+    observeCLS(callback),
+    observeINP(callback),
+    observeTTFB(callback),
+    observeFCP(callback)
+  ];
+  return () => cleanups.forEach((cleanup) => cleanup());
 }
 
 // packages/runtime/tw/ssr-streaming.ts
@@ -1510,6 +1670,7 @@ function renderToReadableStream(node, options = {}) {
       }
     },
     cancel(reason) {
+      void reason;
     }
   });
 }
@@ -1695,7 +1856,7 @@ function isSameVNode(n1, n2) {
 function getKey(vnode) {
   return vnode.key;
 }
-var VNODE_SYMBOL = Symbol("vnode");
+var VNODE_SYMBOL = /* @__PURE__ */ Symbol("vnode");
 function markVNode(vnode) {
   Object.defineProperty(vnode, "__v_isVNode", {
     value: true,
@@ -2085,7 +2246,7 @@ function shallowEqual(a, b) {
   return true;
 }
 function memo(component, compare = shallowEqual) {
-  const memoized = (props) => {
+  const memoized = ((props) => {
     if (memoized._lastProps !== void 0 && memoized._lastResult !== void 0 && compare(memoized._lastProps, props)) {
       return memoized._lastResult;
     }
@@ -2093,7 +2254,7 @@ function memo(component, compare = shallowEqual) {
     memoized._lastProps = props;
     memoized._lastResult = result;
     return result;
-  };
+  });
   memoized._wrapped = component;
   memoized._compare = compare;
   return memoized;
@@ -4983,11 +5144,11 @@ var EventBus = class {
     if (event.includes("*")) {
       const regex = patternToRegex(event);
       const patternListener = {
-        handler: (data, meta) => {
+        handler: ((data, meta) => {
           if (regex.test(meta.name)) {
             handler(data, meta.name);
           }
-        },
+        }),
         priority: (_d = options.priority) != null ? _d : 0,
         once: (_e = options.once) != null ? _e : false,
         namespace: (_f = options.namespace) != null ? _f : "default"
@@ -5912,11 +6073,14 @@ var validators = {
     if (str.length > max) return message || `Must be at most ${max} characters`;
     return true;
   },
-  email: (value) => {
+  // Factory like every other validator (docs/form-validators.md shows
+  // `const email = validators.email()`); previously this was a bare
+  // ValidatorFn, so `validators.email()(v)` threw.
+  email: (message = "Invalid email address") => (value) => {
     const str = String(value != null ? value : "");
     if (!str) return true;
     const re = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
-    return re.test(str) ? true : "Invalid email address";
+    return re.test(str) ? true : message;
   },
   url: (message = "Invalid URL") => (value) => {
     const str = String(value != null ? value : "");
@@ -9843,6 +10007,7 @@ function createRouter(options) {
         const from = current;
         current = next;
         for (const listener of listeners) listener(next);
+        void from;
       });
     }
   }
@@ -13468,6 +13633,7 @@ export {
   consumeContext,
   copyHTML,
   copyJSON,
+  copyText,
   copyToClipboard,
   createAnalyticsPlugin,
   createBuiltinTransitions,
@@ -13676,6 +13842,13 @@ export {
   nextTick,
   normalizeChild,
   normalizeChildren,
+  observeAllVitals,
+  observeCLS,
+  observeFCP,
+  observeFID,
+  observeINP,
+  observeLCP,
+  observeTTFB,
   observeVisibility,
   off,
   offAll,

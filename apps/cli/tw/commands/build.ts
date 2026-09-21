@@ -139,6 +139,20 @@ function loadGlobalStyles(rootDir: string): string {
   return "";
 }
 
+const registeredComponentNames = new Set<string>();
+
+function collectComponentUsages(node: any, out: Set<string>): void {
+  if (!node || typeof node !== "object") return;
+  if (node.type === "Element" && typeof node.tag === "string" && /^[A-Z]/.test(node.tag) && node.tag !== "Suspense") {
+    out.add(node.tag);
+  }
+  const kids: any[] = Array.isArray(node.children) ? node.children : (Array.isArray(node.body) ? node.body : []);
+  for (const k of kids) collectComponentUsages(k, out);
+  if (Array.isArray(node.body) && Array.isArray(node.children)) {
+    for (const k of node.body) collectComponentUsages(k, out);
+  }
+}
+
 function registerComponentsFrom(dir: string): void {
   if (!existsSync(dir)) return;
   for (const file of readdirSync(dir).filter(f => f.endsWith(".tw"))) {
@@ -149,6 +163,7 @@ function registerComponentsFrom(dir: string): void {
       const result = _compileSync(source, { filePath, transforms: false, optimize: false, diagnostics: false });
       if (result.ast) {
         _registerComponentTemplate(name, result.ast);
+        registeredComponentNames.add(name);
         console.log("  \x1b[32m\u2713\x1b[0m component: " + name);
       }
     } catch (e: any) {
@@ -282,6 +297,7 @@ export async function buildCommand(): Promise<void> {
   let pageCount = 0;
   let apiCount = 0;
   let errorCount = 0;
+  const isrRoutes = new Map<string, number>();
 
   // -- 1. Compile all page.tw files to HTML --------------------------------
   const pageFiles: string[] = [];
@@ -345,8 +361,40 @@ export async function buildCommand(): Promise<void> {
     //   ppr                -> prebuilt shell + data-tw-ppr holes the client
     //                         refetches per request through /_tw/ppr
     const renderMode = extractRenderMode(readFileSync(pageFile, "utf8"));
-    if (renderMode === "ssr" || renderMode === "stream") {
+    // ISR manifest: record `revalidate N` windows (docs/isr.md) so serve can
+    // route these through the render pipeline instead of frozen static HTML.
+    {
+      const revM = /page\s*\{[^}]*revalidate\s+(\d+)/.exec(readFileSync(pageFile, "utf-8"));
+      if (revM) {
+        for (const ps of paramSets) {
+          const rp = routePath.split("/").map(seg => {
+            const m = /^\[([^\]]+)\]$/.exec(seg);
+            return m && ps[m[1]] !== undefined ? String(ps[m[1]]) : seg;
+          }).join("/");
+          const isrPath = ("/" + rp).replace(/\/+$/, "").replace(/^\/+/, "/");
+          isrRoutes.set(isrPath === "" ? "/" : isrPath, Number(revM[1]));
+        }
+      }
+    }
+    // A params.twm beside a dynamic route switches it to STATIC generation
+    // at build time (docs/dynamic-routes.md) -- even for `render ssr` pages,
+    // the enumerated param sets are prebuilt like static ones.
+    const hasExplicitParams = paramSets.length > 1 || Object.keys(paramSets[0] ?? {}).length > 0;
+    if ((renderMode === "ssr" || renderMode === "stream") && !hasExplicitParams) {
       console.log("  \x1b[36m~\x1b[0m " + routePath + " [" + renderMode + ": rendered at request time]");
+      try {
+        const src = readFileSync(pageFile, "utf-8");
+        const r = _compileSync(src, { filePath: pageFile });
+        const errs = (r.diagnostics || []).filter((d: any) => d.severity === "error");
+        if (errs.length > 0) {
+          console.log("  \x1b[33m! " + routePath + " (" + errs.length + " diagnostics)\x1b[0m");
+          for (const d of errs.slice(0, 5)) console.log("      " + d.line + ":" + d.col + "  " + d.message);
+          errorCount++;
+        }
+      } catch (e: any) {
+        console.log("  \x1b[33m! " + routePath + ": " + (e && e.message ? e.message : e) + "\x1b[0m");
+        errorCount++;
+      }
       continue;
     }
 
@@ -360,6 +408,16 @@ export async function buildCommand(): Promise<void> {
       // ({params.slug}) -- docs/project-tree.md documents params.slug.
       const scopeVars = { ...paramSet, params: paramSet };
       const result = _compileSync(source, { filePath: pageFile, stateVars: scopeVars } as any);
+      {
+        const used = new Set<string>();
+        collectComponentUsages(result.ast, used);
+        const BUILTIN_ALIASES = new Set(["Link", "RouterLink", "Image", "optImage", "Suspense"]);
+        const unknown = [...used].filter(t => !BUILTIN_ALIASES.has(t) && !registeredComponentNames.has(t));
+        if (unknown.length > 0) {
+          console.error("  \x1b[31m\u2717 " + pageFile.replace(rootDir + "/", "") + ": unknown component" + (unknown.length > 1 ? "s" : "") + " <" + unknown.join(">, <") + "> -- no components/" + unknown[0] + ".tw found (create the file or fix the import)\x1b[0m");
+          process.exit(1);
+        }
+      }
       let html = result.html;
 
       // Apply the FULL layout chain (root layout first, then section layouts)
@@ -374,7 +432,7 @@ export async function buildCommand(): Promise<void> {
           html = _generateWithLayoutChain(layoutPrograms, result.ast, scopeVars);
           // Page title wins over the layout title.
           const pageTitle = result.html.match(/<title>([^<]*)<\/title>/);
-          if (pageTitle && pageTitle[1] && pageTitle[1] !== "TW Page") {
+          if (pageTitle && pageTitle[1]) {
             html = html.replace(/<title>[^<]*<\/title>/, `<title>${pageTitle[1]}</title>`);
           }
         }
@@ -451,6 +509,12 @@ export async function buildCommand(): Promise<void> {
         for (const l of pageMods.deps) {
           const u = buildClientChunk(rootDir, l, true);
           if (u) { clientTag += `<script defer src="/${u}"></script>\n  `; clientChunkUrls.add(u); }
+          else {
+            // A failed client chunk means the page's imports are undefined
+            // at runtime -- every handler using them breaks. Never green.
+            console.error(`  \x1b[31mERROR\x1b[0m ${pageFile.replace(homeDir, "").replace(/^\//, "")}: client chunk failed for ${l}`);
+            errorCount++;
+          }
         }
         if (pageMods.own.length > 0) {
           const pu = buildPageScope(rootDir, pageMods.own);
@@ -654,6 +718,15 @@ const runtimeSrc = _bundleDir
   console.log("\n  \x1b[32mBuild complete!\x1b[0m");
   console.log("  Pages: " + pageCount + " compiled");
   console.log("  APIs:  " + apiCount + " routes");
+  // ISR manifest (docs/isr.md): serve reads this to route revalidate pages
+  // through the render pipeline (MISS/HIT/STALE) instead of static files.
+  if (isrRoutes.size > 0) {
+    const manifest: Record<string, number> = {};
+    for (const [k, v] of isrRoutes) manifest[k] = v;
+    writeFileSync(join(outDir, "routes.json"), JSON.stringify(manifest, null, 2));
+    console.log("  \x1b[36m~\x1b[0m ISR: " + isrRoutes.size + " route(s) with revalidate windows -> .tw/routes.json");
+  }
+
   if (errorCount > 0) {
     console.log("  \x1b[31mErrors: " + errorCount + "\x1b[0m");
   }

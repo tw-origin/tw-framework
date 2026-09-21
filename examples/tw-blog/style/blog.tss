@@ -1,0 +1,29 @@
+// Blog listing page styles (imported by home/page.tw).
+
+.blog {
+  maxw 640px
+  m 0 auto
+  p 2rem 1rem
+
+  h1 {
+    fs 2rem
+    mb 1.5rem
+  }
+}
+
+.post-card {
+  bd 1px solid #30363d
+  radius 8px
+  p 1rem 1.25rem
+  mb 1rem
+
+  h2 {
+    fs 1.25rem
+    mb 0.5rem
+  }
+
+  .nav-link {
+    c #58a6ff
+    td none
+  }
+}

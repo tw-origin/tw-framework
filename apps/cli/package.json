@@ -1,6 +1,6 @@
 {
   "name": "tw-framework",
-  "version": "1.0.4",
+  "version": "1.0.5",
   "description": "Full-stack web framework \u2014 own template language (.tw), styling (.tss), compiler and VDOM; runs on Bun and Node",
   "type": "module",
   "main": "./dist/tw.mjs",

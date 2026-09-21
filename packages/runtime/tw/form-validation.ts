@@ -84,12 +84,15 @@ export const validators = {
     return true;
   },
 
-  email: ((value: unknown) => {
+  // Factory like every other validator (docs/form-validators.md shows
+  // `const email = validators.email()`); previously this was a bare
+  // ValidatorFn, so `validators.email()(v)` threw.
+  email: (message = "Invalid email address"): ValidatorFn => (value) => {
     const str = String(value ?? "");
     if (!str) return true;
     const re = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
-    return re.test(str) ? true : "Invalid email address";
-  }) as ValidatorFn,
+    return re.test(str) ? true : message;
+  },
 
   url: (message = "Invalid URL"): ValidatorFn => (value) => {
     const str = String(value ?? "");

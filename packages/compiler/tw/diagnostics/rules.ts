@@ -262,7 +262,7 @@ export function checkAttributes(program: Program, filePath: string, diags: Diagn
 
 export function checkAccessibility(program: Program, filePath: string, diags: Diagnostic[]): void {
   let prevHeadingLevel = 0;
-  forEachNode(program, (node) => {
+  forEachNode(program, (node, ctx) => {
     if (!isElement(node)) return;
     const tag = node.tag.toLowerCase();
 
@@ -285,7 +285,10 @@ export function checkAccessibility(program: Program, filePath: string, diags: Di
     if (tag === "input") {
       const hasId = node.attrs.some(a => a.name === "id");
       const hasAriaLabel = node.attrs.some(a => a.name === "aria-label");
-      if (!hasId && !hasAriaLabel) {
+      const siblings = (ctx.parent as any)?.children;
+      const hasSiblingLabel = Array.isArray(siblings) && siblings.some((s: any) =>
+        s && s.type === "Element" && typeof s.tag === "string" && s.tag.toLowerCase() === "label");
+      if (!hasId && !hasAriaLabel && !hasSiblingLabel) {
         diags.push(createDiagnostic("TW041", node.line, node.col, filePath, `<input>`, [
           "Add a <label> element or aria-label attribute",
         ]));

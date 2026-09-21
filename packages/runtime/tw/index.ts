@@ -52,7 +52,9 @@ export { defineAsyncComponent, getAsyncLoader, getSuspenseManager, preloadAsyncC
 export type { AsyncComponentOptions, AsyncComponentState, SuspenseBoundary } from "./async-components";
 export { cacheClear, cacheDelete, cacheGet, cacheHas, cacheSet, cacheStats, getCacheManager } from "./cache-manager";
 export type { CacheEntry, CacheLayer, CacheOptions, CacheStats } from "./cache-manager";
-export { copyHTML, copyJSON, copyToClipboard, getClipboardManager, pasteFromClipboard } from "./clipboard-utils";
+export { copyHTML, copyJSON, copyText, copyToClipboard, getClipboardManager, pasteFromClipboard } from "./clipboard-utils";
+// docs/web-vitals.md: the real-user metrics API.
+export { observeAllVitals, observeCLS, observeFCP, observeFID, observeINP, observeLCP, observeTTFB } from "./performance/metrics";
 export type { ClipboardOptions } from "./clipboard-utils";
 export { ErrorBoundary, Fragment, Suspense, createContext, defineComponent, forwardRef, fragment, memo, resolveContext, withScope } from "./component";
 export type { Component, ComponentFactory, ComponentOptions, ComponentProps, Context, ContextValueStack, DefaultProps, DefaultState, ErrorBoundaryProps, ForwardRefComponent, MemoComponent, SetupContext, SuspenseProps, VNode, VNodeChild } from "./component";

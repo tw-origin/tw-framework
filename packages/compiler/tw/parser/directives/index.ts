@@ -430,7 +430,7 @@ function parseStateDirective(cursor: TokenCursor, token: Token): StateDirective 
     }
 
     let value = "";
-    if (cursor.match("EQUALS")) {
+    if (cursor.match("EQUALS") || cursor.match("ASSIGN")) {
       cursor.skipWhitespace();
       value = cursor.consumeValue();
     }

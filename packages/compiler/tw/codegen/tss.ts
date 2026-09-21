@@ -98,7 +98,26 @@ function combineSelector(parent: string, child: string): string {
 export function compileTSS(source: string): string {
   if (!source || !source.trim()) return "";
   // Strip comments
-  const src = source.replace(/\/\*[\s\S]*?\*\//g, "").replace(/\/\/.*$/gm, "");
+  let src = source.replace(/\/\*[\s\S]*?\*\//g, "").replace(/\/\/.*$/gm, "");
+
+  // Variables: `$name: value` declarations are collected, removed from the
+  // source and substituted into every `$name` use (SCSS-style).
+  const vars: Record<string, string> = {};
+  src = src.replace(/\$([A-Za-z_][\w-]*)\s*:\s*([^;{}\n]+);?/g, (_m: string, name: string, val: string) => {
+    vars[name] = String(val).trim();
+    return "";
+  });
+  if (Object.keys(vars).length > 0) {
+    for (let pass = 0; pass < 5; pass++) {
+      let changed = false;
+      src = src.replace(/\$([A-Za-z_][\w-]*)/g, (m: string, name: string) => {
+        if (Object.prototype.hasOwnProperty.call(vars, name)) { changed = true; return vars[name]; }
+        return m;
+      });
+      if (!changed) break;
+    }
+  }
+
   const rules: string[] = [];
   const stack: string[] = [];       // selector / at-rule stack
   const declsByLevel: string[][] = [];
@@ -107,20 +126,44 @@ export function compileTSS(source: string): string {
   const emit = (selector: string, decls: string[], wrapStack: string[]) => {
     if (decls.length === 0) return;
     let rule = `${selector} { ${decls.join("; ")} }`;
-    // Wrap inside open @media/@supports blocks
     for (let i = wrapStack.length - 1; i >= 0; i--) {
       if (wrapStack[i].startsWith("@")) rule = `${wrapStack[i]} { ${rule} }`;
     }
     rules.push(rule);
   };
 
+  const pushDecl = (text: string): void => {
+    const d = compileDecl(text);
+    if (d) (declsByLevel[declsByLevel.length - 1] ??= []).push(d);
+  };
+
+  // A line is a declaration when it starts with a property name (TSS
+  // shorthand or full CSS) followed by whitespace or a colon. Selector
+  // lines (.card, &:hover, h2) do not match.
+  const isDeclLine = (l: string): boolean =>
+    /^[a-zA-Z][\w-]*(\s|:)/.test(l) && !/^[>+~]/.test(l);
+
   let i = 0;
   while (i < src.length) {
     const ch = src[i];
     if (ch === "{") {
-      const sel = buf.trim();
+      let sel = buf.trim();
       buf = "";
       if (!sel) { i++; continue; }
+      // The buffer may mix declarations (written without `;`) with the
+      // nested selector. Earlier lines that look like declarations belong
+      // to the CURRENT level; the last line is the selector. Multi-line
+      // values (trailing `(` or `,`) are left intact so gradients work.
+      const lines = sel.split(/\n+/).map((l: string) => l.trim()).filter(Boolean);
+      if (lines.length > 1) {
+        const last = lines[lines.length - 1];
+        const prior = lines.slice(0, -1);
+        const priorComplete = !/[(,]\s*$/.test(prior[prior.length - 1] ?? "");
+        if (priorComplete && prior.every(isDeclLine) && !last.startsWith("@")) {
+          for (const p of prior) pushDecl(p);
+          sel = last;
+        }
+      }
       const parent = stack.length ? stack[stack.length - 1] : "";
       let full: string;
       if (sel.startsWith("@")) {
@@ -134,19 +177,38 @@ export function compileTSS(source: string): string {
       declsByLevel.push([]);
       i++;
     } else if (ch === "}") {
-      // Flush a trailing declaration (no `;` before `}`) first.
+      // Flush trailing declarations (no `;` before `}`). Several may be
+      // stacked on separate lines inside the block -- push each one.
       if (buf.trim()) {
-        const d = compileDecl(buf);
-        if (d) (declsByLevel[declsByLevel.length - 1] ??= []).push(d);
+        const blines = buf.split(/\n+/).map((l: string) => l.trim()).filter(Boolean);
+        if (blines.length > 1 && blines.every(isDeclLine)) {
+          for (const l of blines) pushDecl(l);
+        } else {
+          pushDecl(buf);
+        }
       }
       buf = "";
       const level = stack.pop();
       const decls = declsByLevel.pop() ?? [];
-      if (level) emit(level, decls, stack);
+      if (level) {
+        if (level.startsWith("@") && decls.length > 0) {
+          // Declarations written directly inside an at-rule nested in a
+          // selector (`.card { @media ... { p 0 } }`) belong to the nearest
+          // enclosing real selector -- otherwise the rule loses its
+          // selector and the CSS applies to nothing.
+          let realSel: string | null = null;
+          for (let j = stack.length - 1; j >= 0; j--) {
+            if (!stack[j].startsWith("@")) { realSel = stack[j]; break; }
+          }
+          if (realSel) emit(realSel, decls, [...stack, level]);
+          else emit(level, decls, stack);
+        } else {
+          emit(level, decls, stack);
+        }
+      }
       i++;
     } else if (ch === ";") {
-      const d = compileDecl(buf);
-      if (d) (declsByLevel[declsByLevel.length - 1] ??= []).push(d);
+      pushDecl(buf);
       buf = "";
       i++;
     } else {

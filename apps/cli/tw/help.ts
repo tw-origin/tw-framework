@@ -1,7 +1,19 @@
 /** TW CLI -- help text. */
+import { readFileSync } from "node:fs";
+import { join } from "node:path";
+
+function cliVersion(): string {
+  try {
+    const bd = (globalThis as any).__TW_BUNDLE_DIR as string | undefined;
+    const pj = bd ? join(bd, "..", "package.json") : new URL("../../package.json", import.meta.url).pathname;
+    return (JSON.parse(readFileSync(pj, "utf-8")).version as string) ?? "0.0.0";
+  } catch {
+    return "0.0.0";
+  }
+}
 
 export const helpText = `
-  TW Framework v1.0.0
+  TW Framework v${cliVersion()}
 
   Usage: tw <command> [options]
 

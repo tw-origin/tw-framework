@@ -60,9 +60,10 @@ export function applyRewrites(rewrites: Array<{ from: string; to: string }>, pat
 
 
 import { createImageHandler } from "@tw/optImage";
+import { WebSocketManager } from "./websocket-manager";
 import { getSignalHub } from "./routing";
 import { join } from "node:path";
-import { existsSync } from "node:fs";
+import { existsSync, readFileSync } from "node:fs";
 import { RouteRegistry, type RouteContext } from "./router";
 import { MiddlewarePipeline, corsMiddleware, loggingMiddleware, rateLimitMiddleware, securityHeadersMiddleware, bodyParserMiddleware, compressionMiddleware, type Middleware } from "./middleware";
 import { StaticHandler } from "./static";
@@ -80,7 +81,7 @@ export interface TWServerOptions {
    * @tw/security: "standard" (serve default), "strict", "dev" (dev default),
    * "off" disables. tw.config.ts: security: { headers: "..." }.
    */
-  security?: { headers?: "standard" | "strict" | "dev" | "off" };
+  security?: { headers?: "standard" | "strict" | "dev" | "off"; csp?: boolean };
   /** Parsed tw.config.ts (redirects, headers, ...) */
   config?: any;
   pagesDir?: string;
@@ -102,7 +103,34 @@ export class TWServer {
   private router: RouteRegistry;
   private pipeline: MiddlewarePipeline;
   private staticHandler: StaticHandler | null = null;
+  /** ISR routes (from .tw/routes.json): pathname -> revalidate seconds. */
+  private isrRoutes: Map<string, number> = new Map();
   private securityHeaders: { apply(res: Response): Response } | null = null;
+
+  /**
+   * CSP nonces (docs/csp-nonce.md): generate a per-response nonce, stamp
+   * every <script> tag in the HTML with it, and return the matching
+   * Content-Security-Policy header. Enabled via tw.config.ts:
+   * security: { csp: true }.
+   */
+  private applyCspNonce(html: string): { html: string; headers: Record<string, string> } {
+    // node:crypto randomBytes via the already-bundled require shim
+    const rand = require("node:crypto").randomBytes(24).toString("hex");
+    const stamped = html.replace(/<script(?![^>]*\bnonce=)(\s|>)/gi, `<script nonce="${rand}"$1`);
+    return {
+      html: stamped,
+      headers: {
+        // 'unsafe-eval' is required by the client runtime: interactive page
+        // handlers (data-tw-event) are evaluated via new Function() at
+        // runtime. The nonce still blocks injected third-party scripts.
+        "Content-Security-Policy": `script-src 'nonce-${rand}' 'self' 'unsafe-eval'; object-src 'none'; base-uri 'self'`,
+      },
+    };
+  }
+
+  private cspEnabled(): boolean {
+    return !!(this.options.security as any)?.csp;
+  }
   private ssr: SSRRenderer | null = null;
   private server: any = null;
   private isRunning = false;
@@ -196,6 +224,20 @@ export class TWServer {
 
     const staticDir = this.options.staticDir ?? join(options.rootDir, ".tw");
     if (existsSync(staticDir)) {
+      // ISR manifest (docs/isr.md): routes with a revalidate window are
+      // served through the render pipeline, never as frozen static files.
+      try {
+        const manifestPath = join(staticDir, "routes.json");
+        if (existsSync(manifestPath)) {
+          const manifest = JSON.parse(readFileSync(manifestPath, "utf-8"));
+          for (const [route, secs] of Object.entries(manifest)) {
+            (this as any).isrRoutes.set(route, Number(secs));
+          }
+          if (Object.keys(manifest).length > 0) {
+            console.log(`  ISR: ${Object.keys(manifest).length} revalidate route(s)`);
+          }
+        }
+      } catch { /* routes.json is optional */ }
       this.staticHandler = new StaticHandler({
         root: staticDir,
         etag: true,
@@ -732,9 +774,33 @@ export class TWServer {
       }
     }
 
-    // Try static file serving first (prebuilt .tw/ output)
-    if (this.staticHandler) {
-      const staticResponse = await this.staticHandler.serve(pathname, request);
+    // Try static file serving first (prebuilt .tw/ output) -- EXCEPT for
+    // ISR routes with a revalidate window: those must go through the render
+    // pipeline below so they re-render (MISS -> HIT -> STALE + background
+    // refresh) instead of serving frozen HTML forever.
+    const isrLookupPath = pathname.length > 1 ? pathname.replace(/\/+$/, "") : pathname;
+    if (this.staticHandler && !(this as any).isrRoutes.has(isrLookupPath)) {
+      let staticResponse = await this.staticHandler.serve(pathname, request);
+      // CSP nonces for prebuilt (static) HTML pages too. Read as raw bytes:
+      // the static handler may have gzip-encoded the body, and reading it
+      // as text() would be lossy. Gunzip, stamp, serve uncompressed.
+      if (staticResponse && this.cspEnabled() && (staticResponse.headers.get("content-type") || "").includes("text/html")) {
+        try {
+          let buf = Buffer.from(await staticResponse.arrayBuffer());
+          if ((staticResponse.headers.get("content-encoding") || "").includes("gzip")) {
+            buf = require("node:zlib").gunzipSync(buf);
+          }
+          const cspRes = this.applyCspNonce(buf.toString("utf8"));
+          const h = new Headers(staticResponse.headers);
+          // The re-stamped body differs from the file bytes -- the copied
+          // Content-Length would TRUNCATE the response, and Content-Encoding
+          // would mislabel the now-uncompressed body.
+          h.delete("Content-Length");
+          h.delete("Content-Encoding");
+          Object.entries(cspRes.headers).forEach(([k, v]) => h.set(k, v));
+          staticResponse = new Response(cspRes.html, { status: staticResponse.status, headers: h });
+        } catch { /* never break static serving */ }
+      }
       if (staticResponse.status !== 404) {
         return staticResponse;
       }
@@ -760,15 +826,27 @@ export class TWServer {
               setActivePipeline(this.renderPipeline);
             }
             const renderPipeline = this.renderPipeline;
+            // SPA navigation signal (client runtime link fetch): lets the
+            // render pipeline serve `(.)page.tw` interceptors (modals).
+            (renderPipeline as any).navRequest = request.headers.get("x-tw-navigate") === "1";
             const result: any = renderPipeline.render(pathname);
             if (result && result.html) {
               // `render stream`: shell first, Suspense holes as streamed chunks
               if (result.renderMode === "stream") {
                 return this.streamSSRResponse(result.html);
               }
-              return new Response(result.html, {
+              let outHtml = result.html;
+              const outHeaders: Record<string, string> = result.headers ?? { "Content-Type": "text/html; charset=utf-8" };
+              if (this.cspEnabled()) {
+                try {
+                  const cspRes = this.applyCspNonce(outHtml);
+                  outHtml = cspRes.html;
+                  Object.assign(outHeaders, cspRes.headers);
+                } catch { /* CSP stamping must never break a page */ }
+              }
+              return new Response(outHtml, {
                 status: result.status ?? 200,
-                headers: result.headers ?? { "Content-Type": "text/html; charset=utf-8" },
+                headers: outHeaders,
               });
             }
           }
@@ -871,3 +949,6 @@ export { SSRRenderer, generatePreloadHints, getCachedSSR, invalidateSSRCache, se
 export type { SSROptions, SSRResult } from "./ssr";
 export { StaticHandler } from "./static";
 export type { StaticOptions } from "./static";
+
+export { WebSocketManager };
+export type { WebSocketConnection, ConnectionMeta } from "./websocket-manager";

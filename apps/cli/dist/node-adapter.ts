@@ -72,6 +72,48 @@ if (typeof globalThis.Bun === "undefined") {
       this.params = {};
     }
     async json() { return JSON.parse(this._body ? this._body.toString("utf-8") : "{}"); }
+    /**
+     * multipart/form-data (docs/multipart-forms.md): parse the buffered body
+     * into a FormData-like object. Route handlers expect request.formData()
+     * to exist exactly like the fetch standard on Bun.
+     */
+    async formData(): Promise<any> {
+      const bodyStr = this._body ? this._body.toString("binary") : "";
+      const ct = String(this.headers?.get?.("content-type") ?? "");
+      const bm = /boundary=(?:"([^"]+)"|([^;]+))/i.exec(ct);
+      if (!bm) throw new Error("FormData: no multipart boundary");
+      const boundary = "--" + (bm[1] ?? bm[2]).trim();
+      const out: [string, any][] = [];
+      const parts = bodyStr.split(boundary);
+      for (let i = 1; i < parts.length - 1; i++) {
+        const raw = parts[i];
+        const sep = raw.indexOf("\r\n\r\n");
+        if (sep < 0) continue;
+        const head = raw.slice(0, sep);
+        let data = raw.slice(sep + 4);
+        if (data.endsWith("\r\n")) data = data.slice(0, -2);
+        const nameM = /name="([^"]*)"/.exec(head);
+        if (!nameM) continue;
+        const fileM = /filename="([^"]*)"/.exec(head);
+        const typeM = /content-type:\s*([^\r\n]+)/i.exec(head);
+        if (fileM) {
+          const buf = Buffer.from(data, "binary");
+          out.push([nameM[1], {
+            name: fileM[1],
+            type: typeM ? typeM[1].trim() : "application/octet-stream",
+            size: buf.length,
+            arrayBuffer: async () => buf.buffer.slice(buf.byteOffset, buf.byteOffset + buf.byteLength),
+          }]);
+        } else {
+          out.push([nameM[1], data]);
+        }
+      }
+      return {
+        entries: () => out[Symbol.iterator](),
+        forEach: (fn: any) => out.forEach(([k, v]) => fn(v, k)),
+        get: (k: string) => (out.find(([kk]) => kk === k) || [, undefined])[1],
+      };
+    }
     async text() { return this._body ? this._body.toString("utf-8") : ""; }
     async arrayBuffer() {
       if (!this._body) return new ArrayBuffer(0);
@@ -98,6 +140,22 @@ if (typeof globalThis.Bun === "undefined") {
       const b: any = this._body;
       // Blob (Bun.file) and other web bodies
       if (b && typeof b.arrayBuffer === "function") return await b.arrayBuffer();
+      // Web ReadableStream (render stream responses): drain into a buffer.
+      if (b && typeof b.getReader === "function") {
+        const reader = b.getReader();
+        const chunks: Uint8Array[] = [];
+        let total = 0;
+        for (;;) {
+          const { done, value } = await reader.read();
+          if (done) break;
+          chunks.push(value);
+          total += value.byteLength;
+        }
+        const out = new Uint8Array(total);
+        let off = 0;
+        for (const c of chunks) { out.set(c, off); off += c.byteLength; }
+        return out.buffer;
+      }
       const buf = Buffer.isBuffer(b) ? b : Buffer.from(b);
       return buf.buffer.slice(buf.byteOffset, buf.byteOffset + buf.byteLength);
     }
@@ -137,11 +195,31 @@ if (typeof globalThis.Bun === "undefined") {
             body: req.method === "GET" || req.method === "HEAD" ? undefined : body,
           });
           const response = await opts.fetch(request);
-          const buf = Buffer.from(await response.arrayBuffer());
           const outHeaders = {};
           for (const [k, v] of response.headers.entries()) outHeaders[k] = v;
-          res.writeHead(response.status, outHeaders);
-          res.end(buf);
+          // Stream ReadableStream bodies chunk-by-chunk. Buffering via
+          // arrayBuffer() would HANG forever for persistent streams
+          // (signal streaming SSE /_tw/stream never closes).
+          const respBody: any = (response as any).body;
+          if (respBody && typeof respBody.getReader === "function") {
+            res.writeHead(response.status, outHeaders);
+            const reader = respBody.getReader();
+            const pump = (): void => {
+              reader
+                .read()
+                .then(({ done, value }: { done: boolean; value?: Uint8Array }) => {
+                  if (done) { try { res.end(); } catch { /* closed */ } return; }
+                  try { res.write(Buffer.from(value ?? [])); } catch { /* client gone */ }
+                  pump();
+                })
+                .catch(() => { try { res.end(); } catch { /* closed */ } });
+            };
+            pump();
+          } else {
+            const buf = Buffer.from(await response.arrayBuffer());
+            res.writeHead(response.status, outHeaders);
+            res.end(buf);
+          }
         } catch (err) {
           try { res.writeHead(500, { "Content-Type": "text/plain" }); res.end("Internal Server Error"); } catch { /* closed */ }
           console.error("[tw:node] request error:", err && err.message);

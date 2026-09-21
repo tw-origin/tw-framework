@@ -81,13 +81,21 @@ export function generateWithLayoutChain(
           ctx.stateVars[decl.name] = decl.value;
         }
       }
-      // `title "{page.title}"` in the canonical layout head
-      if (dir.type === "PageDirective" && (dir as any).key === "title") {
-        const t = (dir as any).value;
-        try { ctx.stateVars["page"] = JSON.stringify({ title: String(t ?? "") }); } catch { /* ignore */ }
-      }
+      // `title "{page.title}"` in the canonical layout head -- seeded below
+      // with a "TW Page" fallback for pages without a title directive.
     }
   };
+
+  {
+    let pageTitle = "TW Page";
+    for (const dir of pageProgram.directives || []) {
+      if (dir.type === "PageDirective" && (dir as any).key === "title") {
+        const t = (dir as any).value;
+        if (t != null && String(t) !== "") pageTitle = String(t);
+      }
+    }
+    try { ctx.stateVars["page"] = JSON.stringify({ title: pageTitle }); } catch { /* ignore */ }
+  }
 
   // ONE shared context for all levels: import-driven styles collected while
   // rendering page children or any layout must survive into the final
@@ -127,6 +135,12 @@ export function generateWithLayoutChain(
     }
     pageCtx.signalKinds = kinds;
   }
+  // Scoped `.module.tss` styles (docs/scoped-styles.md) must be collected
+  // BEFORE the page body renders: the class map rewrites markup class
+  // attributes during rendering. (Later layout passes skip already-seen
+  // files via the shared ctx, so this cannot double-emit CSS.)
+  collectTssImports([pageProgram as any], pageCtx);
+
   let content = (pageProgram.body || []).map((n: any) => generateNode(n, pageCtx)).join("");
 
   if (!layoutPrograms || layoutPrograms.length === 0) {
