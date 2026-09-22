@@ -120,6 +120,6 @@ jobs:
           cd examples/hello-tw
           node $GITHUB_WORKSPACE/apps/cli/dist/tw.mjs serve --port 8123 &
           SRV=$!
-          for i in $(seq 1 30); do curl -sf http://127.0.0.1:8123/ > /dev/null && break; sleep 1; done
-          curl -sf http://127.0.0.1:8123/ | grep -q "<" || { kill $SRV; exit 1; }
+          for i in $(seq 1 30); do curl -sf -A "TWCI-smoke/1.0" http://127.0.0.1:8123/ > /dev/null && break; sleep 1; done
+          curl -sf -A "TWCI-smoke/1.0" http://127.0.0.1:8123/ | grep -q "<" || { kill $SRV; exit 1; }
           kill $SRV
