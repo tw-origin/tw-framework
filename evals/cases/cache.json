@@ -1,0 +1,17 @@
+[
+  { "name": "no cache -> null", "layer": "cache",
+    "src": "page { title \"x\" }\ndiv { \"y\" }\n",
+    "expect": { "directive": null } },
+  { "name": "builtin profile minutes -> 60s stale / 300s revalidate / 3600s expire", "layer": "cache",
+    "src": "page { cache { life \"minutes\" } }\ndiv { \"y\" }\n",
+    "expect": { "revalidate": 300, "stale": 60, "expire": 3600 } },
+  { "name": "builtin profile seconds -> 1s window", "layer": "cache",
+    "src": "page { cache { life \"seconds\" } }\ndiv { \"y\" }\n",
+    "expect": { "revalidate": 1, "stale": 1, "expire": 2 } },
+  { "name": "builtin profile hours -> 1h stale / 4h revalidate / 1d expire", "layer": "cache",
+    "src": "page { cache { life \"hours\" } }\ndiv { \"y\" }\n",
+    "expect": { "revalidate": 14400, "stale": 3600, "expire": 86400 } },
+  { "name": "explicit revalidate wins over default", "layer": "cache",
+    "src": "page { cache { revalidate 45, tag \"t\" } }\ndiv { \"y\" }\n",
+    "expect": { "revalidate": 45, "tag": "t" } }
+]

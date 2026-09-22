@@ -1,0 +1,13 @@
+.head { mb 24px }
+.head h1 { fs 30px; mb 8px }
+.head p { c #445; maxw 560px }
+.weekly, .categories { mb 28px }
+.weekly h2, .categories h2, .body h2 { fs 18px; mb 10px }
+.weekly p { c #445 }
+.cat-grid { d grid; grid-template-columns repeat(4, 1fr); gap 12px }
+.cat { bg #f6f7f9; br 12px; p 20px; ta center; td none; c #223; fw 700 }
+.body ol { pl 18px }
+.body li { pb 6px; fs 14px }
+.back { mt 16px }
+.steps li { pb 6px; fs 14px }
+.note { mt 12px; c #667; fs 13px }

@@ -1,0 +1,16 @@
+.hero { mb 20px }
+.hero h1 { fs 32px; mb 8px }
+.hero p { c #567; maxw 520px }
+.categories { d flex; gap 12px; mb 24px; pb 12px; border-bottom 2px solid #111 }
+.categories a { c #111; fw 600; td none; pb 8px }
+.products { d grid; grid-template-columns repeat(3, 1fr); gap 18px; mb 32px }
+.product { bg #fff; br 14px; p 18px; d flex; fd column; gap 8px; box-shadow 0 1px 3px rgba(0,0,0,0.06) }
+.product h3 { fs 17px }
+.desc { fs 13px; c #667; min-h 36px }
+.price { fs 18px; fw 700 }
+.badge { fs 10px; uppercase; bg #111; c #fff; br 999px; p 2px 8px; w max-content }
+.product button { mt auto; p 10px; br 10px; bg #16a34a; c #fff; fw 600; c-inherit none }
+.about { bg #f6f7f9; br 14px; p 20px }
+.about ul { mt 8px; pl 18px }
+.about li { pb 4px }
+.foot { mt 28px; pt 14px; border-top 1px solid #dde; fs 12px; c #889 }

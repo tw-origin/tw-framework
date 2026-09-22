@@ -1,0 +1,15 @@
+.head { mb 24px }
+.head h1 { fs 30px; mb 8px }
+.head p { c #445; maxw 560px }
+.demo { mb 28px }
+.demo h2, .api h2, .tradeoffs h2 { fs 18px; mb 10px }
+.demo ol { pl 18px }
+.demo li { pb 6px; fs 14px }
+.demo code, .route code { d block; bg #111; c #0f0; p 8px; br 8px; fs 12px; mt 8px }
+.route { bg #f6f7f9; br 12px; p 16px; mb 24px }
+.method { bg #111; c #fff; br 6px; p 2px 8px; fs 11px; fw 700; mr 8px }
+.path { fw 700 }
+.route p { fs 13px; c #556; mt 6px }
+.tradeoffs ul { pl 18px }
+.tradeoffs li { pb 6px; fs 14px; c #445 }
+.foot { mt 28px; pt 14px; border-top 1px solid #eef; fs 12px; c #889 }

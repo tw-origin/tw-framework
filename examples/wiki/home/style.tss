@@ -1,0 +1,9 @@
+.head { mb 24px }
+.head h1 { fs 30px; mb 8px }
+.head p { c #445; maxw 560px }
+.index { mb 24px }
+.index h2, .search h2 { fs 18px; mb 10px }
+.index ul { pl 18px }
+.index li { pb 6px }
+.search p { c #445; fs 14px }
+.back { mt 16px }

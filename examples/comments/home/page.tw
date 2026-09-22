@@ -1,0 +1,33 @@
+import "./../style/global.tss"
+
+page {
+  title "Posts -- TW Comments"
+  render ssr
+  cache { revalidate 60, tag "posts" }
+}
+
+div.posts {
+  header.head {
+    h1 "Posts"
+    p "The list caches for 60 seconds under the posts tag -- but the comment action bumps the tag, so a new comment is visible immediately."
+  }
+  article.post {
+    h2 "Why the cache has three windows"
+    p "Fresh, stale-but-serving, and gone. The middle window is the whole trick: the visitor never waits, the refresh happens behind them."
+    ul.comments {
+      li { strong "mlkraj" span " -- the stale window is basically HTTP 103 done right" }
+      li { strong "anon" span " -- wait, so expire is a hard limit?" }
+    }
+  }
+  article.post {
+    h2 "Tags beat timeouts"
+    p "A time window guesses when data changed. A tag knows. Writes bump the tag; reads after that are fresh by construction."
+    ul.comments {
+      li { strong "reader" span " -- so the 60 seconds is just a ceiling, not a delay" }
+    }
+  }
+  section.how {
+    h2 "Add yours"
+    p "POST to /api/comment with a name -- the response confirms, the tag drops, the next page load shows it."
+  }
+}

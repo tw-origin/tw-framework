@@ -1,0 +1,22 @@
+import "./../../../style/global.tss"
+
+page { title "Syntax -- Docs" render static }
+
+div.docs {
+    a "Routing" { href "/guide/routing" }
+    a "API pages" { href "/api" }
+  }
+  main.content {
+    h1 "Syntax in one page"
+    p "Attributes are name and quoted value: input type followed by the value. Events are on:click style with a quoted expression. Interpolation uses braces around state names."
+    table {
+      thead { tr { th "Construct" th "Form" } }
+      tbody {
+        tr { td "Attribute" td "input type value" }
+        tr { td "Event" td "button on:click expression" }
+        tr { td "Interpolation" td "{count}" }
+        tr { td "Class" td "div.card" }
+      }
+    }
+  }
+}

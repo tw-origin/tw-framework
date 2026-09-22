@@ -1,0 +1,31 @@
+import "./../../style/global.tss"
+
+page { title "Welcome -- Bilingual TW Site" render ssr }
+
+div.page {
+  header.head {
+    p.eyebrow "English edition"
+    h1 "Welcome"
+    p "This page is in English. Its sibling at /hi is the same site in Hindi -- separate routes, separate titles, one codebase."
+    a "हिन्दी में पढ़ें" { href "/hi" }
+  }
+
+  nav.steps {
+    h2 "How the locale split works"
+    ol {
+      li "One directory per locale: home/en/ and home/hi/"
+      li "Each renders at its own path: /en and /hi"
+      li "Cross-links switch locales without a redirect layer"
+      li "Titles, headings, and body text are fully local -- nothing is machine-swapped at runtime"
+    }
+  }
+
+  section.content {
+    h2 "Why routes and not a runtime switcher"
+    p "Two real pages mean the framework can cache, prerender, and ship each locale independently. A runtime switcher adds a query parameter and a cache dimension; directory-based locales keep the URL as the single source of truth, which search engines and users both prefer."
+  }
+
+  footer.foot {
+    p "Part of the TW example matrix: examples/i18n-site."
+  }
+}

@@ -1,0 +1,20 @@
+page { title "Home" render ssr }
+
+div.front {
+  section.hero {
+    p.eyebrow "Everyday cooking, written properly"
+    h1 "Five recipes that explain five techniques"
+    p.lede "Each recipe is a full page on a dynamic route -- ingredients, method, timing, and the reason the order matters."
+  }
+  section.listing {
+    h2 "All recipes"
+    div.grid {
+      a.rcard { href "/masala-chai" h3 "Masala Chai" p "8 min -- serves 2 -- mild" }
+      a.rcard { href "/kadak-cutting" h3 "Kadak Cutting Chai" p "5 min -- serves 1 -- none" }
+      a.rcard { href "/dal-tadka" h3 "Dal Tadka" p "35 min -- serves 4 -- medium" }
+      a.rcard { href "/dal-makhani" h3 "Dal Makhani" p "90 min -- serves 4 -- mild" }
+      a.rcard { href "/dal-fry-light" h3 "Light Dal Fry" p "25 min -- serves 3 -- mild" }
+    }
+  }
+  section.api { h2 "The API" p "GET /api/recipes returns the catalog; /api/recipes?q=dal filters. Cached -- same answer until the tag drops." }
+}

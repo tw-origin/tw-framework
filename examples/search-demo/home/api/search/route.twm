@@ -1,0 +1,8 @@
+const CATALOG = ["Masala Chai", "Chai Patti", "Adrak Chai", "Dal Tadka", "Dal Makhani", "Biryani"]
+
+fn cached get(request) {
+  cache { revalidate 30, expire 120, tag "catalog" }
+  const q = String(request.query?.q ?? "").toLowerCase()
+  const hits = q ? CATALOG.filter((i) => i.toLowerCase().includes(q)) : CATALOG
+  return { status: 200, json: { q, hits, total: hits.length } }
+}

@@ -1,0 +1,19 @@
+.eyebrow { fs 12px; uppercase; ls 2px; c #99a; mb 8px }
+.head h1 { fs 34px; mb 8px }
+.head p { c #445; maxw 560px; mb 32px }
+.tiers { d grid; grid-template-columns repeat(3, 1fr); gap 16px; mb 36px }
+.tier { bg #f6f7f9; br 14px; p 22px; ta center }
+.tier.hot { bg #111; c #fff; transform scale(1.03) }
+.tier h3 { fs 18px; mb 8px }
+.price { fs 34px; fw 800 }
+.per { c #889; fs 13px }
+.feat { pl 0; list none; mt 14px }
+.feat li { pb 6px; fs 13px }
+.tier a { d block; mt 14px; p 10px; br 10px; bg #111; c #fff; td none; fw 700 }
+.tier.hot a { bg #fff; c #111 }
+.matrix h2, .faq h2 { fs 20px; mb 12px }
+.matrix table { border-collapse collapse; w 100%; mb 36px }
+.matrix th { text-align left; fs 12px; c #889; pb 8px }
+.matrix td { pb 8px; border-bottom 1px solid #eef; fs 14px; pr 20px }
+.faq dt { fw 700; mt 12px }
+.faq dd { c #556; pl 16px }

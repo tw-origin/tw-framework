@@ -1,0 +1,11 @@
+import { PRODUCTS, CATEGORIES, findProduct } from "catalog"
+
+fn cached get(request) {
+  cache { revalidate 30, expire 300, tag "products" }
+  const cat = String(request.query?.c ?? "")
+  const q = String(request.query?.q ?? "").toLowerCase()
+  let items = PRODUCTS
+  if (cat) items = items.filter((p) => p.category === cat)
+  if (q) items = items.filter((p) => (p.name + " " + p.notes).toLowerCase().includes(q))
+  return { status: 200, json: { ok: true, count: items.length, categories: CATEGORIES.map((c) => c.id), products: items } }
+}

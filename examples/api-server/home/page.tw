@@ -1,0 +1,61 @@
+import "./../style/global.tss"
+
+page { title "API -- TW JSON Server" render static }
+
+div.api {
+  header.head {
+    h1 "JSON API"
+    p "This page is a landing card; the real surface is the routes below. Every endpoint is listed with its cache behavior."
+  }
+
+  section.routes {
+    h2 "Endpoints"
+
+    div.route {
+      span.method get
+      span.path "/api/hello"
+      span.cache uncached
+      p "A plain handler. Every request runs the function; nothing stored."
+      code "curl http://127.0.0.1:8123/api/hello"
+    }
+
+    div.route {
+      span.method get
+      span.path "/api/items"
+      span.cache "fn cached -- revalidate 10s, expire 60s, tag items"
+      p "The cached endpoint. The counter freezes between computes: call twice, the same n comes back; wait past the windows, it moves."
+      code "curl http://127.0.0.1:8123/api/items"
+    }
+
+    div.route {
+      span.method post
+      span.path "/api/items"
+      span.cache "action -- bumps the items tag"
+      p "The invalidation route. It returns revalidateTag in the result, so the next GET recomputes immediately."
+      code "curl -X POST http://127.0.0.1:8123/api/items"
+    }
+
+    div.route {
+      span.method post
+      span.path "/api/echo"
+      span.cache uncached
+      p "Echoes the request body back. POST bodies can never be cached -- reading request.body in a fn cached handler fails the build (TW091)."
+      code 'curl -X POST -d "{\'hi\':1}" http://127.0.0.1:8123/api/echo'
+    }
+  }
+
+  section.behavior {
+    h2 "The windows, as you will observe them"
+    ol.timeline {
+      li { strong "t=0" span " first GET -- MISS, computes, n=1, stores" }
+      li { strong "t=1s" span " second GET -- HIT, replays n=1" }
+      li { strong "t=11s" span " third GET -- STALE, returns n=1, refresh queued in background" }
+      li { strong "t=61s" span " fourth GET -- MISS, n=2" }
+      li { strong "any time" span " POST the action -- tag bumped, next GET is a MISS" }
+    }
+  }
+
+  footer.foot {
+    p "Cache key: sha256(method + path + canonicalQuery + JSON(params)) -- query order never matters."
+  }
+}

@@ -633,6 +633,52 @@ Error TW702: Bun runtime is not installed
 
 ---
 
+## Cache Errors (TW090–TW093)
+
+### TW090 — Cache Directive Without a Window
+
+```
+Error TW090: cache { } requires a `revalidate N` window or a `life "profile"` (docs/cache-tags.md)
+```
+
+A `cache { }` block (page frontmatter or `fn cached` handler) has neither
+`revalidate` nor `life`. **Fix:** add a window — `cache { revalidate 60 }` —
+or a profile — `cache { life "hours" }` (docs/cache-tags.md).
+
+### TW091 — Impure Cached Handler
+
+```
+Error TW091: fn cached get in home/api/x/route.twm is impure (request.cookies) -- handler excluded from caching
+```
+
+A `fn cached` body touches `request.cookies`, `request.headers`,
+`request.body`, or calls `setSignal(...)`. Cached responses are shared
+across visitors — per-request input cannot be part of one. **Fix:** remove
+`fn cached` from this handler, or drop the impure access. `request.params`
+and `request.query` are allowed (they are part of the cache key).
+
+### TW092 — Unknown Cache Profile
+
+```
+Error TW092: Unknown cache profile "product". Add it to tw.config.ts cache.profiles or use one of: seconds, minutes, hours, days, max.
+```
+
+**Fix:** define the profile in `tw.config.ts` under `cache.profiles`, or
+use a built-in name.
+
+### TW093 — Non-Deterministic Cached Handler (warning)
+
+```
+Warning TW093: fn cached get calls a non-deterministic function -- the value freezes into the cache entry
+```
+
+The handler calls `Date.now()`, `Math.random()`, or `crypto.randomUUID()`.
+The first value becomes part of the cached entry until it refreshes.
+Legitimate for "generated at" stamps; remove the call if you need
+per-request freshness.
+
+---
+
 ## Error Recovery
 
 The TW compiler has built-in error recovery:

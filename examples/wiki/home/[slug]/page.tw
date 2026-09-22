@@ -1,0 +1,11 @@
+import "./../../style/global.tss"
+
+page { title "Article -- TW Wiki" render ssr }
+
+div.article {
+  header.head {
+    h1 "Article"
+    p "You are on a dynamic route: the slug segment selected this page. In a real wiki the content would be a lookup; here it renders for any slug."
+  }
+  nav.back { a "Back to the index" { href "/" } }
+}

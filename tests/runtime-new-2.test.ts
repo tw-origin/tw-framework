@@ -114,8 +114,11 @@ describe("Form Validation", () => {
 
   test("email validator", () => {
     const { validators } = require("../packages/runtime/tw/form-validation");
-    expect(validators.email()("not-an-email")).not.toBe(true);
-    expect(validators.email()("test@example.com")).toBe(true);
+    // validators.email is a message factory (form-validation.ts): the bare
+    // ValidatorFn form was removed when `validators.email()(v)` threw.
+    const email = validators.email();
+    expect(email("not-an-email")).toBeTruthy();
+    expect(email("test@example.com")).toBe(true);
   });
 
   test("minLength validator", () => {

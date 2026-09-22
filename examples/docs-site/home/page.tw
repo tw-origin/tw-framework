@@ -1,0 +1,14 @@
+import "./../style/global.tss"
+
+page { title "Docs -- TW Guide" render static }
+
+div.docs {
+    a "Routing" { href "/guide/routing" }
+    a "API pages" { href "/api" }
+  }
+  main.content {
+    h1 "Documentation"
+    p "A static docs site: every page compiled at build time, served as files. The sidebar links four topics across two sections."
+    p "Use this as the base for project documentation that ships with the app."
+  }
+}

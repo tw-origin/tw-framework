@@ -1,0 +1,18 @@
+page { title "Error Codes Reference" render static }
+
+div.topic {
+  h1 "The error codes"
+  p "93 diagnostics, TW001 to TW093. The machine-readable registry is errors.json; this is the human table."
+  table.codes {
+    thead { tr { th "Range" th "Meaning" } }
+    tbody {
+      tr { td "TW001-019" td "Syntax: tokens, braces, malformed directives" }
+      tr { td "TW020-049" td "Structure: nesting, attributes, tables" }
+      tr { td "TW050-069" td "Semantics: state, events, interpolation" }
+      tr { td "TW070-089" td "Server: routing, middleware, handlers" }
+      tr { td "TW090-093" td "Cache gates: windows, purity, profiles, frozen values" }
+    }
+  }
+  h2 "Reading a diagnostic"
+  p "The message is written to teach: it names the problem and points at the fix. docs/error-reference.md carries the long form for every code."
+}

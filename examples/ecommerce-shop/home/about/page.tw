@@ -1,0 +1,21 @@
+page { title "Our Story" render static }
+
+div.about {
+  section.hero {
+    p.eyebrow "About"
+    h1 "Three gardens, one rule"
+    p.lede "We buy directly from three gardens in Assam and Darjeeling, in lots small enough to finish in a month. Nothing sits in a warehouse."
+  }
+  section.story {
+    h2 "How it started"
+    p "It started with a single estate visit and one uncomfortable question: why does tea this good get blended into anonymity before it reaches a cup? We buy small, we name the garden, and we ship the week it is plucked."
+    h2 "What we promise"
+    ul { li "The garden is on every packet" li "Whole spices, never flavouring oils" li "Compostable pouches" li "If it is past its window, we say so" }
+    h2 "Where it goes next"
+    p "More gardens, same rule. The catalog grows; the promise does not change."
+  }
+  section.contact {
+    h2 "Talk to us"
+    p "hello@chaishop.example -- or the contact form in the forms-validation example, which is the same idea with more validation."
+  }
+}

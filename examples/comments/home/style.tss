@@ -1,0 +1,10 @@
+.head { mb 24px }
+.head h1 { fs 30px; mb 8px }
+.head p { c #445; maxw 580px }
+.post { border-left 3px solid #111; pl 16px; mb 24px }
+.post h2 { fs 18px; mb 6px }
+.post p { c #445; fs 14px; mb 10px }
+.comments { pl 0; ml 0; list none }
+.comments li { pb 4px; fs 13px; c #556 }
+.how h2 { fs 16px; mb 6px }
+.how p { fs 14px; c #445 }

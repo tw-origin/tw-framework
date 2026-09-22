@@ -1,0 +1,43 @@
+import "./../style/global.tss"
+
+page { title "Quiz -- TW Island" render island }
+
+state { step = 1, score = 0, chosen = "none", done = "no" }
+
+div.quiz {
+  header.head {
+    h1 "The Cache Quiz"
+    p "Three questions about the TW cache layer. Everything below is client state."
+  }
+  section.card {
+    p.step "Question {step} of 3 -- score {score}"
+    h2.q "What does the render cache do between revalidate and expire?"
+    div.opts {
+      button on:click "score = score + 1, step = 2" { "Serves STALE and refreshes in the background" }
+      button on:click "step = 2" { "Deletes the entry" }
+      button on:click "step = 2" { "Returns 404" }
+    }
+  }
+  section.card {
+    h2.q "Which of these is IMPURE in a fn cached handler?"
+    div.opts {
+      button on:click "step = 3" { "request.query" }
+      button on:click "step = 3" { "request.params" }
+      button on:click "score = score + 1, step = 3" { "request.cookies" }
+    }
+  }
+  section.card {
+    h2.q "What does revalidateTag do to entries in the tag family?"
+    div.opts {
+      button on:click "step = 4, done = 'yes'" { "Rate limits them" }
+      button on:click "score = score + 1, step = 4, done = 'yes'" { "Drops them" }
+      button on:click "step = 4, done = 'yes'" { "Freezes them" }
+    }
+  }
+  section.results {
+    h2 "Done: {done}"
+    p.final "Your score: {score} of 3"
+    button on:click "step = 1, score = 0, done = 'no'" { "Play again" }
+  }
+  footer.foot { p "Part of the TW example matrix." }
+}

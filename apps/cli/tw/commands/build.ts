@@ -16,6 +16,7 @@
  */
 
 import { join, resolve, dirname } from "node:path";
+import { parseCacheBody as parseCacheBodyShared, resolveCache as resolveCacheShared } from "@tw/shared";
 import { existsSync, mkdirSync, writeFileSync, readFileSync, readdirSync, statSync, copyFileSync, unlinkSync, rmdirSync } from "node:fs";
 
 // --- Compiler loader (same as dev.ts) --------------------------------------
@@ -284,6 +285,9 @@ export async function buildCommand(): Promise<void> {
   end("scan");
 
   // Image optimization config (breakpoints/quality for the Image component)
+  // cacheLife profiles (docs/cache-tags.md) -- assigned when tw.config.ts loads
+  let cacheProfiles: Record<string, any> = {};
+
   try {
     const cfgPath = join(rootDir, "tw.config.ts");
     if (existsSync(cfgPath)) {
@@ -291,13 +295,16 @@ export async function buildCommand(): Promise<void> {
       const cfgMod: any = await twImportTs(cfgPath);
       const cfg = cfgMod.default ?? cfgMod;
       (_compilerMod as any).setBuiltinImageConfig?.((cfg as any)?.images);
+      // cacheLife profiles (docs/cache-tags.md): user profiles resolve at
+      // BUILD time into absolute seconds in routes.json.
+      cacheProfiles = (cfg as any)?.cache?.profiles ?? {};
     }
   } catch { /* defaults */ }
 
   let pageCount = 0;
   let apiCount = 0;
   let errorCount = 0;
-  const isrRoutes = new Map<string, number>();
+  const isrRoutes = new Map<string, number | Record<string, any>>();
 
   // -- 1. Compile all page.tw files to HTML --------------------------------
   const pageFiles: string[] = [];
@@ -364,15 +371,40 @@ export async function buildCommand(): Promise<void> {
     // ISR manifest: record `revalidate N` windows (docs/isr.md) so serve can
     // route these through the render pipeline instead of frozen static HTML.
     {
-      const revM = /page\s*\{[^}]*revalidate\s+(\d+)/.exec(readFileSync(pageFile, "utf-8"));
-      if (revM) {
+      // Cache manifest (docs/cache-tags.md): a `cache { }` directive
+      // resolves against tw.config.ts profiles into absolute seconds;
+      // the legacy `revalidate N` form stays a bare number (v1.0.5 shape).
+      const pageSrc = readFileSync(pageFile, "utf-8");
+      const { extractCacheDirective, resolveCache } = await import("@tw/shared");
+      const cacheMeta = extractCacheDirective(pageSrc);
+      let resolved: any = null;
+      if (cacheMeta) {
+        try {
+          resolved = resolveCache(cacheMeta, cacheProfiles);
+        } catch (e: any) {
+          console.error("  \x1b[31m\u2717\x1b[0m " + e.message + " (" + pageFile + ")");
+          errorCount++;
+        }
+      }
+      const revM = resolved ? null : /page\s*\{[^}]*revalidate\s+(\d+)/.exec(pageSrc);
+      if (resolved || revM) {
         for (const ps of paramSets) {
           const rp = routePath.split("/").map(seg => {
             const m = /^\[([^\]]+)\]$/.exec(seg);
             return m && ps[m[1]] !== undefined ? String(ps[m[1]]) : seg;
           }).join("/");
           const isrPath = ("/" + rp).replace(/\/+$/, "").replace(/^\/+/, "/");
-          isrRoutes.set(isrPath === "" ? "/" : isrPath, Number(revM[1]));
+          const entry = resolved
+            ? {
+              revalidate: resolved.revalidate,
+              stale: resolved.stale,
+              // JSON has no Infinity -- the legacy infinite-SWR form only
+              // arises from the bare-number path, so clamp explicit blocks.
+              expire: Number.isFinite(resolved.expire) ? resolved.expire : resolved.revalidate,
+              ...(resolved.tag ? { tag: resolved.tag } : {}),
+            }
+            : Number(revM![1]);
+          isrRoutes.set(isrPath === "" ? "/" : isrPath, entry);
         }
       }
     }
@@ -721,10 +753,75 @@ const runtimeSrc = _bundleDir
   // ISR manifest (docs/isr.md): serve reads this to route revalidate pages
   // through the render pipeline (MISS/HIT/STALE) instead of static files.
   if (isrRoutes.size > 0) {
-    const manifest: Record<string, number> = {};
+    // routes.json (docs/cache-tags.md): value is a bare number (legacy
+    // `revalidate N`) or an object with revalidate/stale/expire/tag.
+    const manifest: Record<string, number | Record<string, any>> = {};
     for (const [k, v] of isrRoutes) manifest[k] = v;
     writeFileSync(join(outDir, "routes.json"), JSON.stringify(manifest, null, 2));
-    console.log("  \x1b[36m~\x1b[0m ISR: " + isrRoutes.size + " route(s) with revalidate windows -> .tw/routes.json");
+    console.log("  \x1b[36m~\x1b[0m ISR: " + isrRoutes.size + " route(s) with cache windows -> .tw/routes.json");
+  }
+
+  // Build-time cached-handler checks (docs/cache-tags.md): TW091 purity
+  // must fail the build; TW090/TW092/TW093 surface here too. Serve logs
+  // the same diagnostics, but a broken cache config should stop CI.
+  {
+    const { readdirSync: rds, existsSync: ex, readFileSync: rd } = await import("node:fs");
+    const twmFiles: string[] = [];
+    const walkTwm = (dir: string) => {
+      for (const ent of rds(dir, { withFileTypes: true })) {
+        if (ent.name.startsWith(".") || ent.name === "node_modules") continue;
+        const fp = join(dir, ent.name);
+        if (ent.isDirectory()) walkTwm(fp);
+        else if (ent.name === "route.twm" || ent.name === "middleware.twm") twmFiles.push(fp);
+      }
+    };
+    const homeDirB = join(rootDir, "home");
+    if (ex(homeDirB)) walkTwm(homeDirB);
+    for (const f of twmFiles) {
+      const src = rd(f, "utf8");
+      if (!/\bfn\s+cached\b/.test(src)) continue;
+      const cleaned = src.replace(/\/\*[\s\S]*?\*\//g, "").replace(/\/\/.*/gm, "");
+      const fnCached = /\bfn\s+cached\s+([A-Za-z0-9_]+)\s*\(([^)]*)\)\s*\{/g;
+      for (const cm of cleaned.matchAll(fnCached)) {
+        const name = cm[1];
+        const after = cleaned.slice((cm.index ?? 0) + cm[0].length);
+        // depth-scan the balanced handler body (after starts INSIDE the
+        // fn body, past its opening brace -- depth starts at 1)
+        let depth = 1, end = after.length, inStr: string | null = null;
+        for (let i = 0; i < after.length; i++) {
+          const ch = after[i];
+          if (inStr) { if (ch === "\\") i++; else if (ch === inStr) inStr = null; continue; }
+          if (ch === '"' || ch === "'" || ch === "`") { inStr = ch; continue; }
+          if (ch === "{") depth++;
+          else if (ch === "}") { depth--; if (depth === 0) { end = i; break; } }
+        }
+        const body = after.slice(0, end);
+        const cacheBlock = /^\s*cache\s*\{([^}]*)\}/.exec(after);
+        const meta = cacheBlock ? parseCacheBodyShared(cacheBlock[1]) : {};
+        if (meta.revalidate == null && !meta.life) {
+          console.error("  \x1b[31m\u2717 TW090\x1b[0m fn cached " + name + " in " + f + " needs cache { revalidate N } or cache { life \"profile\" }");
+          errorCount++;
+          continue;
+        }
+        const impure = /request\s*\.\s*(cookies|headers|body)/.test(body) || /\bsetSignal\s*\(/.test(body);
+        if (impure) {
+          console.error("  \x1b[31m\u2717 TW091\x1b[0m fn cached " + name + " in " + f + " is impure (request.cookies/headers/body or setSignal) -- remove fn cached or the impure access");
+          errorCount++;
+          continue;
+        }
+        if (/\b(?:Date\s*\.\s*now\s*\(|Math\s*\.\s*random\s*\(|crypto\s*\.\s*randomUUID\s*\()/.test(body)) {
+          console.warn("  \x1b[33m~ TW093\x1b[0m fn cached " + name + " in " + f + " calls a non-deterministic function -- the value freezes into the cache entry");
+        }
+        if (meta.life) {
+          try {
+            resolveCacheShared(meta, cacheProfiles);
+          } catch (e: any) {
+            console.error("  \x1b[31m\u2717\x1b[0m " + e.message + " (" + f + ":" + name + ")");
+            errorCount++;
+          }
+        }
+      }
+    }
   }
 
   if (errorCount > 0) {

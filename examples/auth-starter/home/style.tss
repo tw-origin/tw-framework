@@ -1,0 +1,14 @@
+.head { mb 24px }
+.loginbox { d flex; fd column; gap 10px; maxw 360px; bg #f6f7f9; br 14px; p 20px; mb 28px }
+.loginbox label { fs 13px; fw 600; c #334 }
+.loginbox input { p 10px; br 10px; border 1px solid #ccd; bg #fff }
+.loginbox button { p 10px; br 10px; bg #111; c #fff; fw 700 }
+.note { fs 12px; c #667 }
+.explain { mb 28px; maxw 560px }
+.explain h2 { fs 18px; mb 10px }
+.explain p { fs 14px; c #445; mb 8px }
+.guards { mt 8px }
+.guards li { pb 6px; fs 13px }
+.checklist { mb 28px }
+.hardening li { pb 6px; fs 14px; c #445 }
+.foot { mt 28px; pt 14px; border-top 1px solid #eef; fs 12px; c #889 }

@@ -1,0 +1,41 @@
+import "./../style/global.tss"
+
+page { title "Kanban -- TW Island" render island }
+
+state { todo = 3, doing = 1, done = 2, focus = "none" }
+
+div.board {
+  header.head {
+    h1 "Board"
+    p "Everything is one island: counters move with the cards, client-side only."
+  }
+  div.columns {
+    div.col.todo {
+      header.colhead {
+        h2 "To do"
+        span.count "{todo}"
+      }
+      div.card { p "Design the profiles API" button on:click "todo = todo - 1, doing = doing + 1" { "Start" } }
+      div.card { p "Write the eval cases" button on:click "todo = todo - 1, doing = doing + 1" { "Start" } }
+      div.card { p "Docs for tags" button on:click "todo = todo - 1, doing = doing + 1" { "Start" } }
+      button on:click "todo = todo + 1" { "+ Add card" }
+    }
+    div.col.doing {
+      header.colhead {
+        h2 "Doing"
+        span.count "{doing}"
+      }
+      div.card { p "Bench the render pipeline" button on:click "doing = doing - 1, done = done + 1" { "Finish" } }
+      p.hold "focus: {focus}"
+    }
+    div.col.done {
+      header.colhead {
+        h2 "Done"
+        span.count "{done}"
+      }
+      div.card { p "Cache design doc" }
+      div.card { p "TW090-TW093 gates" }
+      p.total "Total cards: {todo + doing + done}"
+    }
+  }
+}

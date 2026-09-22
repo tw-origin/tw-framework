@@ -1,0 +1,8 @@
+import { RECIPES } from "recipes"
+
+fn cached get(request) {
+  cache { revalidate 60, expire 600, tag "recipes" }
+  const q = String(request.query?.q ?? "").toLowerCase()
+  const items = q ? RECIPES.filter((r) => (r.name + " " + r.category).toLowerCase().includes(q)) : RECIPES
+  return { status: 200, json: { ok: true, count: items.length, recipes: items.map((r) => ({ slug: r.slug, name: r.name, category: r.category, time: r.time })) } }
+}

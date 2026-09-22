@@ -1,0 +1,10 @@
+.head { mb 20px }
+.head h1 { fs 28px; mb 8px }
+.head p { c #445 }
+.display { bg #111; c #fff; br 14px; p 20px; mb 16px; ta right }
+.expr { d block; c #889; fs 14px; mb 6px }
+.out { fs 36px; fw 800 }
+.pad { d flex; fd column; gap 8px }
+.row { d grid; grid-template-columns repeat(4, 1fr); gap 8px }
+.row button { p 18px; br 10px; bg #eef1f5; fs 18px; fw 700 }
+.foot { mt 24px; fs 12px; c #889 }

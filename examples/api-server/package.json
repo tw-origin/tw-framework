@@ -1,0 +1,16 @@
+{
+  "name": "api-server",
+  "version": "0.1.0",
+  "private": true,
+  "type": "module",
+  "scripts": {
+    "dev": "tw dev",
+    "build": "tw build",
+    "start": "tw serve",
+    "check": "tw check",
+    "ship": "tw ship"
+  },
+  "dependencies": {
+    "tw-framework": "^1.0.6"
+  }
+}

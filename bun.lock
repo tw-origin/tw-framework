@@ -15,7 +15,7 @@
     },
     "apps/cli": {
       "name": "tw-framework",
-      "version": "1.0.0",
+      "version": "1.0.6",
       "bin": {
         "tw": "./dist/tw.mjs",
       },
@@ -26,11 +26,11 @@
         "@tw/runtime": "workspace:*",
       },
     },
-    "apps/create-tw-app": {
-      "name": "create-tw-app",
-      "version": "1.0.0",
+    "apps/create-tw-framework": {
+      "name": "create-tw-framework",
+      "version": "1.0.6",
       "bin": {
-        "create-tw-app": "./dist/create.mjs",
+        "create-tw-framework": "./dist/create.mjs",
       },
       "dependencies": {
         "tw-framework": "^1.0.0",
@@ -182,7 +182,7 @@
 
     "bun-types": ["bun-types@1.4.2", "", { "dependencies": { "@types/node": "*" } }, "sha512-bxV1FgK7yBIzjRe5zBozIM4Bem11ZJcCXSrjWRG3YWLt8yFDePu4cLjpebO8OvPeIE9trbyPF4fuj3Cia4Fj3w=="],
 
-    "create-tw-app": ["create-tw-app@workspace:apps/create-tw-app"],
+    "create-tw-framework": ["create-tw-framework@workspace:apps/create-tw-framework"],
 
     "entities": ["entities@4.5.0", "", {}, "sha512-V0hjH4dGPh9Ao5p0MoRY6BVqtwCjhz6vI5LT8AJ55H+4g9/4vbHx1I54fS0XuclLhDHArPQCiMjDxjaL8fPxhw=="],
 

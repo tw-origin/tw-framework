@@ -1,0 +1,10 @@
+#!/usr/bin/env sh
+# Pre-commit: typecheck + full test suite must pass (docs/contributing).
+bun run lint || {
+  echo "!! typecheck failed -- commit blocked"
+  exit 1
+}
+bun test --timeout 300000 >/dev/null 2>&1 || {
+  echo "!! tests failed -- commit blocked"
+  exit 1
+}

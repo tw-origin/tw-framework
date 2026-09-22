@@ -1,0 +1,28 @@
+page { title "Shop All" render ssr cache { revalidate 30, tag "products" } }
+
+div.shop {
+  header.head {
+    h1 "All teas"
+    p "Twelve teas, three sections. Filter with ?c=chai, ?c=green, ?c=blends -- the cached listing API answers them all."
+  }
+  nav.cats {
+    a "All" { href "/shop" }
+    a "Chai" { href "/shop?c=chai" }
+    a "Green" { href "/shop?c=green" }
+    a "Blends" { href "/shop?c=blends" }
+  }
+  section.grid {
+    div.card { span.badge "bestseller" h3 "Masala Chai" p "cardamom, ginger, clove" span.price "₹249" a "Details" { href "/product/masala-chai" } }
+    div.card { h3 "Assam Gold" p "malty, bright" span.price "₹429" a "Details" { href "/product/assam-gold" } }
+    div.card { h3 "Cutting Strong" p "dust grade, bold" span.price "₹199" a "Details" { href "/product/cutting-strong" } }
+    div.card { span.badge "new" h3 "Monsoon First Flush" p "wet earth, delicate" span.price "₹479" a "Details" { href "/product/monsoon-flush" } }
+    div.card { h3 "Green Elaichi" p "floral, clean" span.price "₹349" a "Details" { href "/product/green-elaichi" } }
+    div.card { h3 "Tulsi Clarity" p "herbal, citrus" span.price "₹299" a "Details" { href "/product/tulsi-clarity" } }
+    div.card { h3 "Oolong Cloud" p "orchid, cream" span.price "₹599" a "Details" { href "/product/oolok-cloud" } }
+    div.card { h3 "Iced Summer" p "mint, cold-brew" span.price "₹279" a "Details" { href "/product/iced-summer" } }
+    div.card { span.badge "limited" h3 "Kashmiri Noon" p "saffron, almond" span.price "₹519" a "Details" { href "/product/kashmiri-noon" } }
+    div.card { h3 "Earl Grey India" p "bergamot, citrus" span.price "₹389" a "Details" { href "/product/earl-grey-india" } }
+    div.card { h3 "Winter Masala" p "cinnamon, pepper" span.price "₹329" a "Details" { href "/product/masala-winter" } }
+    div.card { h3 "White Moonlight" p "honey, hay" span.price "₹749" a "Details" { href "/product/white-moonlight" } }
+  }
+}

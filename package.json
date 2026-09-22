@@ -19,7 +19,12 @@
     "lint": "bash scripts/typecheck.sh",
     "format": "prettier --write .",
     "format:check": "prettier --check .",
-    "publish:all": "bun run scripts/publish-all.ts"
+    "publish:all": "bun run scripts/publish-all.ts",
+    "verify": "bash scripts/verify-all.sh",
+    "evals": "bun evals/run.ts",
+    "bench": "bun bench/run.ts",
+    "bench:check": "bun bench/run.ts --check",
+    "bench:record": "bun bench/run.ts --record"
   },
   "devDependencies": {
     "@happy-dom/global-registrator": "^15.0.0",

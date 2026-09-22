@@ -1,0 +1,12 @@
+.head { mb 24px }
+.head h1 { fs 30px; mb 8px }
+.head p { c #445 }
+.display { bg #f6f7f9; br 14px; p 24px; mb 20px; ta center }
+.big { fs 56px; fw 800 }
+.unit { fs 18px; c #667; ml 6px }
+.state { c #16a34a; fw 600 }
+.controls { d flex; gap 10px; mb 24px; jc center }
+.controls button { p 10px 14px; br 10px; bg #111; c #fff; fw 600 }
+.notes h2 { fs 16px; mb 8px }
+.notes ul { pl 18px }
+.notes li { pb 6px; fs 14px }

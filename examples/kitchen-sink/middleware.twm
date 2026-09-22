@@ -1,0 +1,10 @@
+rule "bots" {
+    match "/**"
+    user_agent {
+        block ["curl/", "wget/", "scrapy"]
+    }
+    response {
+        status 403
+        html "<h1>403</h1>"
+    }
+}

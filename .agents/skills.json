@@ -1,0 +1,6 @@
+{
+  "version": 1,
+  "source": "../skills",
+  "skills": ["add-example", "release", "add-diagnostic", "write-docs", "bug-hunt"],
+  "note": "Canonical skill bodies live in /skills; this index is for tooling that scans .agents."
+}

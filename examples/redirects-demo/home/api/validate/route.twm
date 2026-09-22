@@ -1,0 +1,7 @@
+fn get(request) {
+  const n = Number(request.query?.n ?? "0")
+  if (!Number.isInteger(n)) {
+    return { status: 422, json: { ok: false, field: "n", error: "n must be an integer" } }
+  }
+  return { status: 200, json: { ok: true, n } }
+}

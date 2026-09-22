@@ -1,0 +1,14 @@
+import "./../../style/global.tss"
+
+page { title "Guide -- Docs" render static }
+
+div.docs {
+    a "Routing" { href "/guide/routing" }
+    a "API pages" { href "/api" }
+  }
+  main.content {
+    h1 "Guide"
+    p "The guide section holds prose topics. This page is the section landing."
+    ul { li "Getting oriented" li "Reading the syntax" li "Routing model" }
+  }
+}

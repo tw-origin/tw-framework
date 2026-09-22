@@ -1,0 +1,11 @@
+.head { mb 20px }
+.head h1 { fs 28px; mb 8px }
+.head p { c #445 }
+.card { bg #f6f7f9; br 14px; p 20px; mb 14px }
+.step { fs 12px; c #889; mb 6px }
+.q { fs 17px; mb 12px }
+.opts { d flex; fd column; gap 8px }
+.opts button { ta left; p 12px; br 10px; bg #fff; border 1px solid #dde; fw 500 }
+.results { bg #111; c #fff; br 14px; p 20px; mb 14px }
+.results button { mt 10px; p 10px 14px; br 10px; bg #fff; c #111; fw 700 }
+.foot { fs 12px; c #889 }

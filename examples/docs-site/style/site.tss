@@ -1,0 +1,20 @@
+.sitenav { bg #1e3a8a; c #fff; p 14px 0 }
+.sitenav .wrap { maxw 1000px; m 0 auto; d flex; ai center; gap 28px; padding 0 20px }
+.brand { td none; c #fff; fs 18px; fw 800 }
+.links { d flex; gap 18px; ml auto }
+.links a { c #dde; td none; fs 14px }
+.site { maxw 1000px; m 0 auto; d grid; grid-template-columns 210px 1fr; gap 32px; padding 28px 20px }
+.sidebar { border-right 1px solid #eef; pr 16px }
+.sidebar a { d block; pb 8px; c #445 }
+.page h1 { fs 28px; mb 12px }
+.page p { c #445; fs 15px; maxw 620px }
+.page h2 { fs 19px; mt 22px; mb 8px }
+.page ul { pl 18px }
+.page li { pb 6px; fs 15px; c #445 }
+.codes { border-collapse collapse; mt 12px }
+.codes th { text-align left; fs 12px; c #889; pb 6px }
+.codes td { pb 6px; pr 20px; border-bottom 1px solid #eef; fs 14px }
+.sitefoot { border-top 1px solid #eef; mt 40px; p 20px 0; c #889; fs 13px; ta center }
+.nf { ta center; pt 60px }
+.nf h1 { fs 64px }
+.nf a { c #2563eb; fw 700 }

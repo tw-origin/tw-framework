@@ -1,0 +1,7 @@
+import "@./style/site.tss"
+
+div.nf {
+  h1 "404"
+  p "That page steeped too long. Try the shop."
+  a "Back to the shop" { href "/shop" }
+}

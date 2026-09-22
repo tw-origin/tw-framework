@@ -1,0 +1,7 @@
+.docs { d grid; grid-template-columns 200px 1fr; gap 32px }
+.sidebar { border-right 1px solid #eef; pr 16px }
+.sidebar a { d block; pb 8px; c #445 }
+.content h1 { mb 12px }
+.content table { border-collapse collapse; mt 12px }
+.content th { text-align left; fs 12px; c #889; pb 6px }
+.content td { pb 6px; pr 20px; border-bottom 1px solid #eef; fs 14px }

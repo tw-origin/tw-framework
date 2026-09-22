@@ -105,4 +105,10 @@ export const ERROR_CODES: Record<ErrorCode, { message: string; severity: Diagnos
   TW087: { message: "Deprecated component lifecycle hook", severity: "warning", category: "deprecation" },
   TW088: { message: "Deprecated import path", severity: "warning", category: "deprecation" },
   TW089: { message: "Deprecated render mode -- use 'interactive'", severity: "warning", category: "deprecation" },
+
+  // Cache (docs/cache-tags.md)
+  TW090: { message: "cache { } requires a revalidate window or a life profile", severity: "error", category: "syntax" },
+  TW091: { message: "fn cached handler is impure (request.cookies/headers/body or setSignal)", severity: "error", category: "semantic" },
+  TW092: { message: "Unknown cache profile", severity: "error", category: "semantic" },
+  TW093: { message: "Non-deterministic call in a cached handler (value freezes into the cache entry)", severity: "warning", category: "best-practice" },
 };

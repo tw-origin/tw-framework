@@ -1,0 +1,11 @@
+rule "guard admin" {
+    match "/admin/**"
+    auth {
+        cookie "session"
+        jwt_secret_env "JWT_SECRET"
+    }
+    response {
+        status 401
+        html "<h1>401 Unauthorized</h1>"
+    }
+}

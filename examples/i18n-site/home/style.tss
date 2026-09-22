@@ -1,0 +1,11 @@
+.eyebrow { fs 12px; uppercase; ls 2px; c #99a; mb 10px }
+.head h1 { fs 34px; mb 10px }
+.head p { maxw 560px; c #445; mb 16px }
+.head a { c #2563eb; fw 600 }
+.steps { mb 28px }
+.steps h2, .content h2 { fs 18px; mb 10px }
+.steps ol { pl 18px }
+.steps li { pb 6px; fs 14px }
+.content { mb 28px; maxw 560px }
+.content p { c #445; fs 14px }
+.foot { mt 32px; pt 14px; border-top 1px solid #eef; fs 12px; c #889 }

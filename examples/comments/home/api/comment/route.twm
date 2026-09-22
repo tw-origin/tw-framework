@@ -1,0 +1,16 @@
+let comments = [
+  { name: "mlkraj", text: "the stale window is basically HTTP 103 done right" },
+  { name: "anon", text: "wait, so expire is a hard limit?" },
+]
+
+fn post(request) {
+  const name = String(request.body?.name ?? "anon")
+  const text = String(request.body?.text ?? "")
+  if (!text) return { status: 422, json: { ok: false, field: "text", error: "text required" } }
+  comments.push({ name, text })
+  return { status: 200, json: { ok: true, name, text, total: comments.length }, revalidateTag: "posts" }
+}
+
+fn get(request) {
+  return { status: 200, json: { comments } }
+}

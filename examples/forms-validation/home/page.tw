@@ -1,0 +1,45 @@
+import "./../style/global.tss"
+
+page { title "Contact -- TW Forms and Validation" render ssr }
+
+state { sent = false }
+
+div.form {
+  header.head {
+    h1 "Contact"
+    p "A form with real server-side validation. The API returns 422 with a field name for every rejected input -- the page teaches where errors belong."
+  }
+
+  form.contactbox {
+    label "Name" { }
+    input type "text" placeholder "Your full name" { }
+    label "Email" { }
+    input type "email" placeholder "you@example.com" { }
+    label "Message" { }
+    input type "text" placeholder "What can we help with?" { }
+    button on:click "sent = true" { "Send" }
+    p.state "{sent ? \"sent (client state)\" : \"not sent yet\"}"
+  }
+
+  section.rules {
+    h2 "The validation rules (server, not client)"
+    table {
+      thead { tr { th "Field" th "Rule" th "On failure" } }
+      tbody {
+        tr { td "name" td "non-empty after trim" td "422, field: name" }
+        tr { td "email" td "must contain @" td "422, field: email" }
+        tr { td "message" td "optional" td "-" }
+      }
+    }
+    code 'curl -X POST -d "{\'name\':\'\',\'email\':\'x\'}" http://127.0.0.1:8123/api/contact'
+  }
+
+  section.philosophy {
+    h2 "Why validation lives on the server"
+    p "Client-side checks are UX sugar; the server is the contract. This page ships no validation JavaScript at all -- the API is the single source of truth, and the same rules would apply to any caller: forms, scripts, or other services."
+  }
+
+  footer.foot {
+    p "Part of the TW example matrix: examples/forms-validation."
+  }
+}

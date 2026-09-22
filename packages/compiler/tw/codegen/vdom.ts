@@ -99,8 +99,10 @@ export function generateWithLayoutChain(
   // generateHTML call (the outermost layout emits the document).
   const pageCtx: any = createContext("ssr");
   seedCtx(pageCtx);
-  // Seed the canonical layout 'page.title' -- previously a TDZ use of ctx
-  // (the alias declared much further down) swallowed by try/catch always.
+  // Seed the canonical layout's `{page.title}` (head { title "{page.title}" })
+  // with the page's title directive. Previously this referenced `ctx` (the
+  // alias declared much further down) BEFORE its declaration -- a TDZ
+  // ReferenceError swallowed by the try/catch on every single render.
   try { pageCtx.stateVars["page"] = JSON.stringify({ title: pageTitle }); } catch { /* ignore */ }
   // Builtin component imports (import Image from "@tw/optImage") — page first,
   // then layouts as fallback.

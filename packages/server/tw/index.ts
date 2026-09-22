@@ -103,8 +103,10 @@ export class TWServer {
   private router: RouteRegistry;
   private pipeline: MiddlewarePipeline;
   private staticHandler: StaticHandler | null = null;
-  /** ISR routes (from .tw/routes.json): pathname -> revalidate seconds. */
-  private isrRoutes: Map<string, number> = new Map();
+  /** ISR routes (from .tw/routes.json): pathname -> revalidate seconds
+   * (bare number, legacy) or { revalidate, stale, expire, tag } object
+   * (docs/cache-tags.md). Presence decides pipeline-vs-static routing. */
+  private isrRoutes: Map<string, number | Record<string, any>> = new Map();
   private securityHeaders: { apply(res: Response): Response } | null = null;
 
   /**
@@ -231,7 +233,9 @@ export class TWServer {
         if (existsSync(manifestPath)) {
           const manifest = JSON.parse(readFileSync(manifestPath, "utf-8"));
           for (const [route, secs] of Object.entries(manifest)) {
-            (this as any).isrRoutes.set(route, Number(secs));
+            // routes.json (docs/cache-tags.md): bare number = legacy
+            // `revalidate N`; object = resolved cache windows + tag.
+            (this as any).isrRoutes.set(route, secs);
           }
           if (Object.keys(manifest).length > 0) {
             console.log(`  ISR: ${Object.keys(manifest).length} revalidate route(s)`);

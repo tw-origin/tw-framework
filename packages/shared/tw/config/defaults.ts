@@ -164,6 +164,7 @@ export function createDefaultConfig(rootDir: string = process.cwd()): TwConfig {
 
     cache: {
       type: "memory",
+      profiles: {},
       ttl: 3600,
       maxSize: 100,
       strategy: "LRU",

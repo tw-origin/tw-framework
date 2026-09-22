@@ -1,0 +1,12 @@
+.head { mb 20px }
+.head h1 { fs 28px; mb 8px }
+.head p { c #445 }
+.search input { w 100%; p 12px; br 10px; border 1px solid #ccd; mb 20px; fs 15px }
+.results { mb 24px }
+.results h2, .canonical h2 { fs 18px; mb 10px }
+.hits li { pb 6px; fs 14px }
+.count { c #889; fs 13px; mt 6px }
+.canonical p { c #445; fs 14px; mb 10px }
+.route { bg #f6f7f9; br 10px; p 12px; fs 14px }
+.method { bg #111; c #fff; br 6px; p 2px 8px; fs 11px; fw 700; mr 8px }
+.path { fw 700 }

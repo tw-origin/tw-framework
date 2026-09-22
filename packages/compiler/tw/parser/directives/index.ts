@@ -127,6 +127,16 @@ function parsePageDirective(cursor: TokenCursor, token: Token): PageDirective | 
     if (!optToken) break;
     const optName = optToken.value;
     cursor.skipWhitespace();
+    // Cache directive (docs/cache-tags.md): `cache { life "product",
+    // tag "products" }` -- a nested key-value block, not a flat option.
+    // Parse it structurally so the AST carries a real cache object and the
+    // compiler can validate it (TW090/TW092).
+    if (optName === "cache" && cursor.peek() && cursor.peek()!.type === "LBRACE") {
+      cursor.advance(); // consume LBRACE
+      options.cache = parseCacheBlockOptions(cursor, token);
+      cursor.skipWhitespace();
+      continue;
+    }
     // Check if next is a value
     const nextToken = cursor.peek();
     if (nextToken && (nextToken.type === "STRING" || nextToken.type === "NUMBER" || nextToken.type === "IDENT" || nextToken.type === "KEYWORD")) {
@@ -170,6 +180,55 @@ function parsePageDirective(cursor: TokenCursor, token: Token): PageDirective | 
     line: token.pos.line,
     col: token.pos.col,
   };
+}
+
+// --- Cache block inside page { } (docs/cache-tags.md) -------------------------
+
+/**
+ * Parse the body of a `cache { ... }` block: keys life/tag (string) and
+ * revalidate/stale/expire (number, seconds), comma separators optional.
+ * Cursor sits just past the opening LBRACE; consumes through the RBRACE.
+ * Emits TW090 when neither `revalidate` nor `life` is present.
+ */
+function parseCacheBlockOptions(cursor: TokenCursor, pageToken: Token): Record<string, string | number> {
+  const out: Record<string, string | number> = {};
+  cursor.skipWhitespace();
+  while (cursor.peek() && cursor.peek()!.type !== "RBRACE" && cursor.peek()!.type !== "EOF") {
+    const keyToken = cursor.advance();
+    if (!keyToken) break;
+    const key = keyToken.value;
+    cursor.skipWhitespace();
+    // Optional `=` / `:` separator
+    cursor.match("EQUALS") || cursor.match("COLON");
+    cursor.skipWhitespace();
+    const valToken = cursor.peek();
+    if (valToken && (valToken.type === "STRING" || valToken.type === "NUMBER")) {
+      cursor.advance();
+      out[key] = valToken.type === "NUMBER" ? parseFloat(valToken.value) : valToken.value;
+    } else if (valToken && (valToken.type === "IDENT" || valToken.type === "KEYWORD")) {
+      cursor.advance();
+      out[key] = valToken.value;
+    }
+    cursor.skipWhitespace();
+    // Optional comma separator between pairs
+    cursor.match("COMMA");
+    cursor.skipWhitespace();
+  }
+  cursor.consumeIf("RBRACE");
+
+  // TW090: a cache block without a lifetime has no meaning.
+  if (out.revalidate == null && out.life == null) {
+    cursor.errors.add({
+      type: "error",
+      message: "cache { } requires a `revalidate N` window or a `life \"profile\"` (docs/cache-tags.md)",
+      line: pageToken.pos.line,
+      col: pageToken.pos.col,
+      code: "TW090",
+      severity: "error",
+      category: "syntax",
+    } as any);
+  }
+  return out;
 }
 
 // --- Head Directive ----------------------------------------------------------

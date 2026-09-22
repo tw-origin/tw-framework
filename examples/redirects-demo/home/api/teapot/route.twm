@@ -1,0 +1,3 @@
+fn get(request) {
+  return { status: 418, json: { ok: false, error: "I am a teapot" } }
+}

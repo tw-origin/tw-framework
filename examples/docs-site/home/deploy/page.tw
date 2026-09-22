@@ -1,0 +1,10 @@
+page { title "Deployment" render static }
+
+div.topic {
+  h1 "Deploying"
+  p "tw ship writes a complete deployment for 15 targets. This page documents the shape of that surface."
+  h2 "The adapter list"
+  ul { li "node, bun -- bare runtime servers" li "docker (full and static)" li "vercel, netlify, cloudflare -- edge platforms" li "aws, digitalocean, render, railway, fly -- infrastructure" li "github-pages, firebase, nginx, caddy -- static and self-hosted" }
+  h2 "What ships"
+  p "Static pages ship as files; SSR and cached pages ship with the runtime and the .tw build output. The adapters differ in config files, never in the app."
+}

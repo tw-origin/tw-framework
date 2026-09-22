@@ -26,7 +26,7 @@
 import { readFileSync, existsSync } from "node:fs";
 import { dirname } from "node:path";
 import { compileSync, registerComponentTemplate, type CompileResult } from "@tw/compiler";
-import { sha256 } from "@tw/shared";
+import { sha256, extractCacheDirective, resolveCache, readCacheProfilesSync, type ResolvedCache } from "@tw/shared";
 import { executeRouteHandler } from "./twm-loader";
 import type {
   RouteNode,
@@ -56,6 +56,20 @@ import { executeMiddleware } from "../index";
  * const result = pipeline.render("/blog/hello-world");
  * // result.html -> complete HTML document
  */
+/** Cache-profile resolution (docs/cache-tags.md): tw.config.ts
+ * cache.profiles, loaded once per rootDir. User profiles override the
+ * built-ins inside resolveCache(). */
+let __profilesCache: { rootDir: string; profiles: Record<string, any> } | null = null;
+function getCacheProfiles(rootDir: string): Record<string, any> {
+  if (__profilesCache && __profilesCache.rootDir === rootDir) return __profilesCache.profiles;
+  let profiles: Record<string, any> = {};
+  try {
+    profiles = readCacheProfilesSync(rootDir);
+  } catch { /* defaults only */ }
+  __profilesCache = { rootDir, profiles };
+  return profiles;
+}
+
 export class RenderPipeline {
   private rootDir: string;
   private homeDir: string;
@@ -66,7 +80,26 @@ export class RenderPipeline {
   private dev: boolean;
   private routeTree: RouteNode | null = null;
   private compiledCache: Map<string, CompiledFileEntry> = new Map();
-  private renderCache: Map<string, { result: RouteRenderResult; expiresAt: number }> = new Map();
+  /**
+   * Render cache (docs/cache-tags.md). Entry fields:
+   *   expiresAt -- v1.0.5 compat: fresh-until timestamp (same as freshUntil)
+   *   freshUntil -- age < freshUntil -> HIT (zero work)
+   *   expireAt -- freshUntil <= age < expireAt -> STALE + background
+   *               refresh; age >= expireAt -> dropped (blocking MISS)
+   *   cache -- resolved cache config (null for plain TTL entries); its
+   *   `tag` is the single source of truth for revalidateTag() -- the tag
+   *   "index" is derived by scanning entries (<= 100), which is the
+   *   documented lazy rebuild (design 6.3).
+   */
+  private renderCache: Map<string, {
+    result: RouteRenderResult;
+    expiresAt: number;
+    freshUntil?: number;
+    expireAt?: number;
+    cache?: ResolvedCache | null;
+    createdAt?: number;
+    pathname?: string;
+  }> = new Map();
 
   constructor(opts: RenderPipelineOptions) {
     this.rootDir = opts.rootDir;
@@ -119,18 +152,24 @@ export class RenderPipeline {
       const cacheKey = sha256(`${pathname}:${JSON.stringify(stateVars ?? {})}:${(this as any).navRequest ? "nav" : ""}`);
     if (this.enableCache) {
       const cached = this.renderCache.get(cacheKey);
-      if (cached && Date.now() < cached.expiresAt) {
+      const now = Date.now();
+      // Freshness windows (docs/cache-tags.md). Plain TTL entries (no
+      // cache directive) only set expiresAt -> HIT then miss, as in v1.0.5.
+      const freshUntil = cached ? (cached.freshUntil ?? cached.expiresAt) : 0;
+      const expireAt = cached ? (cached.expireAt ?? freshUntil) : 0;
+      if (cached && now < freshUntil) {
         return {
           ...cached.result,
           fromCache: true,
           durationMs: 0,
-          headers: { ...cached.result.headers, "x-tw-cache": "HIT" },
+          headers: this.stampCacheHeaders(cached.result.headers, cached, now, "HIT"),
         };
       }
-      // ISR stale-while-revalidate (docs/isr.md): a page whose frontmatter
-      // declares `revalidate N` serves the STALE entry immediately and
-      // re-renders in the background -- never blocking a visitor.
-      if (cached && (cached as any).revalidate && !this.pendingRefresh.has(cacheKey)) {
+      // Stale-while-revalidate: serve the stale entry immediately and
+      // re-render in the background -- never blocking a visitor. An entry
+      // past expireAt is dropped and the request falls through to a
+      // blocking MISS render.
+      if (cached && now < expireAt && (cached as any).swr && !this.pendingRefresh.has(cacheKey)) {
         this.pendingRefresh.add(cacheKey);
         void Promise.resolve().then(() => {
           try { this.render(pathname, stateVars); } catch { /* background */ }
@@ -141,9 +180,10 @@ export class RenderPipeline {
           fromCache: true,
           stale: true,
           durationMs: 0,
-          headers: { ...cached.result.headers, "x-tw-cache": "STALE" },
+          headers: this.stampCacheHeaders(cached.result.headers, cached, now, "STALE"),
         };
       }
+      if (cached && now >= expireAt) this.renderCache.delete(cacheKey);
     }
 
     const tree = this.getRouteTree();
@@ -382,23 +422,30 @@ export class RenderPipeline {
         renderMode: this.extractRenderMode(ctx.page),
       } as any;
 
-      // Cache the result. ISR: a page frontmatter `revalidate N` overrides
-      // the global cacheTTL for this entry and enables stale-while-revalidate.
-      const pageRevalidate = this.extractRevalidate(ctx.page);
+      // Cache the result. ISR/cache directive (docs/cache-tags.md): a
+      // page's resolved cache config overrides the global cacheTTL for
+      // this entry and enables stale-while-revalidate.
+      const pageCache = this.extractCacheConfig(ctx.page);
       if (this.enableCache) {
         if (this.renderCache.size >= 100) {
           const oldest = this.renderCache.keys().next().value;
           if (oldest) this.renderCache.delete(oldest);
         }
+        const freshMs = pageCache ? pageCache.revalidate * 1000 : this.cacheTTL;
+        const expireMs = pageCache ? pageCache.expire * 1000 : this.cacheTTL;
         this.renderCache.set(cacheKey, {
           result,
-          expiresAt: Date.now() + (pageRevalidate ? pageRevalidate * 1000 : this.cacheTTL),
-          revalidate: pageRevalidate,
+          expiresAt: Date.now() + freshMs,
+          freshUntil: Date.now() + freshMs,
+          expireAt: Date.now() + expireMs,
+          swr: !!pageCache,
+          cache: pageCache,
+          createdAt: Date.now(),
           pathname,
         } as any);
       }
 
-      return { ...result, headers: { ...result.headers, "x-tw-cache": "MISS" } };
+      return { ...result, headers: this.stampCacheHeaders(result.headers, this.renderCache.get(cacheKey), Date.now(), "MISS") };
     } catch (err) {
       // Try global-error.twm
       const globalError = findGlobalError(tree);
@@ -598,6 +645,52 @@ export class RenderPipeline {
     }
   }
 
+  /**
+   * Cache tags (docs/cache-tags.md): expire every render-cache entry
+   * whose `cache { tag "..." }` family matches. The next request for those
+   * routes renders fresh (MISS). Entries are the single source of truth;
+   * scanning them is the derived tag index (rebuilt by construction).
+   * Returns the number of dropped entries.
+   */
+  revalidateTag(tag: string): number {
+    let dropped = 0;
+    for (const [key, entry] of this.renderCache) {
+      const c = (entry as any).cache as ResolvedCache | null | undefined;
+      if (c && c.tag === tag) {
+        this.renderCache.delete(key);
+        dropped++;
+      }
+    }
+    return dropped;
+  }
+
+  /**
+   * Cache headers on every cacheable response (docs/cache-tags.md):
+   *   x-tw-cache: HIT | STALE | MISS (existing contract, unchanged)
+   *   x-tw-cache-age: seconds since the entry was rendered (observation)
+   *   Cache-Control: public, max-age=<stale>, stale-while-revalidate=...
+   *     only when `stale > 0` -- the client-side hint. The server
+   *     render-cache never reads `stale`.
+   */
+  private stampCacheHeaders(
+    headers: Record<string, string> | undefined,
+    entry: { cache?: ResolvedCache | null; createdAt?: number } | null | undefined,
+    now: number,
+    verdict: "HIT" | "STALE" | "MISS",
+  ): Record<string, string> {
+    const out: Record<string, string> = { ...(headers ?? {}), "x-tw-cache": verdict };
+    const c = entry?.cache;
+    if (c) {
+      const ageSec = entry?.createdAt ? Math.max(0, Math.floor((now - entry.createdAt) / 1000)) : 0;
+      out["x-tw-cache-age"] = String(ageSec);
+      if (c.stale > 0) {
+        const swr = Number.isFinite(c.expire) ? ", stale-while-revalidate=" + Math.max(0, c.expire - c.stale) : "";
+        out["Cache-Control"] = "public, max-age=" + c.stale + swr;
+      }
+    }
+    return out;
+  }
+
   private extractRevalidate(file: RouteFile): number | null {
     try {
       const source = readFileSync(file.absolutePath, "utf-8");
@@ -605,6 +698,36 @@ export class RenderPipeline {
       if (m) {
         const n = Number(m[1]);
         return Number.isFinite(n) && n > 0 ? n : null;
+      }
+      return null;
+    } catch {
+      return null;
+    }
+  }
+
+  /**
+   * Cache config (docs/cache-tags.md): resolve a page's `cache { }`
+   * directive against tw.config.ts cache.profiles, falling back to the
+   * legacy `revalidate N` ISR form. The legacy form desugars to
+   * { revalidate: N, stale: 0, expire: Infinity } -- the exact v1.0.5
+   * behavior (fresh for N seconds, then stale-while-revalidate forever).
+   */
+  private extractCacheConfig(file: RouteFile): ResolvedCache | null {
+    try {
+      const source = readFileSync(file.absolutePath, "utf-8");
+      const meta = extractCacheDirective(source);
+      if (meta) {
+        try {
+          return resolveCache(meta, getCacheProfiles(this.rootDir));
+        } catch (e) {
+          // TW092 (unknown profile): fail safe -- serve the page uncached.
+          console.error("[tw] " + (e as Error).message + " (" + file.absolutePath + ")");
+          return null;
+        }
+      }
+      const legacy = this.extractRevalidate(file);
+      if (legacy != null) {
+        return { revalidate: legacy, stale: 0, expire: Infinity };
       }
       return null;
     } catch {

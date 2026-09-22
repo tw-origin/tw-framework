@@ -85,6 +85,7 @@ fn actionUpdate(request) {
 |----------|--------|---------|
 | `revalidatePath(path)` | cached page renders for that path | `{ prefix: true }` drops every `/path/...` entry |
 | `revalidateRoute(path)` | cached route GET responses for that path | `{ prefix: true }` same prefix semantics |
+| `revalidateTag(tag)` | every entry (pages **and** `fn cached` handlers) whose `cache { tag "..." }` matches | — see docs/cache-tags.md |
 
 Both return the number of dropped entries. `revalidatePath` reaches the live render pipeline (the server registers it at startup); calling it outside a server returns 0. A typical pattern is a webhook or an admin action that revalidates exactly what it changed:
 
@@ -99,7 +100,7 @@ fn actionPublish(request) {
 ## What ISR Is Not
 
 - It is not a CDN directive — the `x-tw-cache` headers describe the framework's own render cache.
-- It does not invalidate by tag. Use the cache-manager API (docs/cache-manager.md) for tagged invalidation inside handlers.
+- Time-based only. Tagged invalidation (`cache { tag "..." }` + `revalidateTag()`) lives in the cache directive layer — docs/cache-tags.md.
 - Stale entries are served once per expiry; the background render is single-flight (a burst of visitors triggers exactly one re-render, not one per request).
 
 ## Testing
@@ -113,5 +114,6 @@ const hit = pipeline.render("/products");      // x-tw-cache: HIT
 ## Reference
 
 - docs/render-modes.md — `static`, `ssr`, `island`, `edge`
+- docs/cache-tags.md — the `cache { }` directive, cacheLife profiles, `fn cached` handlers and `revalidateTag()` (the explicit superset of this page)
 - docs/cache-manager.md — tagged caches and runtime invalidation
 - docs/build-output.md — what `tw build` pre-renders

@@ -1,0 +1,47 @@
+import "./../style/global.tss"
+
+page { title "Sign in -- TW Auth Starter" render ssr }
+
+state { user = "" }
+
+div.login {
+  header.head {
+    h1 "Sign in"
+    p "A wiring skeleton: form, POST handler, guarded route. Bring your own session store."
+  }
+
+  form.loginbox {
+    label "Username" { }
+    input type "text" placeholder "e.g. mlkraj" { }
+    label "Password" { }
+    input type "password" placeholder "not stored, not logged" { }
+    button "Log in" { }
+    p.note "POSTs to /api/login. Empty user gets a 400 with a field error; a valid user gets the ok payload."
+  }
+
+  section.explain {
+    h2 "What the middleware does"
+    p "middleware.twm declares one rule: match /admin/** with an auth block. The session cookie is checked against a JWT whose secret comes from the JWT_SECRET environment variable -- never from code."
+    p "Guards are fail-closed: a request that matches the guarded path and fails the condition gets the rule's 401 response before any page code runs."
+    ul.guards {
+      li { strong "Auth" span " -- cookie + jwt_secret_env" }
+      li { strong "User agent" span " -- block lists for bots" }
+      li { strong "Response" span " -- status + html body for rejects" }
+    }
+  }
+
+  section.checklist {
+    h2 "Before this becomes production"
+    ol.hardening {
+      li "Wire the session store (packages/security sessions API)"
+      li "Add CSRF protection on the login POST"
+      li "Add rate limiting on the auth routes"
+      li "Set JWT_SECRET in the deployment environment, never in a file"
+      li "Add a real password check -- this starter echoes the user"
+    }
+  }
+
+  footer.foot {
+    p "Demo only -- this is the correct shape, not a real identity provider."
+  }
+}

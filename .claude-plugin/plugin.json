@@ -1,0 +1,6 @@
+{
+  "name": "tw-dev",
+  "version": "1.0.6",
+  "description": "TW Framework development commands (test, bench, release, triage, diagnostics)",
+  "commands": "../.claude/commands"
+}

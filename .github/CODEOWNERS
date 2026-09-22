@@ -1,0 +1,9 @@
+# Default owner: the TW Framework maintainers
+* @mlkraj159
+
+# Compiler surface needs a maintainer review
+/packages/compiler/ @mlkraj159
+/packages/server/tw/routing/render-pipeline.ts @mlkraj159
+
+# Docs -- anyone on the team may own these
+/docs/ @mlkraj159

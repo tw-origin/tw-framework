@@ -1,0 +1,64 @@
+.sitenav { bg #111; c #fff; p 14px 0 }
+.sitenav .wrap { maxw 1080px; m 0 auto; d flex; ai center; gap 28px; padding 0 20px }
+.brand { td none; c #fff; fs 20px; fw 800 }
+.brand .thin { fw 300; c #ccc; ml 6px }
+.links { d flex; gap 18px; ml auto }
+.links a { c #ddd; td none; fs 14px }
+.cartlink { bg #16a34a; c #fff; td none; p 6px 12px; br 8px; fw 700; fs 13px }
+.site { maxw 1080px; m 0 auto; padding 28px 20px }
+.sitefoot { border-top 1px solid #eef; mt 40px; p 24px 0; c #667; fs 13px }
+.sitefoot .wrap { maxw 1080px; m 0 auto; padding 0 20px }
+.sitefoot .small { c #99a; fs 12px }
+.hero { mb 36px }
+.eyebrow { fs 12px; uppercase; ls 2px; c #99a; mb 8px }
+.hero h1 { fs 36px; mb 10px; maxw 620px }
+.lede { c #445; maxw 600px; mb 18px; fs 16px }
+.cta { d flex; gap 12px; mb 8px }
+.cta a { bg #111; c #fff; td none; p 10px 16px; br 10px; fw 700; fs 14px }
+.cta a + a { bg #fff; c #111; border 1px solid #111 }
+.grid { d grid; grid-template-columns repeat(4, 1fr); gap 16px; mb 36px }
+.card { bg #f8f9fb; br 14px; p 16px; d flex; fd column; gap 6px }
+.card h3 { fs 16px }
+.card p { c #667; fs 13px; min-h 36px }
+.price { fw 800; fs 17px }
+.badge { fs 10px; uppercase; bg #111; c #fff; br 999px; p 2px 8px; w max-content }
+.card a { mt auto; c #2563eb; fs 13px; fw 600 }
+.catrow { d grid; grid-template-columns repeat(3, 1fr); gap 16px; mb 36px }
+.cat { bg #f2f4f7; br 14px; p 22px; td none; c #223 }
+.cat h3 { fs 18px; mb 4px }
+.cat p { c #667; fs 13px }
+.cats { d flex; gap 12px; pb 14px; mb 20px; border-bottom 2px solid #111 }
+.cats a { c #111; td none; fw 700; fs 14px }
+.head { mb 18px }
+.head h1 { fs 30px; mb 6px }
+.head p { c #567 }
+.detail { d grid; grid-template-columns 1fr 1fr; gap 28px }
+.specs { border-collapse collapse; mt 10px; w 100% }
+.specs th { text-align left; fs 12px; c #889; pb 6px }
+.specs td { pb 6px; border-bottom 1px solid #eef; fs 14px }
+.actions { d flex; gap 12px; mt 16px }
+.actions button { bg #16a34a; c #fff; p 10px 16px; br 10px; fw 700 }
+.actions a { c #2563eb; fw 600 }
+.notes ol { pl 18px }
+.notes li { pb 6px; fs 14px }
+.lineitems { bg #f8f9fb; br 14px; p 20px; mb 20px }
+.line { d flex; gap 12px; pb 10px; border-bottom 1px solid #eef; fs 15px }
+.line h3 { fs 15px }
+.qty { c #667 }
+.lineprice { ml auto; fw 600 }
+.total { d flex; jc space-between; pt 12px; fw 800; fs 17px }
+.controls { d flex; gap 10px; mb 20px; ai center }
+.controls button { p 10px 14px; br 10px; bg #111; c #fff; fw 600 }
+.controls p { c #667; fs 13px }
+.checkout h2 { fs 18px; mb 6px }
+.checkout p { c #445; fs 14px }
+.story h2 { fs 18px; mt 20px; mb 8px }
+.story p, .story li { c #445; fs 15px; maxw 620px }
+.story ul { pl 18px }
+.story li { pb 4px }
+.contact h2 { fs 18px; mb 6px }
+.contact p { c #445 }
+.nf { ta center; pt 60px }
+.nf h1 { fs 64px }
+.nf p { c #567; mb 16px }
+.nf a { c #2563eb; fw 700 }

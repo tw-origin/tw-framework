@@ -1,0 +1,17 @@
+.topbar { d flex; jc space-between; ai baseline; mb 24px }
+.range button { m 4px; p 8px 12px; br 8px; bg #eef1f5; c #334; fs 13px }
+.cards { d grid; grid-template-columns repeat(4, 1fr); gap 16px; mb 24px }
+.card { bg #f6f7f9; br 12px; p 16px; d flex; fd column; gap 6px }
+.kpi { fs 28px; fw 700; c #111 }
+.label { fs 13px; c #667 }
+.delta { fs 12px; c #16a34a }
+.panel { bg #fff; br 12px; p 20px; mb 24px; box-shadow 0 1px 2px rgba(0,0,0,0.05) }
+.channels { w 100%; border-collapse collapse }
+.channels th { text-align left; fs 12px; c #889; pb 8px }
+.channels td { pb 8px; border-bottom 1px solid #eef }
+.top-pages li { pb 6px }
+.feed li { d flex; gap 10px; pb 6px; fs 14px }
+.who { fw 600 }
+.what { c #445 }
+.when { c #99a; ml auto }
+.foot { mt 32px; pt 16px; border-top 1px solid #eef; fs 12px; c #889 }

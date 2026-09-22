@@ -1,0 +1,25 @@
+import "./../style/global.tss"
+
+page { title "Statuses -- TW Handler Gallery" render static }
+
+div.statuses {
+  header.head {
+    h1 "The status gallery"
+    p "Four endpoints, four meanings. Status codes are API design, not plumbing."
+  }
+  section.list {
+    div.route { span.code 302 span.path "/api/moved" span.note "redirect: Location header to /" }
+    div.route { span.code 410 span.path "/api/retired" span.note "the old v1 API is gone, permanently" }
+    div.route { span.code 418 span.path "/api/teapot" span.note "short and stout" }
+    div.route { span.code 422 span.path "/api/validate" span.note "semantic rejection with a field name" }
+  }
+  section.philosophy {
+    h2 "The rules this gallery encodes"
+    ul {
+      li "302 for temporary redirects (verified on flat routes; see the url-shortener quirk note for dynamic routes)"
+      li "410 over 404 when the resource USED to exist -- clients stop retrying"
+      li "422 when the request parses but the meaning is wrong"
+      li "Every status carries a body that explains itself"
+    }
+  }
+}

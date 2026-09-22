@@ -1,0 +1,13 @@
+{
+  "name": "tw-framework",
+  "image": "oven/bun:1",
+  "features": {},
+  "postCreateCommand": "bun install",
+  "forwardPorts": [8000, 8321],
+  "customizations": {
+    "vscode": {
+      "extensions": ["dbaeumer.vscode-eslint", "esbenp.prettier-vscode"]
+    }
+  },
+  "remoteUser": "bun"
+}

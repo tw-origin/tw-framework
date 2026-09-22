@@ -1,0 +1,34 @@
+page { title "Chai Shop" render ssr cache { revalidate 30, tag "products" } }
+
+div.front {
+  section.hero {
+    p.eyebrow "Single estate, small lots"
+    h1 "Chai, the way the garden meant it"
+    p.lede "Twelve teas from three gardens, bought in lots small enough to finish in a month. This page is cached 30 seconds under the products tag -- publishing re-renders it instantly."
+    div.cta {
+      a "Shop all teas" { href "/shop" }
+      a "Our story" { href "/about" }
+    }
+  }
+  section.featured {
+    h2 "This month favorites"
+    div.grid {
+      div.card { span.badge "bestseller" h3 "Masala Chai" p "Assam CTC, whole spices" span.price "₹249" a "Details" { href "/product/masala-chai" } }
+      div.card { span.badge "limited" h3 "Kashmiri Noon" p "Saffron and almond" span.price "₹519" a "Details" { href "/product/kashmiri-noon" } }
+      div.card { span.badge "new" h3 "Monsoon First Flush" p "June pluck, high grown" span.price "₹479" a "Details" { href "/product/monsoon-flush" } }
+      div.card { h3 "White Moonlight" p "Honey, hay, dawn-plucked" span.price "₹749" a "Details" { href "/product/white-moonlight" } }
+    }
+  }
+  section.cats {
+    h2 "Shop by section"
+    div.catrow {
+      a.cat { href "/shop?c=chai" h3 "Chai" p "The everyday section" }
+      a.cat { href "/shop?c=green" h3 "Green" p "Floral and light" }
+      a.cat { href "/shop?c=blends" h3 "Blends" p "Saffron to bergamot" }
+    }
+  }
+  section.api {
+    h2 "Under the hood"
+    p "The storefront runs on three APIs: a cached product listing, a cart write, and a checkout action that bumps the products tag. The API surface is part of the site, not a separate backend."
+  }
+}

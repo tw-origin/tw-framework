@@ -1,0 +1,14 @@
+.eyebrow { fs 12px; uppercase; ls 2px; c #99a; mb 10px }
+.head h1 { fs 34px; mb 10px }
+.head p { c #445; maxw 620px; mb 16px }
+.tabs { d flex; gap 8px; mb 8px }
+.tabs button { p 8px 12px; br 8px; bg #eef1f5; fw 600 }
+.active { fs 12px; c #16a34a; fw 600; mb 20px }
+.demo { bg #f6f7f9; br 12px; p 18px; mb 16px }
+.demo h2 { fs 16px; mb 10px }
+.demo button { p 10px 14px; br 10px; bg #111; c #fff; fw 700 }
+.demo ul { pl 18px; mb 8px }
+.demo li { pb 6px; fs 14px }
+.demo p { fs 13px; c #556 }
+.demo a { c #2563eb }
+.foot { mt 24px; pt 14px; border-top 1px solid #eef; fs 12px; c #889 }

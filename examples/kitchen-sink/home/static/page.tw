@@ -1,0 +1,9 @@
+import "./../../style/global.tss"
+
+page { title "Static -- Kitchen Sink" render static }
+
+div.static {
+  h1 "Static"
+  p "Frozen at build time. This file in .tw/ is served as-is; the cache layer has nothing to do here, and that is the point -- static and cached pages coexist in one app with one build."
+  a "Back to the sink" { href "/" }
+}

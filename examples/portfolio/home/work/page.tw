@@ -1,0 +1,47 @@
+import "./../../style/global.tss"
+
+page { title "Work -- Mlkraj" render static }
+
+div.work {
+  header.head {
+    p.eyebrow "Selected work"
+    h1 "Things I have built"
+    p.lede "A few projects that best show how I think about systems."
+    a "Back home" { href "/" }
+  }
+
+  article.project {
+    h3 "TW Framework"
+    p.tagline "A full-stack web framework with its own languages."
+    p "Template language (.tw), styling language (.tss), server modules (.twm), a compiler with 93 diagnostics, an explicit cache layer with tag invalidation, and a CLI that ships to 15 deployment targets. 11 packages, zero runtime dependencies, 2692 tests."
+    ul.facts {
+      li "Compiler: lexer, parser, codegen, LSP integration"
+      li "Cache: HIT/STALE/MISS windows, 270x speedup warm"
+      li "Testing: 2692 unit/e2e tests, 322 evals, 6 bench gates"
+    }
+  }
+
+  article.project {
+    h3 "Chai Shop"
+    p.tagline "An e-commerce storefront for single-estate tea."
+    p "Product pages cached under one invalidation tag; publishing is a single action call. Built entirely in the framework it demonstrates -- the app is the test."
+    ul.facts {
+      li "Static product pages with cache windows"
+      li "Tag-based invalidation on publish"
+    }
+  }
+
+  article.project {
+    h3 "Analytics Dashboard"
+    p.tagline "Server-rendered metrics, client-hydrated controls."
+    p "SSR panels with a minutes-profile cache, islands for the range switcher. The page teaches the cache layer by letting you watch the age header climb."
+    ul.facts {
+      li "SSR + islands composition"
+      li "Explicit cache profiles from config"
+    }
+  }
+
+  footer.foot {
+    p "Every project above ships with its own verification story -- commands, not claims."
+  }
+}

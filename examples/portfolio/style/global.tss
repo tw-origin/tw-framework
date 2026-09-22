@@ -1,0 +1,2 @@
+body { font-family: system-ui; margin: 0; padding: 24px }
+a { color: #2563eb }

@@ -1,0 +1,35 @@
+import "./../style/global.tss"
+
+page {
+  title "Headers -- TW Response Surface"
+  render ssr
+  cache { life "minutes" }
+}
+
+div.hdrs {
+  header.head {
+    h1 "Headers"
+    p "Everything a response carries, on purpose. Curl this page and the API below with -I."
+  }
+  section.security {
+    h2 "On by default (curl -I /)"
+    table {
+      thead { tr { th "Header" th "What it does" } }
+      tbody {
+        tr { td "Strict-Transport-Security" td "Forces HTTPS on future visits" }
+        tr { td "X-Content-Type-Options" td "Blocks MIME sniffing" }
+        tr { td "Cache-Control" td "Derived from the cache stale window on cached pages" }
+        tr { td "X-TW-Cache-Age" td "Seconds since this entry was stored -- the cache heartbeat" }
+      }
+    }
+  }
+  section.custom {
+    h2 "From a handler (curl -I /api/info)"
+    p "Handlers attach their own headers in the result object: x-tw-demo-author and friends below."
+    div.route { span.method get span.path "/api/info" }
+  }
+  section.exercise {
+    h2 "Try this"
+    ol { li "curl -sI / | grep -i cache -- the derived Cache-Control" li "curl -sI /api/info | grep -i x-tw" li "Reload / twice and watch x-tw-cache-age climb" }
+  }
+}

@@ -1,0 +1,8 @@
+page { title "About" render static }
+
+div.about {
+  h1 "Why another recipe site"
+  p "Because recipe pages lie about order. This one writes the steps the way heat actually works: temper after, not during; rest before, not after."
+  h2 "The rules"
+  ul { li "Every step says WHY it is in that position" li "Times are honest, not optimistic" li "Spice levels describe the dish, not the author" }
+}

@@ -1,0 +1,22 @@
+import "./../style/global.tss"
+
+page { title "TW Wiki" render ssr }
+
+div.wiki {
+  header.head {
+    h1 "The Wiki"
+    p "Articles live at their slug. Dynamic segments mean each article is a file, not a route registration."
+  }
+  nav.index {
+    h2 "Articles"
+    ul {
+      li { a "Cache windows" { href "/cache" } }
+      li { a "Islands" { href "/islands" } }
+      li { a "Middleware" { href "/middleware" } }
+    }
+  }
+  section.search {
+    h2 "Search"
+    p "The search API filters titles by the q query parameter. Try /api/search?q=ca"
+  }
+}

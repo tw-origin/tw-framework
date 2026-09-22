@@ -1,0 +1,13 @@
+fn post(request) {
+  const b = request.body ?? {}
+  const lines = Array.isArray(b.lines) ? b.lines : []
+  const total = Number(b.total ?? 0)
+  if (lines.length === 0) {
+    return { status: 422, json: { ok: false, field: "lines", error: "cart is empty" } }
+  }
+  if (!(total > 0)) {
+    return { status: 422, json: { ok: false, field: "total", error: "total must be positive" } }
+  }
+  const orderId = "ORD-" + String(Date.now()).slice(-6)
+  return { status: 200, json: { ok: true, orderId, lines: lines.length, total }, revalidateTag: "products" }
+}

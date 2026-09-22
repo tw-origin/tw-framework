@@ -1,0 +1,14 @@
+import "./../../../style/global.tss"
+
+page { title "Routing -- Docs" render static }
+
+div.docs {
+    a "Routing" { href "/guide/routing" }
+    a "API pages" { href "/api" }
+  }
+  main.content {
+    h1 "Routing"
+    p "Directories map to URLs. The trailing page.tw segment IS the route."
+    ul { li "home/guide/page.tw serves at /guide" li "Dynamic segments use [id] directories" li "API routes live under api/ with route.twm" }
+  }
+}

@@ -1,0 +1,31 @@
+import "./../style/global.tss"
+
+page {
+  title "Changelog -- TW Releases"
+  render ssr
+  cache { revalidate 30, tag "releases" }
+}
+
+div.log {
+  header.head {
+    h1 "Changelog"
+    p "Cached under the releases tag. The publish action at /api/publish drops it, so a new release is visible on the very next request."
+  }
+  section.timeline {
+    h2 "1.0.6 -- The explicit cache layer"
+    ul { li "cache { } directive on pages and fn cached handlers" li "Profiles, tags, revalidateTag" li "2692-test suite, eval harness, bench gate" }
+    h2 "1.0.5 -- Hardening"
+    ul { li "50+ bugs fixed from the table-driven hunt" li "ARIA gaps closed" }
+    h2 "1.0.4 -- Render modes"
+    ul { li "static, ssr, island, stream" li "PPR foundations" }
+    h2 "1.0.3 -- Signal streaming"
+    ul { li "setSignal and stream mode" }
+    h2 "1.0.2 -- Middleware rules"
+    ul { li "The rule DSL with match/auth/response" }
+    h2 "1.0.1 -- Invalidation APIs"
+    ul { li "revalidatePath and revalidateRoute" }
+    h2 "1.0.0 -- The framework"
+    ul { li "Languages, compiler, pipeline, CLI" }
+  }
+  footer.foot { p "Part of the TW example matrix." }
+}

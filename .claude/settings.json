@@ -1,0 +1,20 @@
+{
+  "permissions": {
+    "allow": [
+      "Bash(bun test*)",
+      "Bash(bun run lint*)",
+      "Bash(bun bench/*)",
+      "Bash(bun evals/*)",
+      "Bash(bun apps/cli/tw/bin.ts *)",
+      "Bash(bun install)"
+    ],
+    "deny": [
+      "Bash(rm -rf *)",
+      "Read(./.env)",
+      "Read(./.env.local)"
+    ]
+  },
+  "env": {
+    "TW_CI": "1"
+  }
+}

@@ -1,0 +1,6 @@
+page { title "Dal" render ssr }
+
+div.cat {
+  header.head { h1 "Dal" p "Three dals: tadka timing, makhani patience, and the light fry." }
+  section.listing { h2 "Recipes in this section" div.grid { a.rcard { href "/dal-tadka" h3 "Dal Tadka" p "35 min -- serves 4 -- medium" } a.rcard { href "/dal-makhani" h3 "Dal Makhani" p "90 min -- serves 4 -- mild" } a.rcard { href "/dal-fry-light" h3 "Light Dal Fry" p "25 min -- serves 3 -- mild" } } }
+}

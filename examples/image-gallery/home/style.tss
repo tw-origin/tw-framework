@@ -1,0 +1,9 @@
+.head { mb 24px }
+.head h1 { fs 30px; mb 8px }
+.head p { c #445; maxw 560px }
+.grid { d grid; grid-template-columns repeat(3, 1fr); gap 16px; mb 28px }
+.grid img { w 100%; br 14px; aspect-ratio 1; object-fit cover; bg #eef1f5 }
+.notes h2 { fs 18px; mb 10px }
+.notes ul { pl 18px }
+.notes li { pb 8px; fs 14px }
+.foot { mt 28px; pt 14px; border-top 1px solid #eef; fs 12px; c #889 }

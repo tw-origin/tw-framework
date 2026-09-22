@@ -1,0 +1,43 @@
+import "./../style/global.tss"
+
+page { title "Calc -- TW Island" render island }
+
+state { acc = 0, op = "+", entry = "0", history = "0 +" }
+
+div.calc {
+  header.head {
+    h1 "Calc"
+    p "Every button is one expression on state. No handlers in another file, no framework API to learn."
+  }
+  section.display {
+    span.expr "{history}"
+    span.out "{acc}"
+  }
+  section.pad {
+    div.row {
+      button on:click "entry = '7'" { "7" }
+      button on:click "entry = '8'" { "8" }
+      button on:click "entry = '9'" { "9" }
+      button on:click "acc = acc + Number(entry), history = acc + ' +', entry = '0'" { "+" }
+    }
+    div.row {
+      button on:click "entry = '4'" { "4" }
+      button on:click "entry = '5'" { "5" }
+      button on:click "entry = '6'" { "6" }
+      button on:click "acc = acc - Number(entry), history = acc + ' -', entry = '0'" { "-" }
+    }
+    div.row {
+      button on:click "entry = '1'" { "1" }
+      button on:click "entry = '2'" { "2" }
+      button on:click "entry = '3'" { "3" }
+      button on:click "acc = acc * Number(entry), history = acc + ' x', entry = '0'" { "x" }
+    }
+    div.row {
+      button on:click "acc = 0, entry = '0', history = '0 +'" { "C" }
+      button on:click "entry = '0'" { "0" }
+      button on:click "acc = acc / (Number(entry) === 0 ? 1 : Number(entry)), history = acc + ' /', entry = '0'" { "/" }
+      button on:click "acc = acc, history = String(acc)" { "=" }
+    }
+  }
+  footer.foot { p "Part of the TW example matrix." }
+}

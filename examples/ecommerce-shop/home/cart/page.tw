@@ -1,0 +1,23 @@
+import "@./style/site.tss"
+
+page { title "Your Cart" render island }
+
+state { items = 2, total = 678 }
+
+div.cart {
+  header.head { h1 "Your cart" p "An island: the counters move client-side; the checkout API is the real write." }
+  section.lineitems {
+    div.line { h3 "Masala Chai" span.qty "x 2" span.lineprice "₹498" }
+    div.line { h3 "Kashmiri Noon" span.qty "x 1" span.lineprice "₹519" }
+    div.total { span "Total (3 items)" span.sum "₹{total + 161}" }
+  }
+  section.controls {
+    button on:click "items = items + 1, total = total + 249" { "Add one more Masala Chai" }
+    button on:click "items = items > 0 ? items - 1 : 0" { "Remove last" }
+    p "{items} line groups -- the server sees none of this until checkout."
+  }
+  section.checkout {
+    h2 "Checkout"
+    p "POST /api/checkout with the cart JSON -- the action bumps the products tag and returns the order id."
+  }
+}

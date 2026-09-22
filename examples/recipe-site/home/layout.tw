@@ -1,0 +1,25 @@
+import "@./style/global.tss"
+import "@./style/site.tss"
+
+html {
+  head {
+    meta charset "utf-8"
+    meta name "viewport" content "width=device-width, initial-scale=1"
+    title "{page.title} -- Rasoi"
+  }
+  body {
+    header.sitenav {
+      div.wrap {
+        a.brand { href "/" "Rasoi" }
+        nav.links {
+          a "Home" { href "/" }
+          a "Chai" { href "/chai" }
+          a "Dal" { href "/dal" }
+          a "About" { href "/about" }
+        }
+      }
+    }
+    main.site { slot { } }
+    footer.sitefoot { p "Rasoi -- a complete TW example: shared layout, dynamic recipe routes, a recipe API." }
+  }
+}

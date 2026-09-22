@@ -1,0 +1,27 @@
+import "./../style/global.tss"
+
+page { title "Search -- TW Query Demo" render island }
+
+state { q = "", results = 3 }
+
+div.search {
+  header.head {
+    h1 "Catalog search"
+    p "Type below; the same server query answers from the cache the second time."
+  }
+  input type "text" placeholder "chai, dal, biryani..." { }
+  section.results {
+    h2 "Results for the demo query"
+    ul.hits {
+      li { strong "Masala Chai" span " -- beverages" }
+      li { strong "Chai Patti" span " -- pantry" }
+      li { strong "Adrak Chai" span " -- beverages" }
+    }
+    p.count "{results} shown"
+  }
+  section.canonical {
+    h2 "The canonical key"
+    p "The API below is fn cached. Its key includes the query -- sorted. ?q=chai&l=en and ?l=en&q=chai are ONE entry. Order never invalidates."
+    div.route { span.method get span.path "/api/search?q=" }
+  }
+}

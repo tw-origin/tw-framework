@@ -1,0 +1,32 @@
+import "@./style/global.tss"
+import "@./style/site.tss"
+
+html {
+  head {
+    meta charset "utf-8"
+    meta name "viewport" content "width=device-width, initial-scale=1"
+    title "{page.title} -- Chai Shop"
+  }
+  body {
+    header.sitenav {
+      div.wrap {
+        a.brand { href "/" span "Chai" span.thin "Shop" }
+        nav.links {
+          a "Shop" { href "/shop" }
+          a "Chai" { href "/shop?c=chai" }
+          a "Green" { href "/shop?c=green" }
+          a "Blends" { href "/shop?c=blends" }
+          a "About" { href "/about" }
+        }
+        a.cartlink { href "/cart" span "Cart" }
+      }
+    }
+    main.site { slot { } }
+    footer.sitefoot {
+      div.wrap {
+        p "Chai Shop -- a complete TW Framework example: 12 teas, 7 pages, 3 APIs, one cache tag."
+        p.small "Single estate. Small lots. Compostable pouches."
+      }
+    }
+  }
+}

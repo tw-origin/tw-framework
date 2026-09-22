@@ -1,0 +1,13 @@
+.head { mb 24px }
+.head h1 { fs 30px; mb 8px }
+.head p { c #445; maxw 560px }
+.security h2, .custom h2, .exercise h2 { fs 18px; mb 10px }
+.security table { border-collapse collapse; mb 24px }
+.security th { text-align left; fs 12px; c #889; pb 6px }
+.security td { pb 6px; pr 20px; border-bottom 1px solid #eef; fs 14px }
+.custom p { c #445; fs 14px; mb 10px }
+.route { bg #f6f7f9; br 10px; p 12px; fs 14px; mb 24px }
+.method { bg #111; c #fff; br 6px; p 2px 8px; fs 11px; fw 700; mr 8px }
+.path { fw 700 }
+.exercise ol { pl 18px }
+.exercise li { pb 6px; fs 14px }

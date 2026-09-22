@@ -1,0 +1,86 @@
+import "./../style/global.tss"
+
+page {
+  title "Dashboard -- TW Analytics"
+  render ssr
+  cache { life "minutes", tag "dashboard" }
+}
+
+state { fresh = "cached", range = "7d" }
+
+div.dashboard {
+  header.topbar {
+    h1 "Analytics"
+    p.sub "Server-rendered. Cached under the dashboard tag, minutes profile."
+    div.range {
+      button on:click "range = '7d'" { "7 days" }
+      button on:click "range = '30d'" { "30 days" }
+      button on:click "range = '90d'" { "90 days" }
+    }
+  }
+
+  section.cards {
+    div.card {
+      span.kpi "1,204"
+      span.label "Visitors"
+      span.delta "+12% vs last week"
+    }
+    div.card {
+      span.kpi "98"
+      span.label "Signups"
+      span.delta "+4 this week"
+    }
+    div.card {
+      span.kpi "12s"
+      span.label "Avg session"
+      span.delta "-1s vs last week"
+    }
+    div.card {
+      span.kpi "3.2%"
+      span.label "Bounce"
+      span.delta "-0.4pt"
+    }
+  }
+
+  section.panel {
+    h2 "Traffic by channel"
+    table.channels {
+      thead {
+        tr { th "Channel" th "Visitors" th "Share" }
+      }
+      tbody {
+        tr { td "Organic search" td "542" td "45.0%" }
+        tr { td "Direct" td "298" td "24.8%" }
+        tr { td "Social" td "201" td "16.7%" }
+        tr { td "Referral" td "163" td "13.5%" }
+      }
+    }
+  }
+
+  section.panel {
+    h2 "Top pages"
+    ol.top-pages {
+      li { strong "/" span " -- 488 views" }
+      li { strong "/pricing" span " -- 214 views" }
+      li { strong "/docs/getting-started" span " -- 187 views" }
+      li { strong "/blog/why-tw" span " -- 131 views" }
+      li { strong "/about" span " -- 92 views" }
+    }
+  }
+
+  section.panel {
+    h2 "Recent events"
+    ul.feed {
+      li { span.who "user_291" span.what "signed up" span.when "2 min ago" }
+      li { span.who "user_288" span.what "viewed /pricing" span.when "9 min ago" }
+      li { span.who "user_275" span.what "started a session" span.when "23 min ago" }
+      li { span.who "user_271" span.what "clicked Upgrade" span.when "41 min ago" }
+      li { span.who "user_264" span.what "viewed /docs" span.when "1 h ago" }
+    }
+  }
+
+  footer.foot {
+    p "Render mode: SSR. Cache: explicit, minutes profile. Range: {range}. Served from: {fresh}."
+    p "Watch the window: curl -sI localhost:8123/ | grep -i cache -- x-tw-cache-age climbs, then the page goes STALE then MISS."
+  }
+}

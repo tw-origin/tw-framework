@@ -1,0 +1,47 @@
+import "./../style/global.tss"
+
+page { title "Pricing -- TW Static Page" render static }
+
+div.pricing {
+  header.head {
+    p.eyebrow "Static -- no JS shipped"
+    h1 "Simple pricing"
+    p "One page, frozen at build. This is what static mode is for: identical for every visitor, zero request-time work."
+  }
+  section.tiers {
+    div.tier {
+      h3 "Starter"
+      span.price "₹0" span.per "/month"
+      ul.feat { li "1 site" li "Community support" li "Static + SSR modes" }
+      a "Start free" { href "/start" }
+    }
+    div.tier.hot {
+      h3 "Chai"
+      span.price "₹299" span.per "/month"
+      ul.feat { li "10 sites" li "Email support" li "All render modes + islands" li "Cache tags and profiles" }
+      a "Subscribe" { href "/start" }
+    }
+    div.tier {
+      h3 "Darjeeling"
+      span.price "₹999" span.per "/month"
+      ul.feat { li "Unlimited sites" li "Priority support" li "Streaming + PPR" li "Ship to all 15 adapters" }
+      a "Talk to us" { href "/start" }
+    }
+  }
+  section.matrix {
+    h2 "Compare"
+    table {
+      thead { tr { th "" th "Starter" th "Chai" th "Darjeeling" } }
+      tbody {
+        tr { td "Render modes" td "2" td "3" td "4" }
+        tr { td "Cache layer" td "windows" td "windows + tags" td "windows + tags + profiles" }
+        tr { td "Deploy adapters" td "3" td "10" td "15" }
+        tr { td "Support" td "community" td "email" td "priority" }
+      }
+    }
+  }
+  section.faq {
+    h2 "FAQ"
+    dl { dt "Is there a free tier?" dd "Yes -- Starter, forever, no card." dt "Can I switch tiers?" dd "Anytime, prorated to the day." dt "What happens on limits?" dd "We warn at 80%, never hard-stop mid-month." }
+  }
+}

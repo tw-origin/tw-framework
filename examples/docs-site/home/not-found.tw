@@ -1,0 +1,3 @@
+import "@./style/site.tss"
+
+div.nf { h1 "404" p "No such page in the docs." a "Back to the guide" { href "/guide" } }

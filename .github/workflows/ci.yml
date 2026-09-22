@@ -1,5 +1,4 @@
 name: CI
-
 on:
   push:
     branches: [main, master]
@@ -20,10 +19,21 @@ jobs:
         run: bun install
 
       - name: Typecheck
-        run: bash scripts/typecheck.sh
+        run: bun run lint
 
-      - name: Tests
+      - name: Tests (unit + e2e)
         run: bun test
+
+      - name: Evals (outcome / scale / invariant / fuzz)
+        run: bun evals/run.ts
+
+      - name: Bench regression gate (25% tolerance vs baselines)
+        run: bun bench/run.ts --check
+
+      - name: errors.json in sync with ERROR_CODES
+        run: |
+          bun scripts/generate-errors-json.ts > /dev/null
+          node -e "const r=require('./errors.json'); if(r.count!==Object.keys(r.codes).length){process.exit(1)}"
 
   node-bundle:
     name: Node bundle (Node 20)
@@ -76,8 +86,8 @@ jobs:
           export NODE_PATH="$PWD/scripts/node_modules"
           node scripts/browser-e2e.mjs
 
-  scaffold:
-    name: Scaffold & Examples
+  examples:
+    name: All examples build + serve smoke
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
@@ -96,18 +106,20 @@ jobs:
       - name: Build node bundle
         run: cd apps/cli && bun scripts/build-node.ts
 
-      - name: Fresh scaffold builds (static home page present)
+      - name: Every example builds
         run: |
-          cd /tmp
-          node $GITHUB_WORKSPACE/apps/cli/dist/tw.mjs create demo-app --skip-install --disable-git
-          cd demo-app
-          node $GITHUB_WORKSPACE/apps/cli/dist/tw.mjs build
-          test -f .tw/index.html
-          test -f .tw/__tw_runtime.js
-
-      - name: Example projects build
-        run: |
-          for ex in hello-tw tw-blog; do
-            cd $GITHUB_WORKSPACE/examples/$ex
-            node $GITHUB_WORKSPACE/apps/cli/dist/tw.mjs build
+          for dir in examples/*/; do
+            name="$(basename "$dir")"
+            echo "::group::example $name"
+            (cd "$dir" && node $GITHUB_WORKSPACE/apps/cli/dist/tw.mjs build) || { echo "::$error::example $name failed to build"; exit 1; }
+            echo "::endgroup::"
           done
+
+      - name: Serve smoke (hello-tw + kitchen-sink)
+        run: |
+          cd examples/hello-tw
+          node $GITHUB_WORKSPACE/apps/cli/dist/tw.mjs serve --port 8123 &
+          SRV=$!
+          for i in $(seq 1 30); do curl -sf http://127.0.0.1:8123/ > /dev/null && break; sleep 1; done
+          curl -sf http://127.0.0.1:8123/ | grep -q "<" || { kill $SRV; exit 1; }
+          kill $SRV

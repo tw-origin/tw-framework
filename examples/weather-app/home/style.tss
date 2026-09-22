@@ -1,0 +1,18 @@
+.head { mb 24px }
+.head h1 { fs 30px; mb 8px }
+.head p { c #445; maxw 560px }
+.now { mb 24px }
+.big { fs 64px; fw 800 }
+.unit { fs 24px; c #667; ml 8px }
+.cond { c #667 }
+.cities { mb 24px }
+.cities h2, .api h2 { fs 18px; mb 10px }
+.cities table { border-collapse collapse }
+.cities th { text-align left; fs 12px; c #889; pb 6px }
+.cities td { pb 6px; pr 20px; border-bottom 1px solid #eef; fs 14px }
+.route { bg #f6f7f9; br 10px; p 12px; fs 14px; mb 8px }
+.method { bg #111; c #fff; br 6px; p 2px 8px; fs 11px; fw 700; mr 8px }
+.path { fw 700 }
+.note { c #667; ml 8px }
+.api p { c #445; fs 14px; mt 8px }
+.foot { mt 28px; pt 14px; border-top 1px solid #eef; fs 12px; c #889 }

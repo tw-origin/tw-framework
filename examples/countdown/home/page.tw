@@ -1,0 +1,27 @@
+import "./../style/global.tss"
+
+page { title "Countdown -- TW Island" render island }
+
+state { seconds = 300, running = "paused" }
+
+div.cd {
+  header.head {
+    h1 "Countdown"
+    p "Five minutes, minus whatever you set it to. All client-side."
+  }
+  section.display {
+    div.clock { span.big "{seconds}" span.unit "sec" }
+    p.state "{running}"
+  }
+  section.controls {
+    button on:click "seconds = seconds > 0 ? seconds - 30 : 0" { "-30s" }
+    button on:click "seconds = seconds + 30" { "+30s" }
+    button on:click "running = 'running'" { "Start" }
+    button on:click "running = 'paused'" { "Pause" }
+    button on:click "seconds = 300, running = 'reset'" { "Reset" }
+  }
+  section.notes {
+    h2 "What to notice"
+    ul { li "The guard: seconds = seconds > 0 ? seconds - 30 : 0" li "Multiple state fields updating together in one expression" li "No network tab activity while you click" }
+  }
+}

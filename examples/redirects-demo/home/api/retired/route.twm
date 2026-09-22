@@ -1,0 +1,3 @@
+fn get(request) {
+  return { status: 410, json: { ok: false, error: "v1 is gone. v2 lives at /api/validate" } }
+}

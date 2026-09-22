@@ -1,0 +1,7 @@
+.head { mb 24px }
+.head h1 { fs 30px; mb 8px }
+.head p { c #445; maxw 560px }
+.timeline h2 { fs 16px; mt 20px; mb 8px; pb 4px; border-bottom 1px solid #eef }
+.timeline ul { pl 18px }
+.timeline li { pb 4px; fs 14px }
+.foot { mt 28px; pt 14px; border-top 1px solid #eef; fs 12px; c #889 }

@@ -1,0 +1,32 @@
+page { title "Recipe" render ssr }
+
+div.recipe {
+  header.head {
+    p.eyebrow "Recipe -- dynamic [slug] route"
+    h1 "Masala Chai"
+    p.meta "8 min -- serves 2 -- mild spice"
+  }
+  section.cols {
+    div.col {
+      h2 "Ingredients"
+      ul.ing {
+        li "2 tsp strong Assam CTC"
+        li "2 cardamom pods, crushed"
+        li "1 cm ginger, crushed"
+        li "1 clove"
+        li "1 cup water"
+        li "3/4 cup milk"
+      }
+    }
+    div.col {
+      h2 "Method"
+      ol.steps {
+        li "Boil water with the spices for 2 minutes -- the spices need the head start"
+        li "Add tea, simmer 1 minute -- longer turns it bitter, not stronger"
+        li "Add milk, bring to a boil, kill the heat"
+        li "Steep 1 minute, strain, sweeten, drink"
+      }
+    }
+  }
+  nav.back { a "All recipes" { href "/" } }
+}

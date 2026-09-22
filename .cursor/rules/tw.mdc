@@ -1,0 +1,32 @@
+---
+description: TW Framework conventions for AI editors
+globs: ["**/*.tw", "**/*.tss", "**/*.twm", "packages/**/*.ts"]
+alwaysApply: false
+---
+
+# TW Framework rules (short form -- full manual: AGENTS.md)
+
+- DSL attributes: `name "value"` (space, not `=`). Colliding keywords
+  (dir, for, async) need HTML-form syntax.
+- TSS uses shorthand properties (`bg-c`, `pt`), not hyphenated CSS names.
+- Never break legacy `page { revalidate N }` semantics.
+- New compiler errors = TW0xx diagnostic + errors.json + docs entry + test.
+- Verify everything: `bun test && bun run lint` before any commit.
+
+
+## The full rules (short form above)
+
+1. Verify everything: `bun test && bun run lint` before any claim; the
+   master gate `bun run verify` before any ship claim.
+2. Zero breaking change: legacy `page { revalidate N }` behaves
+   byte-identically to 1.0.5 -- no PR touches it.
+3. New compiler failure mode = TW0xx code + rules.ts + errors.json regen
+   + docs/error-reference.md entry + positive AND negative test.
+4. New feature = docs/ page in the same change ("a feature without a
+   docs page does not exist").
+5. Perf changes show `bun bench/run.ts --check` before/after; silent
+   baseline re-records are review blockers.
+6. Files touched: consult AGENTS.md section 4 for the owning package
+   before editing; AGENTS.md Part II holds the accepted language tables.
+7. Secrets never enter code or commits -- env references only.
+8. Examples must build: `cd examples/<name> && bun ../../apps/cli/tw/bin.ts build`.

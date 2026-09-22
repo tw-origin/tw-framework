@@ -1,0 +1,44 @@
+import "./../style/global.tss"
+
+page {
+  title "Events -- TW Analytics"
+  render ssr
+  cache { revalidate 5, tag "stats" }
+}
+
+div.board {
+  header.head {
+    h1 "Events"
+    p "The board refreshes through revalidateTag after each POST. No waiting for a window to elapse -- writes invalidate immediately."
+  }
+
+  section.flow {
+    h2 "The loop, end to end"
+    ol {
+      li "GET / -- rendered and stored under the stats tag"
+      li "GET / again -- served from cache (watch x-tw-cache-age)"
+      li "POST /api/event with a kind -- the counter increments"
+      li "The action returns revalidateTag: stats -- the board is dropped"
+      li "GET / -- MISS, re-rendered with the new total"
+    }
+  }
+
+  section.route-card {
+    h2 "The endpoint"
+    div.route {
+      span.method post
+      span.path "/api/event"
+      p "Returns the kind and the new total, plus the revalidateTag instruction in the same result."
+      code 'curl -X POST -d "{\'kind\':\'signup\'}" http://127.0.0.1:8123/api/event'
+    }
+  }
+
+  section.why {
+    h2 "Why this beats polling windows"
+    p "A pure time window trades freshness for render cost: either users see stale numbers or the server re-renders constantly. Tags invert the trade -- the number is as fresh as the last write, and the render count equals the write count. For a 5-second window on a busy board, that is the difference between re-rendering every 5 seconds and re-rendering only when something actually happened."
+  }
+
+  footer.foot {
+    p "Part of the TW example matrix: examples/analytics. Compare with examples/dashboard to see time-window caching without a write path."
+  }
+}

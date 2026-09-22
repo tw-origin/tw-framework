@@ -162,7 +162,7 @@ const ARIA_ROLES = new Set([
   "link", "list", "listbox", "listitem", "log", "main", "marquee",
   "math", "menu", "menubar", "menuitem", "menuitemcheckbox", "menuitemradio",
   "navigation", "none", "note", "option", "presentation", "progressbar",
-  "radio", "radiogroup", "region", "row", "rowgroup", "rowheader",
+  "radio", "radiogroup", "region", "row", "rowgroup", "rowheader", "table",
   "scrollbar", "search", "searchbox", "separator", "slider", "spinbutton",
   "status", "switch", "tab", "tablist", "tabpanel", "term", "textbox",
   "timer", "toolbar", "tooltip", "tree", "treegrid", "treeitem",
@@ -171,6 +171,8 @@ const ARIA_ROLES = new Set([
 
 const ARIA_ATTRIBUTES = new Set([
   "aria-activedescendant", "aria-atomic", "aria-autocomplete", "aria-busy",
+  "aria-braillelabel", "aria-brailleroledescription",
+  "aria-description", "aria-details",
   "aria-checked", "aria-colcount", "aria-colindex", "aria-colspan",
   "aria-controls", "aria-current", "aria-describedby", "aria-disabled",
   "aria-dropeffect", "aria-errormessage", "aria-expanded", "aria-flowto",

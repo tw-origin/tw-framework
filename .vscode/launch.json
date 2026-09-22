@@ -1,0 +1,31 @@
+{
+  "version": "0.2.0",
+  "configurations": [
+    {
+      "type": "bun",
+      "request": "launch",
+      "name": "tw dev (hello-tw)",
+      "cwd": "${workspaceFolder}/examples/hello-tw",
+      "program": "${workspaceFolder}/apps/cli/tw/bin.ts",
+      "args": ["dev"],
+      "internalConsoleOptions": "neverOpen"
+    },
+    {
+      "type": "bun",
+      "request": "launch",
+      "name": "tw serve (hello-tw)",
+      "cwd": "${workspaceFolder}/examples/hello-tw",
+      "program": "${workspaceFolder}/apps/cli/tw/bin.ts",
+      "args": ["serve"],
+      "internalConsoleOptions": "neverOpen"
+    },
+    {
+      "type": "bun",
+      "request": "launch",
+      "name": "framework tests",
+      "program": "${workspaceFolder}/node_modules/.bin/bun",
+      "args": ["test"],
+      "cwd": "${workspaceFolder}"
+    }
+  ]
+}

@@ -1,0 +1,10 @@
+.head { mb 24px }
+.routes { d flex; fd column; gap 14px; mb 28px }
+.route { bg #f6f7f9; br 12px; p 16px }
+.method { bg #111; c #fff; br 6px; p 2px 8px; fs 11px; fw 700; mr 8px }
+.path { fw 700; fs 15px }
+.cache { d block; fs 12px; c #16a34a; mt 4px }
+.route p { fs 13px; c #556; mt 6px }
+.route code { d block; mt 8px; bg #111; c #0f0; p 8px; br 8px; fs 12px }
+.timeline li { pb 8px }
+.foot { mt 28px; pt 14px; border-top 1px solid #eef; fs 12px; c #889 }

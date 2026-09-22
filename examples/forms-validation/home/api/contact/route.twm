@@ -1,0 +1,10 @@
+fn post(request) {
+  const b = request.body ?? {}
+  if (!b.name || String(b.name).trim() === "") {
+    return { status: 422, json: { ok: false, field: "name", error: "Name is required" } }
+  }
+  if (!b.email || !String(b.email).includes("@")) {
+    return { status: 422, json: { ok: false, field: "email", error: "Valid email required" } }
+  }
+  return { status: 200, json: { ok: true, thanks: b.name } }
+}

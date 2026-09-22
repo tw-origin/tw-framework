@@ -1,0 +1,21 @@
+let links = new Map([["tw", "https://github.com/mlkraj159"]])
+
+fn post(request) {
+  const url = String(request.query?.url ?? "")
+  if (!url.startsWith("http")) {
+    return { status: 400, json: { ok: false, error: "url query param required (http/https)" } }
+  }
+  let code = ""
+  const alpha = "abcdefghijklmnopqrstuvwxyz0123456789"
+  for (let i = 0; i < 4; i++) code += alpha[Math.floor((url.charCodeAt(i % url.length) + i * 7) % 36) % 36]
+  links.set(code, url)
+  return { status: 200, json: { ok: true, code, url } }
+}
+
+fn get(request) {
+  const code = String(request.query?.code ?? "")
+  if (!code) return { status: 400, json: { ok: false, error: "code query param required" } }
+  const url = links.get(code)
+  if (!url) return { status: 404, json: { ok: false, error: "unknown code" } }
+  return { status: 302, headers: { location: url }, json: { ok: true } }
+}

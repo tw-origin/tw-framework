@@ -1,0 +1,50 @@
+import "./../style/global.tss"
+
+page { title "Todos -- TW Islands" render island }
+
+state {
+  count = 0
+  label = "tasks left"
+  filter = "all"
+  user = "you"
+}
+
+div.app {
+  header.head {
+    h1 "Today"
+    p.meta "for {user} -- {count} {label}"
+  }
+
+  section.counter {
+    span.num "{count}"
+    div.controls {
+      button on:click "count = count + 1" { "Add task" }
+      button on:click "count = count > 0 ? count - 1 : 0" { "Complete one" }
+      button on:click "count = 0" { "Clear all" }
+    }
+    p.hint "Clicking mutates state in place -- the island re-renders, the server never hears about it."
+  }
+
+  section.filters {
+    p "Filter:"
+    button on:click "filter = 'all'" { "All" }
+    button on:click "filter = 'done'" { "Done" }
+    button on:click "filter = 'open'" { "Open" }
+    p.active "current filter: {filter}"
+  }
+
+  section.listing {
+    h2 "The plan"
+    ol.tasks {
+      li { input type "checkbox" { } span "Review the cache design doc" }
+      li { input type "checkbox" { } span "Run the master gate" }
+      li { input type "checkbox" { } span "Ship the release zip" }
+      li { input type "checkbox" { } span "Fresh-verify from the artifact" }
+      li { input type "checkbox" { } span "Write the UPGRADING note" }
+    }
+  }
+
+  footer.foot {
+    p "Everything on this page is one island: static HTML ships first, then the runtime hydrates this subtree only. Check the network tab -- zero requests after load."
+  }
+}

@@ -1,0 +1,8 @@
+const ARTICLES = ["cache windows", "islands", "middleware", "render modes", "signals", "tags", "profiles", "hydration"]
+
+fn get(request) {
+  const q = String(request.query?.q ?? "").toLowerCase()
+  if (!q) return { status: 200, json: { query: q, results: ARTICLES } }
+  const results = ARTICLES.filter((a) => a.includes(q))
+  return { status: 200, json: { query: q, results } }
+}

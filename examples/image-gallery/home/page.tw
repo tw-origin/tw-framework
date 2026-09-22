@@ -1,0 +1,36 @@
+import "./../style/global.tss"
+
+page { title "Gallery -- TW Image Grid" render static }
+
+div.gallery {
+  header.head {
+    h1 "Gallery"
+    p "A responsive image grid, compiled to static files. Every image carries alt text -- the ARIA matrix in the test suite checks that pairing on every role and attribute."
+  }
+
+  section.grid {
+    img src "/logo.jpg" alt "Logo mark, deep blue circle" { }
+    img src "/logo.jpg" alt "Logo mark repeated at grid position two" { }
+    img src "/logo.jpg" alt "Logo mark repeated at grid position three" { }
+    img src "/logo.jpg" alt "Logo mark repeated at grid position four" { }
+    img src "/logo.jpg" alt "Logo mark repeated at grid position five" { }
+    img src "/logo.jpg" alt "Logo mark repeated at grid position six" { }
+    img src "/logo.jpg" alt "Logo mark repeated at grid position seven" { }
+    img src "/logo.jpg" alt "Logo mark repeated at grid position eight" { }
+    img src "/logo.jpg" alt "Logo mark repeated at grid position nine" { }
+  }
+
+  section.notes {
+    h2 "Notes on images in TW"
+    ul {
+      li { strong "alt is not optional" span " -- the compiler diagnostics cover missing alt on meaningful images; decorative images state their decoration in the alt text itself" }
+      li { strong "img is a void element" span " -- it takes attributes and an empty body: img src ... alt ... { }" }
+      li { strong "Static galleries" span " -- render static freezes the grid at build; there is no per-request work at all" }
+      li { strong "Optimization" span " -- the image package handles sized variants; this example keeps it plain to stay minimal" }
+    }
+  }
+
+  footer.foot {
+    p "Part of the TW example matrix: examples/image-gallery."
+  }
+}

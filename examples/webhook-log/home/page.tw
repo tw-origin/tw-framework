@@ -1,0 +1,23 @@
+import "./../style/global.tss"
+
+page { title "Hooks -- TW Webhook Log" render ssr }
+
+div.hooks {
+  header.head {
+    h1 "Webhook log"
+    p "POST events here, read the tail back. Uncached by design -- a log that lags is a log that lies."
+  }
+  section.api {
+    h2 "Endpoints"
+    div.route { span.method post span.path "/api/hook" span.note "appends { event, at } to the log" }
+    div.route { span.method get span.path "/api/hook" span.note "returns the last 20 entries" }
+  }
+  section.purity {
+    h2 "Why not fn cached"
+    p "Reading request.body in a cached handler fails the build with TW091 -- per-request data cannot enter the canonical cache key. This endpoint is the textbook case for staying uncached."
+  }
+  section.ttl {
+    h2 "If you DID need a cached view"
+    p "Put a cached READ endpoint alongside (keyed by nothing per-request) and have the POST return revalidateTag so the cached view refreshes on write -- the comments example shows that exact shape."
+  }
+}

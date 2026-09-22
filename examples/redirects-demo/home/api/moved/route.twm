@@ -1,0 +1,3 @@
+fn get(request) {
+  return { status: 302, headers: { location: "/" }, json: { ok: true } }
+}

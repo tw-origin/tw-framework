@@ -1,0 +1,45 @@
+import "./../style/global.tss"
+
+page { title "Live -- TW Signal Streaming" render stream }
+
+div.live {
+  header.head {
+    h1 "Live feed"
+    p "This page renders in stream mode: the shell arrives first, signals stream in as they are set. No reload, no polling -- the connection is the transport."
+  }
+
+  section.demo {
+    h2 "How signals work"
+    ol {
+      li "The page declares render stream"
+      li "A route.twm handler imports setSignal from tw"
+      li "The handler sets a named signal and returns JSON as usual"
+      li "Subscribed clients receive the update over the stream"
+    }
+    code "import { setSignal } from \"tw\""
+    code "setSignal(\"feed.tick\", Date.now())"
+  }
+
+  section.api {
+    h2 "The endpoint"
+    div.route {
+      span.method get
+      span.path "/api/feed"
+      p "Triggers a signal set. Hit it from one browser tab and watch the other tab move without a reload."
+      code "curl http://127.0.0.1:8123/api/feed"
+    }
+  }
+
+  section.tradeoffs {
+    h2 "When to use stream mode"
+    ul {
+      li "Live dashboards, chat, collaborative cursors -- anything where the server KNOWS the moment something changes"
+      li "Not for static content -- stream mode holds connections; pair it with a cache on the shell"
+      li "Signals are named values, not arbitrary events -- model them as state, not as messages"
+    }
+  }
+
+  footer.foot {
+    p "Part of the TW example matrix: examples/chat-stream. Pair with examples/todo-app to see islands vs streams side by side."
+  }
+}

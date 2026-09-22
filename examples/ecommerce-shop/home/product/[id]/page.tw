@@ -1,0 +1,28 @@
+page { title "Product" render ssr cache { revalidate 60, tag "products" } }
+
+div.detail {
+  section.pane {
+    header { h1 "Product detail" p "The dynamic route [id] resolves the tea; every product shares this one file." }
+  }
+  section.info {
+    div.field { h2 "Masala Chai" span.price "₹249" }
+    p.desc "Assam CTC with whole spices ground fresh weekly -- cardamom, ginger, clove. The morning classic."
+    table.specs {
+      thead { tr { th "Field" th "Value" } }
+      tbody {
+        tr { td "Category" td "chai" }
+        tr { td "Origin" td "Assam" }
+        tr { td "Notes" td "cardamom, ginger, clove" }
+        tr { td "Badge" td "bestseller" }
+      }
+    }
+    div.actions {
+      button "Add to cart" { }
+      a "Back to shop" { href "/shop" }
+    }
+  }
+  section.notes {
+    h2 "Brewing"
+    ol { li "One heaped spoon per cup" li "Simmer with spices 2 minutes" li "Add milk, one more minute" li "Strain, sweeten, drink" }
+  }
+}

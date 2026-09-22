@@ -1,0 +1,29 @@
+import "./../style/global.tss"
+
+page { title "Shorty -- TW URL Shortener" render static }
+
+div.shorty {
+  header.head {
+    h1 "Shorty"
+    p "A URL shortener in two handlers: POST creates, GET /api/short?code=... redirects."
+  }
+  section.api {
+    h2 "The surface"
+    div.route { span.method post span.path "/api/short" span.note "creates a code from ?url=" }
+    div.route { span.method get span.path "/api/short?code=" span.note "302 to the stored url" }
+    div.route { span.method get span.path "/api/short" span.note "400 without a code" }
+  }
+  section.flow {
+    h2 "The loop"
+    ol {
+      li "POST /api/short?url=https://example.com -- stores and returns the code"
+      li "GET /api/short?code=tw -- responds 302 with Location to the stored url"
+      li "GET /api/short -- no code, 400 with the reason"
+    }
+  }
+  section.store {
+    h2 "Where links live"
+    p "A module-level Map in the route module -- honest about being in-memory. The exercise list covers moving it to a real store without changing a single route signature."
+  }
+  footer.foot { p "Part of the TW example matrix." }
+}

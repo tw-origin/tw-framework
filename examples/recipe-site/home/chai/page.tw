@@ -1,0 +1,6 @@
+page { title "Chai" render ssr }
+
+div.cat {
+  header.head { h1 "Chai" p "Two techniques: the proper simmer and the tapri boil." }
+  section.listing { h2 "Recipes in this section" div.grid { a.rcard { href "/masala-chai" h3 "Masala Chai" p "8 min -- serves 2 -- mild" } a.rcard { href "/kadak-cutting" h3 "Kadak Cutting Chai" p "5 min -- serves 1 -- none" } } }
+}

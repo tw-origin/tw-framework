@@ -1,0 +1,23 @@
+[
+  { "name": "clean page compiles", "layer": "compile",
+    "src": "page { title \"x\" render ssr }\ndiv { h1 \"hi\" }\n",
+    "expect": { "errors": [] } },
+  { "name": "legacy revalidate accepted (no breaking change)", "layer": "compile",
+    "src": "page { title \"x\" revalidate 60 }\ndiv { \"y\" }\n",
+    "expect": { "errors": [] } },
+  { "name": "cache directive accepted", "layer": "compile",
+    "src": "page { title \"x\" cache { revalidate 60, tag \"t\" } }\ndiv { \"y\" }\n",
+    "expect": { "errors": [] } },
+  { "name": "negative revalidate -> TW090 (no valid window)", "layer": "compile",
+    "src": "page { title \"x\" cache { revalidate -5 } }\ndiv { \"y\" }\n",
+    "expect": { "errors": ["TW090"] } },
+  { "name": "unknown life profile defers to build gate", "layer": "compile",
+    "src": "page { title \"x\" cache { life \"nope\" } }\ndiv { \"y\" }\n",
+    "expect": { "errors": [] } },
+  { "name": "script text never reaches HTML raw", "layer": "compile",
+    "src": "div { \"<script>alert(1)</script>\" }\n",
+    "expect": { "errors": [], "htmlNotContains": ["<script"] } },
+  { "name": "state + event compiles", "layer": "compile",
+    "src": "state { count = 0 }\ndiv { button on:click \"count++\" { \"go\" } }\n",
+    "expect": { "errors": [] } }
+]

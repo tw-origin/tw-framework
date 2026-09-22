@@ -1,0 +1,19 @@
+.eyebrow { fs 12px; uppercase; c #99a; ls 2px; mb 10px }
+.hero h1 { fs 40px; mb 6px }
+.hero h2 { fs 18px; fw 500; c #556; mb 16px }
+.lede { maxw 560px; c #445; mb 20px }
+.cta { d flex; gap 14px; mb 40px }
+.cta a { p 10px 16px; br 10px; bg #111; c #fff; td none; fw 600 }
+.cta a + a { bg #fff; c #111; border 1px solid #111 }
+.stack, .now, .elsewhere { mb 32px }
+h3 { fs 15px; uppercase; ls 1px; c #778; mb 12px }
+.tools li { pb 6px }
+.now p { maxw 560px; c #445 }
+.links li { pb 6px }
+.links a { c #2563eb }
+.foot { mt 40px; pt 16px; border-top 1px solid #eef; fs 12px; c #889 }
+.work .head { mb 32px }
+.project { border-left 3px solid #111; pl 18px; mb 28px }
+.tagline { c #667; mb 8px }
+.facts { mt 8px; pl 18px; c #556 }
+.facts li { pb 4px; fs 14px }

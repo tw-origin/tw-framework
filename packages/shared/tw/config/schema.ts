@@ -213,6 +213,12 @@ export interface SecurityConfig {
 
 export interface CacheConfig {
   type: "memory" | "filesystem" | "redis" | "none";
+  /**
+   * cacheLife profiles (docs/cache-tags.md): named { stale, revalidate,
+   * expire } presets referenced from `cache { life "name" }` directives.
+   * User profiles override the built-ins (seconds/minutes/hours/days/max).
+   */
+  profiles?: Record<string, { stale?: number; revalidate?: number; expire?: number }>;
   ttl: number;
   maxSize: number;
   strategy: "LRU" | "LFU" | "FIFO" | "TTL";

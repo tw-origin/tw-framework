@@ -1,0 +1,13 @@
+import "./../../style/global.tss"
+
+page { title "API -- Docs" render static }
+
+div.docs {
+    a "Routing" { href "/guide/routing" }
+    a "API pages" { href "/api" }
+  }
+  main.content {
+    h1 "API pages"
+    p "JSON handlers live in route.twm files under api/ directories. This docs section page is static content -- it shares the sidebar, not the purpose."
+  }
+}

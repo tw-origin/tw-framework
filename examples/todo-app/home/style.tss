@@ -1,0 +1,12 @@
+.head { mb 20px }
+.head h1 { fs 28px }
+.meta { c #667; fs 14px }
+.counter { bg #f6f7f9; br 14px; p 22px; mb 20px; d flex; ai center; gap 24px }
+.num { fs 48px; fw 800; min-w 72px; ta center }
+.controls { d flex; gap 10px }
+.controls button { p 10px 14px; br 10px; bg #111; c #fff; fw 600; c-inherit none }
+.filters { d flex; ai center; gap 8px; mb 20px; fs 14px }
+.filters button { p 6px 10px; br 8px; bg #eef1f5 }
+.active { c #16a34a; fw 600 }
+.tasks li { d flex; ai center; gap 10px; pb 10px; border-bottom 1px solid #eef; fs 15px }
+.foot { mt 28px; pt 14px; border-top 1px solid #eef; fs 12px; c #889 }

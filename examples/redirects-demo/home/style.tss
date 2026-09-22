@@ -1,0 +1,10 @@
+.head { mb 24px }
+.head h1 { fs 30px; mb 8px }
+.head p { c #445; maxw 560px }
+.route { bg #f6f7f9; br 10px; p 12px; mb 8px; fs 14px }
+.code { fw 800; mr 10px; c #c2410c }
+.path { fw 700; mr 10px }
+.note { c #667 }
+.philosophy h2 { fs 18px; mb 10px }
+.philosophy ul { pl 18px }
+.philosophy li { pb 6px; fs 14px }

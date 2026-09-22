@@ -1,0 +1,11 @@
+{
+  "recordedAt": "2026-09-22T04:57:16.715Z",
+  "metrics": {
+    "compile.pages_per_sec": 350,
+    "render.miss_per_sec": 365,
+    "render.hit_per_sec": 34688,
+    "routes.matches_per_sec": 30429,
+    "cache.resolve_per_sec": 616660,
+    "cache.inval_sweep_per_sec": 527335
+  }
+}

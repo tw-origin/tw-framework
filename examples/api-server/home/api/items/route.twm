@@ -1,0 +1,10 @@
+import { next } from "counter"
+
+fn cached get(request) {
+  cache { revalidate 10, expire 60, tag "items" }
+  return { status: 200, json: { n: next() } }
+}
+
+fn actionRefresh(request) {
+  return { status: 200, json: { ok: true }, revalidateTag: "items" }
+}

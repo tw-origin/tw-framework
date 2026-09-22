@@ -1,0 +1,42 @@
+import "./../style/global.tss"
+
+page { title "Mlkraj -- Full-stack Developer" render static }
+
+div.hero {
+  p.eyebrow "Portfolio -- static build"
+  h1 "Mlkraj"
+  h2 "Full-stack developer. Frameworks, compilers, and chai."
+  p.lede "I build web frameworks end to end: template languages, compilers, render pipelines, and the tooling around them. This site is one of my own -- compiled to static files, served as pure HTML."
+  div.cta {
+    a "See my work" { href "/work" }
+    a "Read the framework" { href "https://github.com/mlkraj159" }
+  }
+}
+
+section.stack {
+  h3 "What I work with"
+  ul.tools {
+    li "TypeScript -- every day, every layer"
+    li "Compilers and DSLs -- lexers, parsers, codegen"
+    li "Render pipelines -- SSR, islands, streaming"
+    li "Bun and Node -- runtimes and CLIs"
+    li "Rust -- when the hot path needs it"
+  }
+}
+
+section.now {
+  h3 "Currently"
+  p "Building a full-stack web framework with its own template and styling languages: 11 packages, a 2692-test suite, and zero runtime dependencies. The cache layer alone serves 98k pages per second from a warm entry."
+}
+
+section.elsewhere {
+  h3 "Elsewhere"
+  ul.links {
+    li { a "GitHub" { href "https://github.com/mlkraj159" } }
+    li { a "Writing" { href "/work" } }
+  }
+}
+
+footer.foot {
+  p "This page is render static -- compiled once at build time. No server code runs to show it to you."
+}

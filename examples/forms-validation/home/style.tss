@@ -1,0 +1,17 @@
+.head { mb 24px }
+.head h1 { fs 28px; mb 8px }
+.head p { c #445; maxw 560px }
+.contactbox { d flex; fd column; gap 10px; maxw 420px; bg #f6f7f9; br 14px; p 20px; mb 28px }
+.contactbox label { fs 13px; fw 600; c #334 }
+.contactbox input { p 10px; br 10px; border 1px solid #ccd; bg #fff }
+.contactbox button { p 10px; br 10px; bg #16a34a; c #fff; fw 700 }
+.state { fs 12px; c #667 }
+.rules { mb 28px }
+.rules h2, .philosophy h2 { fs 18px; mb 10px }
+.rules table { border-collapse collapse; mb 12px }
+.rules th { text-align left; fs 12px; c #889; pb 6px }
+.rules td { pb 6px; pr 16px; fs 14px; border-bottom 1px solid #eef }
+.rules code { d block; bg #111; c #0f0; p 8px; br 8px; fs 12px }
+.philosophy { mb 28px; maxw 560px }
+.philosophy p { c #445; fs 14px }
+.foot { mt 28px; pt 14px; border-top 1px solid #eef; fs 12px; c #889 }

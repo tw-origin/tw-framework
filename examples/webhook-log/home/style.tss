@@ -1,0 +1,9 @@
+.head { mb 24px }
+.head h1 { fs 30px; mb 8px }
+.head p { c #445; maxw 580px }
+.api h2, .purity h2, .ttl h2 { fs 18px; mb 10px }
+.route { bg #f6f7f9; br 10px; p 12px; mb 8px; fs 14px }
+.method { bg #111; c #fff; br 6px; p 2px 8px; fs 11px; fw 700; mr 8px }
+.path { fw 700; mr 8px }
+.note { c #667 }
+.purity p, .ttl p { c #445; fs 14px; maxw 580px }

@@ -1,0 +1,58 @@
+import "./../style/global.tss"
+
+page {
+  title "Kitchen Sink -- Everything at Once"
+  render ssr
+  cache { life "minutes", tag "sink" }
+}
+
+state { count = 0, tab = "cache" }
+
+div.sink {
+  header.head {
+    p.eyebrow "One app, every surface"
+    h1 "Kitchen Sink"
+    p "Render modes, the explicit cache, fn cached APIs, actions, middleware, unicode routes, islands-style state -- all on one page so you can see them compose."
+    div.tabs {
+      button on:click "tab = 'cache'" { "Cache" }
+      button on:click "tab = 'islands'" { "Islands" }
+      button on:click "tab = 'routes'" { "Routes" }
+    }
+    p.active "current tab: {tab}"
+  }
+
+  section.demo {
+    h2 "Client state, no round-trip"
+    button on:click "count++" { "clicked {count} times" }
+    p "The button mutates state in place; the counter is part of this page render but hydrates for interaction."
+  }
+
+  section.demo {
+    h2 "The cached surface"
+    ul {
+      li { strong "This page" span " -- cache { life minutes, tag sink }" }
+      li { strong "/api/ping" span " -- fn cached, revalidate 5s, expire 30s, tag sink" }
+      li { strong "/api/ping (POST)" span " -- actionReset, bumps the sink tag" }
+    }
+    p "Both surfaces share the tag: one POST invalidates the page AND the endpoint together."
+  }
+
+  section.demo {
+    h2 "Unicode and routes"
+    ul {
+      li { a "Static page" { href "/static" } }
+      li { a "हिन्दी पृष्ठ" { href "/hi" } }
+      li { a "API (cached)" { href "/api/ping" } }
+    }
+    p "The Hindi route is a real directory with a real page -- not a translated string swap."
+  }
+
+  section.demo {
+    h2 "Middleware, active right now"
+    p "middleware.twm blocks curl, wget and scrapy user agents on every path. If you can read this in a browser but your curl gets a 403, that is the rule doing its job."
+  }
+
+  footer.foot {
+    p "Build it, serve it, curl it (with an honest user agent), POST the action, watch the tag drop everything. One page, the whole framework."
+  }
+}

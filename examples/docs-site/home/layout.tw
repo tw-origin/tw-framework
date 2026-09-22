@@ -1,0 +1,27 @@
+import "@./style/global.tss"
+import "@./style/site.tss"
+
+html {
+  head {
+    meta charset "utf-8"
+    meta name "viewport" content "width=device-width, initial-scale=1"
+    title "{page.title} -- TW Docs"
+  }
+  body {
+    header.sitenav {
+      div.wrap { a.brand { href "/" "TW Docs" } nav.links { a "Guide" { href "/guide" } a "Syntax" { href "/guide/syntax" } a "Routing" { href "/guide/routing" } a "Reference" { href "/reference" } a "Deploy" { href "/deploy" } } }
+    }
+    main.site {
+      nav.sidebar {
+        a "Guide" { href "/guide" }
+        a "Syntax" { href "/guide/syntax" }
+        a "Routing" { href "/guide/routing" }
+        a "API pages" { href "/api" }
+        a "Error codes" { href "/reference" }
+        a "Deployment" { href "/deploy" }
+      }
+      div.page { slot { } }
+    }
+    footer.sitefoot { p "TW Docs -- a complete static documentation site example." }
+  }
+}

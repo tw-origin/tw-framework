@@ -12,10 +12,15 @@
  */
 
 import { readFileSync, existsSync } from "node:fs";
-import { revalidatePath as pipelineRevalidatePath } from "./revalidate";
+import {
+  revalidatePath as pipelineRevalidatePath,
+  revalidateTag as registryRevalidateTag,
+  registerTwmTagInvalidator,
+} from "./revalidate";
 import { setSignal } from "./signal-stream";
 import { join } from "node:path";
 import { isRuleDsl, parseRules, evaluateRules, type MiddlewareRule } from "./twm-rules";
+import { sha256, parseCacheBody, resolveCache, canonicalizeQuery, readCacheProfilesSync, type ResolvedCache } from "@tw/shared";
 
 // --- Types -------------------------------------------------------------------
 
@@ -51,6 +56,47 @@ export function clearTWMCache(): void {
 
 const libCache = new Map<string, Record<string, any>>();
 
+/**
+ * String-aware comment stripping. A naive `//` regex eats URL strings
+ * ("https://x" loses everything after the scheme's slashes -> unclosed
+ * string -> the whole module fails to parse -> 405 at serve time, with
+ * the build silent). Walk the source and only strip comments that are
+ * NOT inside ' " ` string literals.
+ */
+export function stripCommentsSafe(src: string): string {
+  let out = "";
+  let i = 0;
+  let mode: "code" | "line" | "block" | "sq" | "dq" | "tpl" = "code";
+  while (i < src.length) {
+    const c = src[i];
+    const n = i + 1 < src.length ? src[i + 1] : "";
+    if (mode === "code") {
+      if (c === "/" && n === "/") { mode = "line"; i += 2; continue; }
+      if (c === "/" && n === "*") { mode = "block"; i += 2; continue; }
+      if (c === "'") { mode = "sq"; out += c; i++; continue; }
+      if (c === '"') { mode = "dq"; out += c; i++; continue; }
+      if (c === "`") { mode = "tpl"; out += c; i++; continue; }
+      out += c; i++; continue;
+    }
+    if (mode === "line") {
+      if (c === "\n") { mode = "code"; out += c; }
+      i++; continue;
+    }
+    if (mode === "block") {
+      if (c === "*" && n === "/") { mode = "code"; out += " "; i += 2; continue; }
+      i++; continue;
+    }
+    // string modes: emit, honor escapes, close on the matching quote
+    out += c;
+    if (c === "\\") { if (n) { out += n; i += 2; continue; } }
+    else if ((mode === "sq" && c === "'") || (mode === "dq" && c === '"') || (mode === "tpl" && c === "`")) {
+      mode = "code";
+    }
+    i++;
+  }
+  return out;
+}
+
 async function loadLibModule(rootDir: string, name: string): Promise<Record<string, any>> {
   // Normalize: "db", "lib/db", "./lib/db", "@lib/db" -> "db"
   let rel = name
@@ -79,9 +125,7 @@ async function loadLibModule(rootDir: string, name: string): Promise<Record<stri
 
 function parseTwm(source: string, rootDir: string): { handlers: Record<string, any> | null; config: any; jsCode?: string; imports?: any } {
   // 1. Strip comments FIRST
-  const cleaned = source
-    .replace(/\/\*[\s\S]*?\*\//g, "")
-    .replace(/\/\/.*/gm, "");
+  const cleaned = stripCommentsSafe(source);
 
   // 2. Parse imports
   const importRegex = /import\s+\{([^}]+)\}\s+from\s+["']([^"']+)["'];?/g;
@@ -95,9 +139,15 @@ function parseTwm(source: string, rootDir: string): { handlers: Record<string, a
   // 3. Strip imports, convert TWM -> JS
   let codeWithoutImports = cleaned.replace(importRegex, "");
   const jsCode = codeWithoutImports
+    // `cache { ... }` hoist (docs/cache-tags.md): the directive block is
+    // metadata, not JS -- strip it from the body (metadata is collected
+    // separately in loadTWMModule).
+    .replace(/^[ \t]*cache\s*\{[^}]*\}[ \t]*;?[ \t]*$/gm, "")
     // Rename ONLY the DSL handler declaration (`fn delete(...)`) -- a blanket
     // `\bdelete\b` replace would also rewrite the JS `delete obj.prop`
     // statement in handler bodies into a syntax error.
+    .replace(/\bfn\s+cached\s+delete\b/g, "function deleteFn")
+    .replace(/\bfn\s+cached\s+/g, "function ")
     .replace(/\bfn\s+delete\b/g, "function deleteFn")
     .replace(/\bfn\s+/g, "function ");
 
@@ -107,9 +157,7 @@ function parseTwm(source: string, rootDir: string): { handlers: Record<string, a
 // --- Synchronous TWM compilation (no execution, no side effects) --------------
 
 function compileTwm(source: string): string {
-  const cleaned = source
-    .replace(/\/\*[\s\S]*?\*\//g, "")
-    .replace(/\/\/.*/gm, "");
+  const cleaned = stripCommentsSafe(source);
 
   const importRegex = /import\s+\{([^}]+)\}\s+from\s+["']([^"']+)["'];?/g;
   const codeWithoutImports = cleaned.replace(importRegex, "");
@@ -118,18 +166,23 @@ function compileTwm(source: string): string {
     // `export` is not valid inside new Function -- accept both documented
     // (`fn get(...)`) and natural-JS (`export function get(...)`) forms.
     .replace(/\bexport\s+(?=(async\s+)?(function|const|let|var|class))/g, "")
+    // `cache { ... }` hoist (docs/cache-tags.md) -- strip the metadata
+    // block; loadTWMModule collects it before this conversion runs.
+    .replace(/^[ \t]*cache\s*\{[^}]*\}[ \t]*;?[ \t]*$/gm, "")
     // Rename ONLY the DSL handler declaration -- see note above.
     // Handlers compile to ASYNC functions: docs (sessions, cookies.sign,
     // data fetching) all show `await` inside `fn` bodies, and async
     // wrappers are transparent for sync returns (executor awaits both).
+    // `fn cached` (docs/cache-tags.md) is the cacheable-handler marker;
+    // the metadata comes from the (now stripped) cache { } block.
+    .replace(/\bfn\s+cached\s+delete\b/g, "async function deleteFn")
+    .replace(/\bfn\s+cached\s+/g, "async function ")
     .replace(/\bfn\s+delete\b/g, "async function deleteFn")
     .replace(/\bfn\s+/g, "async function ");
 }
 
 function extractImports(source: string): { names: string[]; module: string }[] {
-  const cleaned = source
-    .replace(/\/\*[\s\S]*?\*\//g, "")
-    .replace(/\/\/.*/gm, "");
+  const cleaned = stripCommentsSafe(source);
 
   const importRegex = /import\s+\{([^}]+)\}\s+from\s+["']([^"']+)["'];?/g;
   const imports: { names: string[]; module: string }[] = [];
@@ -189,6 +242,7 @@ export async function loadTWMModule(filePath: string, rootDir?: string): Promise
       for (const name of imp.names) {
         if (name === "revalidatePath") injected.revalidatePath = pipelineRevalidatePath;
         else if (name === "revalidateRoute") injected.revalidateRoute = revalidateRoute;
+        else if (name === "revalidateTag") injected.revalidateTag = registryRevalidateTag;
         else if (name === "setSignal") injected.setSignal = setSignal;
       }
       // The documented `import { ... } from "@tw/server"` surface (bodyParse,
@@ -256,6 +310,42 @@ export async function loadTWMModule(filePath: string, rootDir?: string): Promise
   for (const m of codeWithoutImports.matchAll(/\bfunction\s+(action[A-Za-z0-9_]*)\s*\(/g)) actionNames.add(m[1]);
   for (const m of codeWithoutImports.matchAll(/\b(?:const|let|var)\s+(action[A-Za-z0-9_]*)\s*=/g)) actionNames.add(m[1]);
 
+  // `fn cached` handlers (docs/cache-tags.md): resolve each handler's
+  // cache { } metadata against tw.config.ts profiles, with TW091 purity
+  // and TW093 non-determinism checks on the body.
+  const cachedHandlers: Record<string, HandlerCacheConf> = {};
+  const cleanedSource = stripCommentsSafe(source);
+  const fnCachedRegex = /\bfn\s+cached\s+([A-Za-z0-9_]+)\s*\(([^)]*)\)\s*\{/g;
+  for (const cm of cleanedSource.matchAll(fnCachedRegex)) {
+    const fnName = cm[1] === "delete" ? "deleteFn" : cm[1];
+    const after = cleanedSource.slice((cm.index ?? 0) + cm[0].length);
+    const bodyEnd = handlerBodyEnd(after);
+    const body = after.slice(0, bodyEnd);
+    const cacheBlock = /^\s*cache\s*\{([^}]*)\}/.exec(after);
+    const meta = cacheBlock ? parseCacheBody(cacheBlock[1]) : {};
+    if (meta.revalidate == null && !meta.life) {
+      console.error("[tw] TW090: fn cached " + cm[1] + " in " + filePath + " needs cache { revalidate N } or cache { life \"profile\" } -- not cached");
+      continue;
+    }
+    let impure: string | null = null;
+    for (const [pattern, label] of IMPURE_PATTERNS) {
+      if (pattern.test(body)) { impure = label; break; }
+    }
+    if (impure) {
+      console.error("[tw] TW091: fn cached " + cm[1] + " in " + filePath + " is impure (" + impure + ") -- handler excluded from caching");
+      continue;
+    }
+    if (NONDET_PATTERN.test(body)) {
+      console.warn("[tw] TW093: fn cached " + cm[1] + " in " + filePath + " calls a non-deterministic function -- the value freezes into the cache entry");
+    }
+    try {
+      const resolved = resolveCache(meta, twmCacheProfiles(rd));
+      if (resolved) cachedHandlers[fnName] = resolved;
+    } catch (e) {
+      console.error("[tw] " + (e as Error).message + " (" + filePath + ":" + cm[1] + ")");
+    }
+  }
+
   // Execute via new Function to get handler references (NO fake request).
   // Trust boundary: the code is the project's OWN .twm file written by the
   // developer -- same trust level as any server-side source the app runs.
@@ -304,6 +394,11 @@ export async function loadTWMModule(filePath: string, rootDir?: string): Promise
     console.error("[twm-loader] Error parsing " + filePath + ":", err);
   }
 
+  // Cached-handler metadata (docs/cache-tags.md): resolved cache config
+  // per handler, consumed by executeRouteHandler. Only GET/HEAD handlers
+  // are cacheable; other names are ignored at serve time.
+  (module as any).__twCached = cachedHandlers;
+
   moduleCache.set(cacheKey, module);
   return module;
 }
@@ -346,7 +441,90 @@ const routeCache = new Map<string, { result: any; expiresAt: number; pathname: s
 
 export function clearRouteCache(): void {
   routeCache.clear();
+  handlerCache.clear();
 }
+
+// --- Cached handlers (docs/cache-tags.md, `fn cached`) -------------------------
+
+/**
+ * Purity scan (TW091): a cached handler must depend only on key inputs.
+ * request.cookies / request.headers / request.body / setSignal(...) make
+ * the response request-specific and are hard errors -- the handler is
+ * excluded from caching (build fails with TW091; serve logs and skips).
+ */
+const IMPURE_PATTERNS: [RegExp, string][] = [
+  [/request\s*\.\s*cookies/, "request.cookies"],
+  [/request\s*\.\s*headers/, "request.headers"],
+  [/request\s*\.\s*body/, "request.body"],
+  [/\bsetSignal\s*\(/, "setSignal(...)"],
+];
+
+/**
+ * Non-determinism scan (TW093): Date.now() / Math.random() /
+ * crypto.randomUUID() freeze their first value into the cache entry.
+ * Warning only -- "generated at" stamps are a legitimate use.
+ */
+const NONDET_PATTERN = /\b(?:Date\s*\.\s*now\s*\(|Math\s*\.\s*random\s*\(|crypto\s*\.\s*randomUUID\s*\()/;
+
+/** Extract a balanced-brace body from `after` (which starts inside the fn,
+ * i.e. just past the function's opening brace -- so depth starts at 1). */
+function handlerBodyEnd(after: string): number {
+  let depth = 1;
+  let inStr: string | null = null;
+  for (let i = 0; i < after.length; i++) {
+    const ch = after[i];
+    if (inStr) {
+      if (ch === "\\") i++;
+      else if (ch === inStr) inStr = null;
+      continue;
+    }
+    if (ch === '"' || ch === "'" || ch === "`") { inStr = ch; continue; }
+    if (ch === "{") depth++;
+    else if (ch === "}") {
+      depth--;
+      if (depth === 0) return i;
+    }
+  }
+  return after.length;
+}
+
+/** cache.profiles from tw.config.ts, loaded once per rootDir. */
+const __twmProfiles = new Map<string, Record<string, any>>();
+function twmCacheProfiles(rootDir: string): Record<string, any> {
+  if (__twmProfiles.has(rootDir)) return __twmProfiles.get(rootDir)!;
+  let profiles: Record<string, any> = {};
+  try {
+    profiles = readCacheProfilesSync(rootDir);
+  } catch { /* built-ins only */ }
+  __twmProfiles.set(rootDir, profiles);
+  return profiles;
+}
+
+/** Resolved cache config per cached handler, keyed by JS function name. */
+interface HandlerCacheConf extends ResolvedCache {}
+
+/** fn-cached handler responses: freshUntil/expireAt windows + tags. */
+const handlerCache = new Map<string, {
+  result: any;
+  freshUntil: number;
+  expireAt: number;
+  conf: HandlerCacheConf;
+  createdAt: number;
+  pathname: string;
+}>();
+
+/** Background-refresh stampede guard for cached handlers. */
+const pendingHandlerRefresh = new Set<string>();
+
+// Tag invalidation reaches this cache through the registry (no circular
+// import): every entry carries its own tag (single source of truth).
+registerTwmTagInvalidator(function(tag: string): number {
+  let dropped = 0;
+  for (const [key, entry] of handlerCache) {
+    if (entry.conf && (entry.conf as any).tag === tag) { handlerCache.delete(key); dropped++; }
+  }
+  return dropped;
+});
 
 /**
  * On-demand route ISR invalidation: drop cached GET responses whose path
@@ -486,12 +664,24 @@ export async function executeRouteHandler(
     if (!actionResult || typeof actionResult !== "object") {
       return { status: 500, json: { ok: false, error: "Internal Server Error" } };
     }
+    // docs/cache-tags.md -- updateTag semantics (read-your-writes): an
+    // action returning { revalidateTag: "family" } expires that family in
+    // this same request. The client runtime already re-fetches the page
+    // with cache: "reload" after an action, so the user sees the fresh
+    // render without a manual reload.
+    let revalidatedTag: string | undefined;
+    if (typeof actionResult.revalidateTag === "string" && actionResult.revalidateTag) {
+      revalidatedTag = actionResult.revalidateTag;
+      registryRevalidateTag(revalidatedTag);
+    }
     return {
       status: typeof actionResult.status === "number" ? actionResult.status : 200,
       json: actionResult.json || actionResult.body || {},
       html: typeof actionResult.html === "string" ? actionResult.html : undefined,
       text: typeof actionResult.text === "string" ? actionResult.text : undefined,
-      headers: actionResult.headers,
+      headers: revalidatedTag
+        ? { ...(actionResult.headers ?? {}), "x-tw-revalidated": revalidatedTag }
+        : actionResult.headers,
     };
   }
 
@@ -511,6 +701,60 @@ export async function executeRouteHandler(
         ...hit.result,
         headers: { ...(hit.result.headers ?? {}), "x-tw-route-cache": "HIT" },
       };
+    }
+  }
+
+  // --- Cached handler (docs/cache-tags.md, `fn cached`) --------------------
+  // GET/HEAD responses of a `fn cached` handler are cached per canonical
+  // key: sha256(method + pathname + canonical query + params) -- query
+  // order-independent, empty values dropped. Fresh/HIT, stale/STALE +
+  // background refresh, past expire -> blocking re-execution.
+  const upperMethod = method.toUpperCase();
+  let handlerConf: HandlerCacheConf | null = null;
+  let handlerCacheKey: string | null = null;
+  if ((upperMethod === "GET" || upperMethod === "HEAD") && (mod as any).__twCached) {
+    const handlerKey = methodLower === "delete" ? "deleteFn"
+      : (methodLower === "head" ? "get" : methodLower.toLowerCase());
+    handlerConf = (mod as any).__twCached[handlerKey] ?? null;
+    if (handlerConf) {
+      try {
+        const u = new URL(request.url ?? "http://local");
+        handlerCacheKey = sha256(
+          upperMethod + "\n" + u.pathname + "\n" + canonicalizeQuery(u.search) +
+          "\n" + JSON.stringify((request as any)?.params ?? {}),
+        );
+      } catch { handlerCacheKey = null; }
+    }
+    if (handlerCacheKey) {
+      const hEntry = handlerCache.get(handlerCacheKey);
+      const hNow = Date.now();
+      if (hEntry && hNow < hEntry.freshUntil) {
+        return {
+          ...hEntry.result,
+          headers: {
+            ...(hEntry.result.headers ?? {}),
+            "x-tw-cache": "HIT",
+            "x-tw-cache-age": String(Math.max(0, Math.floor((hNow - hEntry.createdAt) / 1000))),
+          },
+        };
+      }
+      if (hEntry && hNow < hEntry.expireAt && !pendingHandlerRefresh.has(handlerCacheKey)) {
+        pendingHandlerRefresh.add(handlerCacheKey);
+        void (async () => {
+          try { await executeRouteHandler(filePath, method, request, rootDir); }
+          catch { /* background */ }
+          finally { pendingHandlerRefresh.delete(handlerCacheKey!); }
+        })();
+        return {
+          ...hEntry.result,
+          headers: {
+            ...(hEntry.result.headers ?? {}),
+            "x-tw-cache": "STALE",
+            "x-tw-cache-age": String(Math.max(0, Math.floor((hNow - hEntry.createdAt) / 1000))),
+          },
+        };
+      }
+      if (hEntry && hNow >= hEntry.expireAt) handlerCache.delete(handlerCacheKey);
     }
   }
 
@@ -538,6 +782,34 @@ export async function executeRouteHandler(
     let cachedPath = "";
     try { cachedPath = new URL(request.url ?? "http://local").pathname; } catch { cachedPath = ""; }
     routeCache.set(routeCacheKey, { result: finalResult, expiresAt: Date.now() + rv * 1000, pathname: cachedPath });
+  }
+  if (handlerCacheKey && handlerConf && finalResult.status === 200) {
+    const now = Date.now();
+    let cachedPath = "";
+    try { cachedPath = new URL(request.url ?? "http://local").pathname; } catch { cachedPath = ""; }
+    handlerCache.set(handlerCacheKey, {
+      result: finalResult,
+      freshUntil: now + handlerConf.revalidate * 1000,
+      expireAt: now + handlerConf.expire * 1000,
+      conf: handlerConf,
+      createdAt: now,
+      pathname: cachedPath,
+    });
+    // Cache-Control client hint (docs/cache-tags.md): the server cache
+    // never reads `stale`; it is only the browser/CDN reusability hint.
+    const cc = handlerConf.stale > 0
+      ? "public, max-age=" + handlerConf.stale +
+        (Number.isFinite(handlerConf.expire) ? ", stale-while-revalidate=" + Math.max(0, handlerConf.expire - handlerConf.stale) : "")
+      : null;
+    return {
+      ...finalResult,
+      headers: {
+        ...(finalResult.headers ?? {}),
+        "x-tw-cache": "MISS",
+        "x-tw-cache-age": "0",
+        ...(cc ? { "Cache-Control": cc } : {}),
+      },
+    };
   }
   return finalResult;
 }

@@ -1,0 +1,31 @@
+.sitenav { bg #7c2d12; c #fff; p 14px 0 }
+.sitenav .wrap { maxw 900px; m 0 auto; d flex; ai center; gap 28px; padding 0 20px }
+.brand { td none; c #fff; fs 20px; fw 800 }
+.links { d flex; gap 18px; ml auto }
+.links a { c #fde; td none; fs 14px }
+.site { maxw 900px; m 0 auto; padding 28px 20px }
+.sitefoot { border-top 1px solid #eee; mt 40px; p 20px 0; c #99a; fs 13px; ta center }
+.hero h1 { fs 34px; mb 10px; maxw 560px }
+.eyebrow { fs 12px; uppercase; ls 2px; c #b45309; mb 8px }
+.lede { c #445; maxw 560px; fs 16px }
+.grid { d grid; grid-template-columns repeat(3, 1fr); gap 14px; mb 32px }
+.rcard { bg #faf5f0; br 14px; p 18px; td none; c #223 }
+.rcard h3 { fs 17px; mb 4px }
+.rcard p { c #877; fs 13px }
+.api h2 { fs 18px; mb 6px }
+.api p { c #445; fs 14px }
+.head h1 { fs 30px; mb 6px }
+.head p { c #567 }
+.meta { c #b45309; fs 14px }
+.cols { d grid; grid-template-columns 1fr 1.4fr; gap 28px }
+.ing li { pb 6px; fs 15px }
+.steps li { pb 10px; fs 15px }
+.back { mt 20px }
+.back a { c #2563eb; fw 600 }
+.about h1 { fs 28px; mb 10px }
+.about p { c #445; maxw 560px; fs 15px }
+.about h2 { fs 18px; mt 20px; mb 6px }
+.about li { pb 4px; c #445 }
+.nf { ta center; pt 60px }
+.nf h1 { fs 64px }
+.nf a { c #2563eb; fw 700 }

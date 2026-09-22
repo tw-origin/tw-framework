@@ -1,0 +1,14 @@
+let log = []
+
+fn post(request) {
+  const event = String(request.body?.event ?? "unknown")
+  const at = new Date().toISOString()
+  log.push({ event, at })
+  if (log.length > 100) log = log.slice(-100)
+  return { status: 200, json: { ok: true, event, at, stored: log.length } }
+}
+
+fn get(request) {
+  const tail = log.slice(-20)
+  return { status: 200, json: { count: log.length, tail } }
+}

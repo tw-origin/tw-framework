@@ -1,0 +1,33 @@
+import "./../style/global.tss"
+
+page { title "Weather -- TW Cached Lookups" render ssr }
+
+div.weather {
+  header.head {
+    h1 "Weather"
+    p "The endpoint below is fn cached with the city query in the cache key. Same city, frozen answer; different city, different entry."
+  }
+  section.now {
+    h2 "Delhi, now"
+    div.big { span.temp "31" span.unit "C" }
+    p.cond "Haze -- feels warmer than it looks."
+  }
+  section.cities {
+    h2 "Other cities"
+    table {
+      thead { tr { th "City" th "Temp" th "Condition" } }
+      tbody {
+        tr { td "Mumbai" td "29" td "Humid" }
+        tr { td "Bengaluru" td "24" td "Pleasant" }
+        tr { td "Chennai" td "33" td "Sunny" }
+        tr { td "Kolkata" td "30" td "Cloudy" }
+      }
+    }
+  }
+  section.api {
+    h2 "The cached endpoint"
+    div.route { span.method get span.path "/api/weather?city=" span.note "fn cached -- revalidate 10, expire 60, tag weather" }
+    p "Watch the same city return the identical reading twice; the source simulates drift, the cache freezes it."
+  }
+  footer.foot { p "Part of the TW example matrix." }
+}

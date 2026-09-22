@@ -48,7 +48,9 @@ export type ErrorCode =
   | "TW075" | "TW076" | "TW077" | "TW078" | "TW079"
   // Deprecation (TW080-TW089)
   | "TW080" | "TW081" | "TW082" | "TW083" | "TW084"
-  | "TW085" | "TW086" | "TW087" | "TW088" | "TW089";
+  | "TW085" | "TW086" | "TW087" | "TW088" | "TW089"
+  // Cache (TW090-TW093, docs/cache-tags.md)
+  | "TW090" | "TW091" | "TW092" | "TW093";
 
 
 export interface AutofixSuggestion {

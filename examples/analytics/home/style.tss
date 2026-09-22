@@ -1,0 +1,15 @@
+.head { mb 24px }
+.head h1 { fs 28px; mb 8px }
+.head p { c #445; maxw 560px }
+.flow { mb 28px }
+.flow h2, .route-card h2, .why h2 { fs 18px; mb 10px }
+.flow ol { pl 18px }
+.flow li { pb 6px; fs 14px }
+.route { bg #f6f7f9; br 12px; p 16px; mb 24px }
+.method { bg #111; c #fff; br 6px; p 2px 8px; fs 11px; fw 700; mr 8px }
+.path { fw 700 }
+.route p { fs 13px; c #556; mt 6px }
+.route code { d block; bg #111; c #0f0; p 8px; br 8px; fs 12px; mt 8px }
+.why { mb 28px; maxw 580px }
+.why p { c #445; fs 14px }
+.foot { mt 28px; pt 14px; border-top 1px solid #eef; fs 12px; c #889 }

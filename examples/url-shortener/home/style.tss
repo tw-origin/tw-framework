@@ -1,0 +1,13 @@
+.head { mb 24px }
+.head h1 { fs 30px; mb 8px }
+.head p { c #445 }
+.api { mb 24px }
+.api h2, .flow h2, .store h2 { fs 18px; mb 10px }
+.route { bg #f6f7f9; br 10px; p 12px; mb 8px; fs 14px }
+.method { bg #111; c #fff; br 6px; p 2px 8px; fs 11px; fw 700; mr 8px }
+.path { fw 700 }
+.note { c #667; ml 8px }
+.flow ol { pl 18px }
+.flow li { pb 6px; fs 14px }
+.store p { c #445; fs 14px }
+.foot { mt 28px; pt 14px; border-top 1px solid #eef; fs 12px; c #889 }
