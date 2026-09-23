@@ -165,7 +165,9 @@ function extractRenderMode(page: RouteFile): RenderMode {
   try {
     const fs = require("node:fs");
     const source = fs.readFileSync(page.absolutePath, "utf-8");
-    const m = source.match(/render\s+(static|ssr|island|edge)/);
+    // Mask strings + comments: example text inside quotes must not flip modes.
+    const { maskSourceStringsAndComments } = require("@tw/shared");
+    const m = maskSourceStringsAndComments(source).match(/render\s+(static|ssr|island|edge)/);
     if (m) {
       return m[1] as RenderMode;
     }

@@ -14,6 +14,7 @@
  *              background refresh; age >= expire -> MISS.
  *   tag        invalidation family for revalidateTag().
  */
+import { maskSourceStringsAndComments } from "./source-mask";
 
 // --- Types --------------------------------------------------------------------
 
@@ -87,11 +88,20 @@ export function parseCacheBody(body: string): CacheDirectiveMeta {
  * frontmatter. Returns the meta, or null when the page has no cache block.
  */
 export function extractCacheDirective(source: string): CacheDirectiveMeta | null {
+  // Mask strings + comments first: a docs page that SHOWS `cache { ... }`
+  // inside a quoted example must not register a cache window (same class
+  // as the .twm comment-strip bug fixed in v1.0.6).
+  const masked = maskSourceStringsAndComments(source);
   // page { ... cache { ... } ... } -- the cache block contains no nested
-  // braces, so [^}] captures exactly its body.
-  const m = /page\s*\{[^}]*?\bcache\s*\{([^}]*)\}/.exec(source);
+  // braces, so [^}] captures exactly its body. The match runs on the MASKED
+  // text (so quoted examples never fake a block), but the BODY is cut from
+  // the ORIGINAL source by position -- the directive's own string values
+  // (`life "product"`) live inside it and must survive.
+  const m = /page\s*\{[^}]*?\bcache\s*\{([^}]*)\}/.exec(masked);
   if (!m) return null;
-  return parseCacheBody(m[1]);
+  const bodyStart = m.index + m[0].length - m[1].length - 1;
+  const bodyEnd = bodyStart + m[1].length;
+  return parseCacheBody(source.slice(bodyStart, bodyEnd));
 }
 
 /** True when a `cache { }` body is complete enough to resolve. */

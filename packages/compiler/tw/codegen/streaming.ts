@@ -568,10 +568,17 @@ function escapeAttr(str: string): string {
 }
 
 function interpolate(expr: string, vars: Record<string, string>): string {
-  return expr.replace(/\{([^}]+)\}/g, (_, name) => {
+  // Brace escapes: \{ and \} print literal braces -- they never start
+  // interpolation. Masked out before the pass and restored after, so
+  // docs-style pages can show real braces (JSON, {x} in prose).
+  const masked = expr
+    .replace(/\\\{/g, "\u0001O")
+    .replace(/\\\}/g, "\u0001C");
+  const out = masked.replace(/\{([^}]+)\}/g, (_, name) => {
     const key = name.trim();
     return vars[key] ?? "";
   });
+  return out.replace(/\u0001O/g, "{").replace(/\u0001C/g, "}");
 }
 
 function isTruthy(val: string): boolean {

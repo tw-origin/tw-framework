@@ -257,6 +257,15 @@ function readEscape(source: string, start: number): EscapeResult {
     return { value: "", end: start + 2 };
   }
 
+  // Brace escapes -- KEEP the backslash. The interpolation layer
+  // (eval/interpolate.ts) turns \{ and \} into literal braces, giving
+  // pages a way to print real braces (JSON examples, {x} in prose)
+  // without starting interpolation. Without this, the lexer would
+  // silently drop the backslash and the brace would interpolate.
+  if (ch === "{" || ch === "}") {
+    return { value: "\\" + ch, end: start + 2 };
+  }
+
   // Unknown escape -- keep the character as-is
   return { value: ch, end: start + 2 };
 }

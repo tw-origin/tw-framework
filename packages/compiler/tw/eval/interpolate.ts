@@ -12,6 +12,19 @@ export function interpolate(template: string, vars: Record<string, string>): str
   while (i < template.length) {
     const ch = template[i];
 
+    // Escapes: \{ and \} render literal braces and never start/stop
+    // interpolation. This gives .tw pages a way to print real braces
+    // (JSON examples, code samples, {x} in prose) without state-var
+    // workarounds.
+    if (ch === "\\") {
+      const nxt = template[i + 1];
+      if (nxt === "{" || nxt === "}") {
+        result += nxt;
+        i += 2;
+        continue;
+      }
+    }
+
     if (ch === "{" && template[i + 1] !== "{") {
       let depth = 1;
       let j = i + 1;

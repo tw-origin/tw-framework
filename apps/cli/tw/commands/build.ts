@@ -16,7 +16,7 @@
  */
 
 import { join, resolve, dirname } from "node:path";
-import { parseCacheBody as parseCacheBodyShared, resolveCache as resolveCacheShared } from "@tw/shared";
+import { parseCacheBody as parseCacheBodyShared, resolveCache as resolveCacheShared, maskSourceStringsAndComments } from "@tw/shared";
 import { existsSync, mkdirSync, writeFileSync, readFileSync, readdirSync, statSync, copyFileSync, unlinkSync, rmdirSync } from "node:fs";
 
 // --- Compiler loader (same as dev.ts) --------------------------------------
@@ -40,7 +40,11 @@ function findCompilerPath(): string {
 
 /** Render mode from a page's frontmatter (`render static|ssr|island|edge|csr|stream|ppr`). */
 export function extractRenderMode(src: string): string {
-  const m = /render\s+(static|ssr|island|edge|csr|stream|ppr|signalStream)\b/.exec(src);
+  // Mask strings + comments first: the words "render ssr" inside a quoted
+  // string (docs pages showing examples) must never flip a page's mode.
+  const m = /render\s+(static|ssr|island|edge|csr|stream|ppr|signalStream)\b/.exec(
+    maskSourceStringsAndComments(src),
+  );
   return m ? m[1] : "static";
 }
 
@@ -386,7 +390,7 @@ export async function buildCommand(): Promise<void> {
           errorCount++;
         }
       }
-      const revM = resolved ? null : /page\s*\{[^}]*revalidate\s+(\d+)/.exec(pageSrc);
+      const revM = resolved ? null : /page\s*\{[^}]*revalidate\s+(\d+)/.exec(maskSourceStringsAndComments(pageSrc));
       if (resolved || revM) {
         for (const ps of paramSets) {
           const rp = routePath.split("/").map(seg => {
