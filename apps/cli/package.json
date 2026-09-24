@@ -8,7 +8,7 @@
     "tw": "./dist/tw.mjs"
   },
   "dependencies": {
-    "esbuild": "^0.21.0"
+    "esbuild": "^0.28.2"
   },
   "license": "MIT",
   "engines": {
