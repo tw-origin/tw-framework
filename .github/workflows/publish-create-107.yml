@@ -1,0 +1,21 @@
+name: publish create-tw-framework 1.0.7
+on:
+  workflow_dispatch:
+jobs:
+  publish:
+    name: Publish create to npm
+    runs-on: ubuntu-latest
+    permissions:
+      contents: read
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 20
+          registry-url: https://registry.npmjs.org
+
+      - name: Publish create-tw-framework
+        run: cd apps/create-tw-framework && npm publish --access public
+        env:
+          NODE_AUTH_TOKEN: ${{ secrets.NPM_TOKEN }}
