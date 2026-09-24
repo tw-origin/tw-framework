@@ -714,6 +714,10 @@ function renderAttrs(el: ElementNode, ctx: CodegenContext): string {
       // the parser -- interpolate them anyway.
       const val = interpolate(attr.value, ctx.stateVars);
       parts.push(`${attr.name}="${escapeAttr(sanitizeUrlAttr(attr.name, val))}"`);
+    } else if (typeof attr.value === "string" && /\\[{}]/.test(attr.value)) {
+      // No state vars: `\{expr}` interpolation stays OFF (literal text),
+      // but the documented \{ / \} brace escapes must still unescape.
+      parts.push(`${attr.name}="${escapeAttr(sanitizeUrlAttr(attr.name, String(attr.value).replace(/\\([{}])/g, "$1")))}"`);
     } else {
       parts.push(`${attr.name}="${escapeAttr(sanitizeUrlAttr(attr.name, attr.value as string))}"`);
     }
@@ -854,6 +858,10 @@ function generateText(text: TextNode, ctx: CodegenContext): string {
       return wrapInterpolations(interpolate(text.value, ctx.stateVars), text.value);
     }
     return escapeHTML(interpolate(text.value, ctx.stateVars));
+  }
+  if (text.value && /\\[{}]/.test(text.value)) {
+    // No state vars: literal text, but \{ / \} escapes must still unescape.
+    return escapeHTML(text.value.replace(/\\([{}])/g, "$1"));
   }
   return escapeHTML(text.value);
 }

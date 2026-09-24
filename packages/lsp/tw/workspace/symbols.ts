@@ -14,8 +14,14 @@ export class WorkspaceSymbolProvider {
     const doc = this.docManager.getDocument(uri);
     if (!doc) return [];
     const symbols: DocumentSymbol[] = [];
-    const scriptMatch = doc.content.match(/<script[^>]*>([\s\S]*?)<\/script>/i);
-    if (scriptMatch) symbols.push(...this.parseScriptSymbols(scriptMatch[1], this.findScriptStart(doc)));
+    // Round 4: collect ALL script blocks (the old first-match-only regex
+    // lost every script after the first).
+    const scriptMatches = [...doc.content.matchAll(/<script[^>]*>([\s\S]*?)<\/script>/gi)];
+    const scriptMatch = scriptMatches.length
+      ? ([scriptMatches.map((m: any) => m[1]).join('\n')] as any)
+      : null;
+    const scriptContent = scriptMatch ? scriptMatch[0] : '';
+    if (scriptMatch) symbols.push(...this.parseScriptSymbols(scriptContent, this.findScriptStart(doc)));
     symbols.push(...this.parseTemplateSymbols(doc));
     return symbols;
   }

@@ -606,6 +606,17 @@ function splitArgs(str: string): string[] {
 function findMatchingBrace(str: string, start: number): number {
   let depth = 1;
   for (let i = start + 1; i < str.length; i++) {
+    // Round 4: skip string literals -- a `}` inside a string used to
+    // close the function body early, corrupting inlined candidates.
+    if (str[i] === '"' || str[i] === "'") {
+      const q = str[i];
+      i++;
+      while (i < str.length && str[i] !== q) {
+        if (str[i] === "\\") i++; // skip escaped char
+        i++;
+      }
+      continue;
+    }
     if (str[i] === "{") depth++;
     else if (str[i] === "}") { depth--; if (depth === 0) return i; }
   }

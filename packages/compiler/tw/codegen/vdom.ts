@@ -229,7 +229,7 @@ export function generateVDOM(program: Program, ctx: CodegenContext): string {
       const el = node as ElementNode;
       return {
         t: el.tag,
-        a: el.attrs.reduce((acc, a) => { (acc as any)[a.name] = a.value; return acc; }, {}),
+        a: el.attrs.reduce((acc, a) => { (acc as any)[a.name] = sanitizeUrlAttr(a.name, String(a.value)); return acc; }, {}),
         c: el.children.map(toVNode),
       };
     }
@@ -314,6 +314,19 @@ function escapeHTML(str: string): string {
     .replace(/>/g, "&gt;")
     .replace(/"/g, "&quot;")
     .replace(/'/g, "&#x27;");
+}
+
+// URL-attribute sanitizer (v1.0.7 round 4): `javascript:`/`data:text/html`
+// hrefs must be neutralized on EVERY render path, not just the html.ts
+// emitter -- this file previously emitted them unsanitized.
+function sanitizeUrlAttr(name: string, value: string): string {
+  const URL_ATTRS = new Set(["href", "src", "action", "formaction", "xlink:href", "poster", "background"]);
+  if (!URL_ATTRS.has(name.toLowerCase())) return value;
+  const trimmed = String(value).trim().toLowerCase().replace(/[\s\0]/g, "");
+  if (trimmed.startsWith("javascript:") || trimmed.startsWith("data:text/html") || trimmed.startsWith("vbscript:")) {
+    return "#";
+  }
+  return value;
 }
 
 function escapeAttr(str: string): string {

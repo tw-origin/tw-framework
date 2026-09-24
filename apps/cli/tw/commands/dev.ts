@@ -391,50 +391,20 @@ function destroySession(req: Request): void {
 // Reads middleware.twm and extracts route protection rules.
 // Format: rule "name" { match "/path/**" auth true redirect "/login" }
 
-interface MiddlewareRule {
-  name: string;
-  match: string;
-  auth: boolean;
-  redirect: string;
-}
-
-function loadMiddleware(rootDir: string): MiddlewareRule[] {
-  const mwPath = join(rootDir, "middleware.twm");
-  if (!existsSync(mwPath)) return [];
-  const source = readFileSync(mwPath, "utf-8");
-  const rules: MiddlewareRule[] = [];
-
-  // Parse: rule "name" { match "/path" auth true redirect "/login" }
-  const ruleRegex = /rule\s+"([^"]+)"\s*{([^}]+)}/g;
-  let match;
-  while ((match = ruleRegex.exec(source)) !== null) {
-    const name = match[1];
-    const body = match[2];
-    const pathMatch = body.match(/match\s+"([^"]+)"/);
-    const authMatch = body.match(/auth\s+(true|false)/);
-    const redirectMatch = body.match(/redirect\s+"([^"]+)"/);
-    if (pathMatch) {
-      rules.push({
-        name,
-        match: pathMatch[1],
-        auth: authMatch ? authMatch[1] === "true" : false,
-        redirect: redirectMatch ? redirectMatch[1] : "/login",
-      });
-    }
+// Middleware rules are parsed by the PRODUCTION rule-DSL parser
+// (twm-rules.ts, same as `tw serve`) so a middleware.twm behaves
+// identically in dev and prod. The old regex parser here accepted an
+// undocumented `auth true redirect "/x"` form that production rejects,
+// and could not parse the documented `response { }` block form at all.
+async function loadMiddlewareRules(mwPath: string): Promise<any[]> {
+  try {
+    const source = readFileSync(mwPath, "utf-8");
+    const { parseRules } = await import("../../../../packages/server/tw/routing/twm-rules.ts");
+    return parseRules(source);
+  } catch (e: any) {
+    console.log("    Middleware error: " + e.message);
+    return [];
   }
-  return rules;
-}
-
-// Check if path matches a glob pattern like /admin/**
-function matchGlob(path: string, pattern: string): boolean {
-  if (pattern === "/**") return true;
-  if (pattern === path) return true;
-  // /admin/** matches /admin, /admin/anything
-  if (pattern.endsWith("/**")) {
-    const prefix = pattern.slice(0, -3);
-    return path === prefix || path.startsWith(prefix + "/");
-  }
-  return false;
 }
 
 // --- 404 ----------------------------------------------------------------------
@@ -524,8 +494,9 @@ export async function devCommand(): Promise<void> {
     if (parts.length) css = parts.join("\n");
   }
 
-  // Load middleware
-  const middlewareRules = loadMiddleware(rootDir);
+  // Load middleware (production rule-DSL parser -- dev/prod parity)
+  const mwPath = join(rootDir, "middleware.twm");
+  const middlewareRules = existsSync(mwPath) ? await loadMiddlewareRules(mwPath) : [];
 
   // Scan and register components
   scanComponents(rootDir);
@@ -690,18 +661,17 @@ async function ensureDevClientBundle(rootDir: string, pageSource: string, layout
 
       console.log("  [" + time + "] " + req.method + " " + path);
 
-      // -- 1. Middleware: auth check ------------------------------------------
+      // -- 1. Middleware: rule DSL (same evaluation as `tw serve`) ------------
       const session = getSession(req);
-      for (const rule of middlewareRules) {
-        if (rule.auth && matchGlob(path, rule.match)) {
-          if (!session || !(session as any).userId) {
-            console.log("    -> 302 Redirect to " + rule.redirect + " (auth required)");
-            return new Response(null, {
-              status: 302,
-              headers: { Location: rule.redirect },
-            });
-          }
+      try {
+        const { evaluateRules } = await import("../../../../packages/server/tw/routing/twm-rules.ts");
+        const mwRes = evaluateRules(middlewareRules, req);
+        if (mwRes) {
+          console.log("    -> middleware response " + mwRes.status + " for " + path);
+          return mwRes;
         }
+      } catch (e: any) {
+        console.log("    Middleware error: " + e.message);
       }
 
       // -- 1b. Hydration runtime for interactive pages -------------------------
@@ -959,14 +929,25 @@ async function ensureDevClientBundle(rootDir: string, pageSource: string, layout
             html = html.replace("</body>", devClientTag + "  <script src=\"/__tw_runtime.js\"></script>\n</body>");
           }
 
-          // Per-route head.tw (SEO meta/OG tags)
+          // Head.tw: home/head.tw is GLOBAL head content for every page;
+          // a head.tw sibling of the page is per-route. Production `tw
+          // build` injects BOTH -- dev used to inject only the sibling.
+          const devGlobalHead = join(homeDir, "head.tw");
+          const devHeadSources: string[] = [];
+          if (existsSync(devGlobalHead)) devHeadSources.push(devGlobalHead);
           const headTw = join(dirname(resolved.file), "head.tw");
-          if (existsSync(headTw)) {
+          if (headTw !== devGlobalHead && existsSync(headTw)) devHeadSources.push(headTw);
+          for (const devHeadTw of devHeadSources) {
             try {
-              const headRes: any = compileSync(readFileSync(headTw, "utf-8"), { filePath: headTw });
+              const headRes: any = compileSync(readFileSync(devHeadTw, "utf-8"), { filePath: devHeadTw });
               const headBody = headRes.html.match(/<body>([\s\S]*)<\/body>/);
               if (headBody && headBody[1].trim()) {
-                html = html.replace("</head>", "  " + headBody[1].trim() + "\n</head>");
+                // head.tw compiles without transforms: unescape the
+                // documented brace escapes here, same as build.
+                html = html.replace(
+                  "</head>",
+                  "  " + headBody[1].trim().replace(/\\([{}])/g, "$1") + "\n</head>",
+                );
               }
             } catch (e: any) { console.log("    Warning: head.tw failed: " + e.message); }
           }

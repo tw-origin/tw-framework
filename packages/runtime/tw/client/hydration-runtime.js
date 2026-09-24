@@ -23,10 +23,18 @@
     try { var c = globalThis.__twClient; return (c && c.$page) || {}; } catch (e) { return {}; }
   };
 
+  var warnedExprs = {};
   function evalExpr(expr) {
     try {
       return (new Function("state", "tw", "with (tw) { with (state) { return (" + expr + "); } }"))(state, twClientScope());
     } catch (e) {
+      // Silent failures were a debugging nightmare: a typo in an
+      // expression just blanked every span it touched. Warn once per
+      // expression, then stay quiet.
+      if (!warnedExprs[expr]) {
+        warnedExprs[expr] = 1;
+        try { console.warn("[tw] expression failed:", expr, "-", e.message); } catch (we) { /* ignore */ }
+      }
       return undefined;
     }
   }
@@ -129,6 +137,11 @@
       }
       el.__twRefs = [];
       var html = "";
+      // The loop var is BORROWED state space: save the user's own value
+      // (if any) and restore it after -- the old code deleted it, so a
+      // loop over a var named like an existing state key destroyed it.
+      var __twPrevV = state[v];
+      var __twHadV = Object.prototype.hasOwnProperty.call(state, v);
       for (var k = 0; k < arr.length; k++) {
         var ref = "__tw_item_" + (++twItemSeq);
         state[ref] = arr[k];
@@ -136,7 +149,8 @@
         state[v] = arr[k];
         html += renderTemplateString(tpl, v, ref);
       }
-      delete state[v];
+      if (__twHadV) state[v] = __twPrevV;
+      else delete state[v];
       if (el.__twLen !== arr.length + ":" + html.length || el.__twHtml !== html) {
         el.innerHTML = html;
         el.__twLen = arr.length + ":" + html.length;
@@ -157,7 +171,15 @@
       var key = inputs[j].getAttribute("data-tw-model");
       if (key in state) {
         var v = state[key];
-        if (String(inputs[j].value) !== String(v)) inputs[j].value = v;
+        var isCheck = inputs[j].type === "checkbox" || inputs[j].type === "radio";
+        if (isCheck) {
+          // Boolean binding for checkboxes/radios (round 4: these used to
+          // read .value ("on") and never reflect boolean state).
+          if (inputs[j].type === "radio") inputs[j].checked = String(v) === inputs[j].value;
+          else inputs[j].checked = !!v;
+        } else if (String(inputs[j].value) !== String(v)) {
+          inputs[j].value = v;
+        }
       }
     }
     refreshLoops();
@@ -170,6 +192,11 @@
     "keyup", "keypress", "focus", "blur", "mouseenter", "mouseleave", "wheel"];
 
   EVENTS.forEach(function (ev) {
+    // Delegate on the BUBBLE phase so the innermost handler runs first
+    // (round 4: capture=true inverted the expected order for nested
+    // data-tw-event elements). focus/blur do not bubble -- those two
+    // keep the capture phase.
+    var useCapture = ev === "focus" || ev === "blur";
     document.addEventListener(ev, function (e) {
       var t = e.target;
       if (!t || !t.closest) return;
@@ -180,16 +207,28 @@
       if (host.getAttribute("data-tw-event-" + ev + "-prevent") === "true") e.preventDefault();
       if (host.getAttribute("data-tw-event-" + ev + "-stop") === "true") e.stopPropagation();
       window.__twEvent = { target: t, value: t.value, type: ev };
-      runHandler(code);
+      try { runHandler(code); } finally {
+        // Event context is scoped to THIS handler only (round 4: the
+        // stale window.__twEvent leaked the previous event's target and
+        // value into later handlers that read it).
+        try { delete window.__twEvent; } catch (ee) { window.__twEvent = undefined; }
+      }
       refresh();
-    }, true);
+    }, useCapture);
   });
 
   // Two-way: input with data-tw-model writes to state
   document.addEventListener("input", function (e) {
     var t = e.target;
     if (t && t.getAttribute && t.getAttribute("data-tw-model")) {
-      state[t.getAttribute("data-tw-model")] = t.value;
+      var mk = t.getAttribute("data-tw-model");
+      if (t.type === "checkbox" || t.type === "radio") {
+        // checkbox -> boolean; radio -> its value when checked (round 4:
+        // the old code wrote the literal string "on").
+        state[mk] = t.type === "checkbox" ? !!t.checked : (t.checked ? t.value : state[mk]);
+      } else {
+        state[mk] = t.value;
+      }
       refresh();
     }
   });
@@ -260,6 +299,22 @@
       if (oldRoot.replaceWith) oldRoot.replaceWith(imported);
       else oldRoot.innerHTML = newRoot.innerHTML;
     }
+    // innerHTML-inserted <script> tags never execute (round 4: pages
+    // relying on scripts silently died after an SPA swap). Re-create
+    // each script node so the browser runs it.
+    try {
+      var liveRoot = document.querySelector("[data-tw-root]") || document.body;
+      var swapped = liveRoot.querySelectorAll("script");
+      for (var si = 0; si < swapped.length; si++) {
+        var os = swapped[si];
+        var ns = document.createElement("script");
+        for (var ai = 0; ai < os.attributes.length; ai++) {
+          ns.setAttribute(os.attributes[ai].name, os.attributes[ai].value);
+        }
+        ns.textContent = os.textContent;
+        if (os.parentNode) os.parentNode.replaceChild(ns, os);
+      }
+    } catch (e) { /* script re-run is best-effort */ }
 
     var t = newDoc ? newDoc.querySelector("title") : null;
     if (t) document.title = t.textContent;
@@ -329,9 +384,16 @@
   //   data-tw-prefetch="always"   -> fetched immediately on load
   //   data-tw-prefetch="viewport" -> fetched when the link scrolls into view
   //   data-tw-no-prefetch          -> never fetched
+  var prefetchOrder = [];
   function twPrefetch(href) {
     if (!href || !sameOrigin(href) || prefetched[href]) return;
     prefetched[href] = true;
+    // Bound the cache (round 4: it grew forever on long SPA sessions).
+    prefetchOrder.push(href);
+    while (prefetchOrder.length > 60) {
+      var old2 = prefetchOrder.shift();
+      delete prefetched[old2];
+    }
     try { fetch(href).catch(function () {}); } catch (e) { /* ignore */ }
   }
 

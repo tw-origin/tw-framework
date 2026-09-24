@@ -20,6 +20,7 @@
  * - Result: ~3x faster than Next.js RSC for same content
  */
 
+import { stripCommentsStringAware } from "@tw/shared";
 import { compile } from "./index";
 
 function safeJsonParse<T>(json: string, fallback: T): T {
@@ -218,8 +219,13 @@ async function renderIslandContent(
 }
 
 function countServerComponents(source: string): number {
-  // Count @render mode: 'server' directives
-  const matches = source.match(/@render\s+mode:\s*['"]server['"]/g);
+  // Count @render mode: 'server' directives. Comment-aware (round 4):
+  // a commented-out directive used to count as a live one.
+  let cleaned = source;
+  try {
+    cleaned = (stripCommentsStringAware as any)(source);
+  } catch { /* keep raw */ }
+  const matches = cleaned.match(/@render\s+mode:\s*['"]server['"]/g);
   return matches ? matches.length : 0;
 }
 

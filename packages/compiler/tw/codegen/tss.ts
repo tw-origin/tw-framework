@@ -77,7 +77,10 @@ function compileDecl(decl: string): string {
   const trimmed = decl.trim();
   if (!trimmed) return "";
   // Plain CSS passthrough (already has a colon): `color: red`
-  if (trimmed.includes(":")) return trimmed.replace(/\s*:\s*/, ": ");
+  // Normalize ONLY the property colon: `url(https://...)` holds colons
+  // inside the value; a first-colon replace corrupted them.
+  const cssForm = /^([-\w]+)\s*:\s*/.exec(trimmed);
+  if (cssForm) return trimmed.replace(/^([-\w]+)\s*:\s*/, "$1: ");
   const spaceIdx = trimmed.search(/[\s]/);
   if (spaceIdx === -1) {
     // bare property (e.g. `hidden` for overflow?) -- expand if known, else keep
@@ -94,11 +97,71 @@ function combineSelector(parent: string, child: string): string {
   return `${parent} ${child}`;
 }
 
+/**
+ * String- and url()-aware comment stripper for TSS sources.
+ */
+function stripTssComments(src: string): string {
+  let out = "";
+  let i = 0;
+  const n = src.length;
+  while (i < n) {
+    const c = src[i];
+    if (c === '"' || c === "'") {
+      const q = c;
+      out += c;
+      i++;
+      while (i < n && src[i] !== q) {
+        if (src[i] === "\\") { out += src[i++]; if (i < n) out += src[i++]; continue; }
+        out += src[i++];
+      }
+      out += src[i] ?? "";
+      i++;
+      continue;
+    }
+    if (c === "u" && /^url\s*\(/i.test(src.slice(i, i + 6))) {
+      let depth = 0;
+      let j = i;
+      for (; j < n; j++) {
+        if (src[j] === "(") depth++;
+        else if (src[j] === ")") { depth--; if (depth === 0) { j++; break; } }
+      }
+      out += src.slice(i, j);
+      i = j;
+      continue;
+    }
+    if (c === "/" && src[i + 1] === "/") {
+      while (i < n && src[i] !== "\n") i++;
+      continue;
+    }
+    if (c === "/" && src[i + 1] === "*") {
+      const end = src.indexOf("*/", i + 2);
+      i = end === -1 ? n : end + 2;
+      out += " ";
+      continue;
+    }
+    out += c;
+    i++;
+  }
+  return out;
+}
+
 /** Compile a TSS source string into CSS. */
 export function compileTSS(source: string): string {
+  const __twOut = __twCompileTSSInner(source);
+  // Round 4: an unsubstituted $var used to ship broken CSS silently
+  // (`color: $main-color` where no such state var exists).
+  const leftover = __twOut.match(/\$[A-Za-z_][\w-]*/g);
+  if (leftover && !/\$\{/.test(__twOut)) {
+    const seen = Array.from(new Set(leftover));
+    console.warn("[tss] unsubstituted $var(s) in output: " + seen.join(", ") + " -- define them as state vars or fix the spelling");
+  }
+  return __twOut;
+}
+
+function __twCompileTSSInner(source: string): string {
   if (!source || !source.trim()) return "";
-  // Strip comments
-  let src = source.replace(/\/\*[\s\S]*?\*\//g, "").replace(/\/\/.*$/gm, "");
+  // Strip comments (string- and url()-aware)
+  let src = stripTssComments(source);
 
   // Variables: `$name: value` declarations are collected, removed from the
   // source and substituted into every `$name` use (SCSS-style).

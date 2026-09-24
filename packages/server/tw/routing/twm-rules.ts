@@ -377,16 +377,32 @@ function verifyJwt_hs256(token: string, secret: string): boolean {
 // --- Evaluation ----------------------------------------------------------------------
 
 function matchPath(pattern: string, pathname: string): boolean {
-  if (pattern === "/**" || pattern === "/*") return true;
-  if (pattern.endsWith("/**")) {
-    const prefix = pattern.slice(0, -3);
-    return pathname === prefix || pathname.startsWith(prefix + "/");
+  // Round 4: normalize -- percent-decode and drop the trailing slash so
+  // a rule for "/blog" matches "/blog/" and encoded paths match too.
+  const norm = (p: string): string => {
+    let x = p;
+    try { x = decodeURIComponent(x); } catch { /* keep raw */ }
+    if (x.length > 1 && x.endsWith("/")) x = x.slice(0, -1);
+    return x;
+  };
+  const pat = norm(pattern);
+  const path = norm(pathname);
+  if (pat === "/**") return true;
+  if (pat === "/*") return path === "" || path === "/";
+  if (pat.endsWith("/**")) {
+    const prefix = pat.slice(0, -3);
+    return path === prefix || path.startsWith(prefix + "/");
   }
-  if (pattern.endsWith("/*")) {
-    const prefix = pattern.slice(0, -2);
-    return pathname === prefix || pathname.startsWith(prefix + "/");
+  if (pat.endsWith("/*")) {
+    // `/*` is a SINGLE-SEGMENT wildcard: /blog/* matches /blog/x but
+    // NOT /blog/x/y (that is what /** is for). The old code treated
+    // both identically.
+    const prefix = pat.slice(0, -2);
+    if (!path.startsWith(prefix + "/")) return path === prefix;
+    const rest = path.slice(prefix.length + 1);
+    return !rest.includes("/");
   }
-  return pathname === pattern;
+  return path === pat;
 }
 
 function ruleBlocked(rule: MiddlewareRule, request: Request, pathname: string): boolean {

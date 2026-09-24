@@ -606,7 +606,16 @@ export async function executeRouteHandler(
       parsedBody = { ...fields, multipart: { fields, files } };
     } catch { parsedBody = {}; }
   } else if (typeof request?.json === "function") {
-    try { parsedBody = await request.json(); } catch { parsedBody = {}; }
+    // Round 4: chunked bodies carry no content-length, so the header
+    // guard above skipped them. Read as text WITH a hard cap so the
+    // 10 MB limit holds for every encoding.
+    try {
+      const rawBody = await request.text();
+      if (rawBody.length > MAX_BODY_BYTES) {
+        return { status: 413, json: { ok: false, error: "Payload too large" } };
+      }
+      parsedBody = rawBody ? JSON.parse(rawBody) : {};
+    } catch { parsedBody = {}; }
   } else if (request?.body && typeof request.body === "object") {
     parsedBody = request.body;
   }

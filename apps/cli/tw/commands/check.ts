@@ -1,5 +1,6 @@
 /** tw check -- type check and diagnostics. */
 
+import { maskSourceStringsAndComments } from "@tw/shared";
 import { join } from "node:path";
 import { existsSync, readFileSync, readdirSync, statSync } from "node:fs";
 
@@ -72,26 +73,29 @@ export async function checkCommand(): Promise<void> {
       const relativePath = filePath.replace(rootDir + "/", "");
       const source = readFileSync(filePath, "utf-8");
 
-      // Basic checks: balanced braces, unclosed tags
-      const openBraces = (source.match(/\{/g) || []).length;
-      const closeBraces = (source.match(/\}/g) || []).length;
+      // Basic checks: balanced braces, unclosed tags. Round 4: count on
+      // the MASKED source -- braces inside strings/comments used to make
+      // valid pages report "unbalanced braces".
+      const maskedSource = maskSourceStringsAndComments(source);
+      const openBraces = (maskedSource.match(/\{/g) || []).length;
+      const closeBraces = (maskedSource.match(/\}/g) || []).length;
 
       if (openBraces !== closeBraces) {
         totalErrors++;
-        console.debug(`  X ${relativePath}: unbalanced braces (${openBraces} open, ${closeBraces} close)`);
+        console.log(`  X ${relativePath}: unbalanced braces (${openBraces} open, ${closeBraces} close)`);
       } else {
-        console.debug(`  OK ${relativePath} -- syntax OK`);
+        console.log(`  OK ${relativePath} -- syntax OK`);
       }
     }
   }
 
-  console.debug(`\n  Summary: ${totalErrors} errors, ${totalWarnings} warnings, ${totalInfo} info`);
+  console.log(`\n  Summary: ${totalErrors} errors, ${totalWarnings} warnings, ${totalInfo} info`);
 
   if (totalErrors > 0) {
-    console.debug("  Status: FAILED\n");
+    console.log("  Status: FAILED\n");
     process.exit(1);
   } else {
-    console.debug("  Status: PASSED\n");
+    console.log("  Status: PASSED\n");
   }
 }
 

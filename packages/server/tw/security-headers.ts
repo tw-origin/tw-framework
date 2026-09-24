@@ -202,6 +202,18 @@ export function generateSecurityHeaders(options: SecurityHeadersOptions = {}): R
   // CSP
   if (opts.csp) {
     headers["Content-Security-Policy"] = buildCSPHeader(opts.csp);
+    // Round 4: the client hydration runtime (islands, event handlers)
+    // compiles expressions with `new Function`, which needs
+    // 'unsafe-eval' in script-src. A configured CSP without it breaks
+    // every interactive page -- warn once instead of failing silently.
+    try {
+      const scriptSrc = Array.isArray((opts.csp as any)["script-src"])
+        ? (opts.csp as any)["script-src"].join(" ")
+        : String((opts.csp as any)["script-src"] ?? "");
+      if (scriptSrc && !scriptSrc.includes("'unsafe-eval'") && !scriptSrc.includes("'strict-dynamic'")) {
+        console.warn("[tw] security: configured CSP has no 'unsafe-eval' in script-src -- the island hydration runtime needs it (add script-src: ['self', ''unsafe-eval''] or migrate handlers).");
+      }
+    } catch { /* advisory only */ }
   }
 
   // HSTS

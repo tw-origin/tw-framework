@@ -26,7 +26,7 @@
 import { readFileSync, existsSync } from "node:fs";
 import { dirname } from "node:path";
 import { compileSync, registerComponentTemplate, type CompileResult } from "@tw/compiler";
-import { sha256, extractCacheDirective, resolveCache, readCacheProfilesSync, type ResolvedCache } from "@tw/shared";
+import { maskSourceStringsAndComments, sha256, extractCacheDirective, resolveCache, readCacheProfilesSync, type ResolvedCache } from "@tw/shared";
 import { executeRouteHandler } from "./twm-loader";
 import type {
   RouteNode,
@@ -330,7 +330,14 @@ export class RenderPipeline {
         for (const headMatch of bodyHTML.matchAll(/<head[^>]*>([\s\S]*?)<\/head>/gi)) {
           const headInner = headMatch[1];
           const tMatch = headInner.match(/<title>([^<]*)<\/title>/i);
-          if (tMatch) layoutTitle = tMatch[1].trim();
+          // The lifted title comes from COMPILED html, so it is already
+          // HTML-escaped; assembleHTML escapes again -- decode it first
+          // (round 4: this double-escaped `"` into `&quot;` in titles).
+          if (tMatch) layoutTitle = tMatch[1].trim()
+            .replace(/&quot;/g, '"')
+            .replace(/&lt;/g, "<")
+            .replace(/&gt;/g, ">")
+            .replace(/&amp;/g, "&");
           const kids = headInner
             .replace(/<title>[^<]*<\/title>/gi, "")
             .replace(/<meta[^>]+charset[^>]*>/gi, "")
@@ -390,7 +397,9 @@ export class RenderPipeline {
         for (const hp of headCandidates) {
           const headCompiled = this.compileFile({ absolutePath: hp, type: "head" } as any);
           const m = headCompiled.html.match(/<body>([\s\S]*)<\/body>/);
-          if (m && m[1].trim()) headExtra += m[1].trim() + "\n";
+          // head.tw compiles without transforms: unescape the documented
+          // brace escapes here, same as the build path.
+          if (m && m[1].trim()) headExtra += m[1].trim().replace(/\\([{}])/g, "$1") + "\n";
         }
         if (liftedHead) headExtra += liftedHead + "\n";
       } catch { /* head.tw is optional */ }
@@ -622,8 +631,16 @@ export class RenderPipeline {
   private extractTitle(file: RouteFile): string | null {
     try {
       const source = readFileSync(file.absolutePath, "utf-8");
-      const m = source.match(/page\s*\{[^}]*title\s+"([^"]+)"/);
-      return m ? m[1] : null;
+      // Mask strings + comments: the words `title "x"` inside a quoted
+      // example must not fake a page title. Match on the masked source,
+      // read the value from the ORIGINAL by position (same length).
+      const masked = maskSourceStringsAndComments(source);
+      const m = masked.match(/page\s*\{[^}]*title\s+"/);
+      if (!m || m.index === undefined) return null;
+      const start = m.index + m[0].length;
+      const end = source.indexOf('"', start);
+      if (end === -1 || end === start) return null;
+      return source.slice(start, end).replace(/\\([{}"])/g, "$1");
     } catch {
       return null;
     }
@@ -638,7 +655,10 @@ export class RenderPipeline {
   private extractRenderMode(file: RouteFile): string {
     try {
       const src = readFileSync(file.absolutePath, "utf8");
-      const m = /render\s+(static|ssr|island|edge|csr|stream|ppr)\b/.exec(src);
+      // Mask strings + comments: example text must not flip the mode.
+      const m = /render\s+(static|ssr|island|edge|csr|stream|ppr)\b/.exec(
+        maskSourceStringsAndComments(src),
+      );
       return m ? m[1] : "static";
     } catch {
       return "static";
@@ -694,7 +714,9 @@ export class RenderPipeline {
   private extractRevalidate(file: RouteFile): number | null {
     try {
       const source = readFileSync(file.absolutePath, "utf-8");
-      const m = source.match(/page\s*\{[^}]*revalidate\s+(\d+)/);
+      // Mask strings + comments: `revalidate 60` shown as example text
+      // must not fake an ISR window on the serve path.
+      const m = maskSourceStringsAndComments(source).match(/page\s*\{[^}]*revalidate\s+(\d+)/);
       if (m) {
         const n = Number(m[1]);
         return Number.isFinite(n) && n > 0 ? n : null;
@@ -743,17 +765,36 @@ export class RenderPipeline {
   private buildMetaTags(file: RouteFile): string {
     try {
       const source = readFileSync(file.absolutePath, "utf-8");
-      const fm = source.match(/page\s*\{([^}]*)\}/);
-      if (!fm) return "";
-      const body = fm[1];
+      // Mask strings + comments, then cut the frontmatter body from
+      // the ORIGINAL by position: a `page {` shown inside a quoted
+      // example must not hijack the meta tags, but the real body's
+      // own quoted values must survive.
+      const masked = maskSourceStringsAndComments(source);
+      const fm = masked.match(/page\s*\{/);
+      if (!fm || fm.index === undefined) return "";
+      const bodyStart = fm.index + fm[0].length;
+      const bodyEnd = masked.indexOf("}", bodyStart);
+      if (bodyEnd === -1) return "";
+      const body = source.slice(bodyStart, bodyEnd);
       const AMP = String.fromCharCode(38);
       const esc = (v: string) => v
         .split(AMP).join(AMP + "amp;")
         .split(String.fromCharCode(34)).join(AMP + "quot;")
         .split("<").join(AMP + "lt;");
       const pick = (key: string): string | null => {
-        const m = body.match(new RegExp(key + '\\s+"([^"]*)"'));
-        return m ? m[1] : null;
+        const i = body.indexOf(key + ' "');
+        if (i === -1) return null;
+        const rest = body.slice(i + key.length + 2);
+        // escape-aware closing-quote scan (see build.ts pick): a value
+        // with an escaped quote must not truncate at it.
+        let end = -1;
+        for (let j = 0; j < rest.length; j++) {
+          if (rest[j] === "\\") { j++; continue; }
+          if (rest[j] === '"') { end = j; break; }
+        }
+        if (end === -1) return null;
+        // brace + quote escapes; HTML escaping stays with esc() below.
+        return rest.slice(0, end).replace(/\\([{}"])/g, "$1");
       };
       let tags = "";
       const description = pick("description");

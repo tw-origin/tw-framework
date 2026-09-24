@@ -1,5 +1,6 @@
 /** tw plugin -- manage project plugins (app-level plugins/ directory). */
 
+import { stripCommentsStringAware } from "@tw/shared";
 import { join } from "node:path";
 import { existsSync, readFileSync, writeFileSync, mkdirSync, readdirSync } from "node:fs";
 
@@ -7,7 +8,7 @@ import { existsSync, readFileSync, writeFileSync, mkdirSync, readdirSync } from 
  *  no import needed -- the file may be TS that node cannot import). */
 function readConfigPlugins(cfgPath: string): string[] {
   if (!existsSync(cfgPath)) return [];
-  const src = readFileSync(cfgPath, "utf-8");
+  const src = stripCommentsStringAware(readFileSync(cfgPath, "utf-8"));
   const m = /plugins\s*:\s*\[([^\]]*)\]/s.exec(src);
   if (!m) return [];
   const out: string[] = [];
@@ -26,7 +27,7 @@ function addConfigPlugin(cfgPath: string, name: string): boolean {
     writeFileSync(cfgPath, `export default {\n  plugins: ["${name}"],\n};\n`);
     return true;
   }
-  const src = readFileSync(cfgPath, "utf-8");
+  const src = stripCommentsStringAware(readFileSync(cfgPath, "utf-8"));
   if (new RegExp(`["'\`]${name}["'\`]`).test(src)) return false; // already there
   const m = /plugins\s*:\s*\[([^\]]*)\]/s.exec(src);
   if (m) {
@@ -45,7 +46,7 @@ function addConfigPlugin(cfgPath: string, name: string): boolean {
 /** Remove a name from the plugins array in tw.config.ts. */
 function removeConfigPlugin(cfgPath: string, name: string): boolean {
   if (!existsSync(cfgPath)) return false;
-  const src = readFileSync(cfgPath, "utf-8");
+  const src = stripCommentsStringAware(readFileSync(cfgPath, "utf-8"));
   const m = /plugins\s*:\s*\[([^\]]*)\]/s.exec(src);
   if (!m) return false;
   const kept = m[1]

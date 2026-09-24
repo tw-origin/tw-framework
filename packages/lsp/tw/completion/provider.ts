@@ -68,9 +68,15 @@ export class CompletionProvider {
   private getExpressionCompletions(doc: LSPDocument): CompletionItem[] {
     const items: CompletionItem[] = [];
     const definedVars = new Set<string>();
-    const scriptMatch = doc.content.match(/<script[^>]*>([\s\S]*?)<\/script>/i);
+    // Round 4: collect ALL script blocks (the old first-match-only regex
+    // lost every script after the first).
+    const scriptMatches = [...doc.content.matchAll(/<script[^>]*>([\s\S]*?)<\/script>/gi)];
+    const scriptMatch = scriptMatches.length
+      ? ([scriptMatches.map((m: any) => m[1]).join('\n')] as any)
+      : null;
+    const scriptContent = scriptMatch ? scriptMatch[0] : '';
     if (scriptMatch) {
-      const sc = scriptMatch[1];
+      const sc = scriptContent;
       const varRegex = /(?:const|let|var)\s+(\w+)/g; let m: RegExpExecArray | null;
       while ((m = varRegex.exec(sc)) !== null) { if (!definedVars.has(m[1])) { definedVars.add(m[1]); items.push({ label: m[1], kind: CompletionItemKind.Variable, detail: "variable", sortText: `3_${m[1]}` }); } }
       const funcRegex = /function\s+(\w+)/g;

@@ -5,6 +5,12 @@
 import type { CodeLens, LSPDocument, Range, Command } from "../types";
 import { DocumentSyncManager } from "../document-sync/manager";
 
+// Round 4: strip comments before counting references -- mentions inside
+// comments used to inflate the code-lens counts.
+function stripLineComments(src: string): string {
+  return src.split("\n").map(function (l) { return l.replace(/(^|\s)\/\/.*$/, ""); }).join("\n");
+}
+
 export class CodeLensProvider {
   private docManager: DocumentSyncManager;
   constructor(docManager: DocumentSyncManager) { this.docManager = docManager; }
@@ -26,14 +32,14 @@ export class CodeLensProvider {
   private countRefs(doc: LSPDocument, symbol: string): number {
     let count = 0; const esc = symbol.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
     const regex = new RegExp(`\\b${esc}\\b`, "g");
-    for (const d of this.docManager.getAllDocuments()) { const m = d.content.match(regex); if (m) count += m.length - 1; }
+    for (const d of this.docManager.getAllDocuments()) { const m = stripLineComments(d.content).match(regex); if (m) count += m.length - 1; }
     return Math.max(0, count);
   }
 
   private countComponentUsage(doc: LSPDocument, name: string): number {
     let count = 0; const esc = name.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
     const regex = new RegExp(`<${esc}\\b`, "g");
-    for (const d of this.docManager.getAllDocuments()) { const m = d.content.match(regex); if (m) count += m.length; }
+    for (const d of this.docManager.getAllDocuments()) { const m = stripLineComments(d.content).match(regex); if (m) count += m.length; }
     return count;
   }
 }

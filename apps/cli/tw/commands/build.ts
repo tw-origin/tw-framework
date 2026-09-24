@@ -203,9 +203,17 @@ function scanComponents(rootDir: string): void {
 /** Metadata API (docs/metadata.md): page frontmatter description /
  * keywords / og_* -> <meta> tags for the static output. */
 function buildMetaTagsFromSource(source: string): string {
-  const fm = source.match(/page\s*\{([^}]*)\}/);
-  if (!fm) return "";
-  const body = fm[1];
+  // Mask strings + comments, then cut the frontmatter body from
+  // the ORIGINAL by position: a `page {` shown inside a quoted
+  // example must not hijack the meta tags, but the real body's
+  // own quoted values must survive.
+  const masked = maskSourceStringsAndComments(source);
+  const fm = masked.match(/page\s*\{/);
+  if (!fm || fm.index === undefined) return "";
+  const bodyStart = fm.index + fm[0].length;
+  const bodyEnd = masked.indexOf("}", bodyStart);
+  if (bodyEnd === -1) return "";
+  const body = source.slice(bodyStart, bodyEnd);
   const AMP = String.fromCharCode(38);
   const esc = (v: string) => v
     .split(AMP).join(AMP + "amp;")
@@ -215,9 +223,18 @@ function buildMetaTagsFromSource(source: string): string {
     const i = body.indexOf(key + ' "');
     if (i === -1) return null;
     const rest = body.slice(i + key.length + 2);
-    const end = rest.indexOf('"');
+    // find the closing quote, skipping escaped characters: a directive
+    // value like `description "He said \\"hi\\" loudly"` must not end at
+    // the escaped quote (it used to, truncating the value).
+    let end = -1;
+    for (let j = 0; j < rest.length; j++) {
+      if (rest[j] === "\\") { j++; continue; }
+      if (rest[j] === '"') { end = j; break; }
+    }
     if (end === -1) return null;
-    return rest.slice(0, end);
+    // raw-source extraction: convert brace + quote escapes (HTML escaping
+    // stays with the emitter's esc()).
+    return rest.slice(0, end).replace(/\\([{}"])/g, "$1");
   };
   let tags = "";
   const description = pick("description");
@@ -493,7 +510,13 @@ export async function buildCommand(): Promise<void> {
           const headResult = _compileSync(headSource, { filePath: headSrc });
           const headBody = headResult.html.match(/<body>([\s\S]*)<\/body>/);
           if (headBody && headBody[1].trim()) {
-            html = html.replace("</head>", "  " + headBody[1].trim() + "\n</head>");
+            // head.tw compiles with transforms off (no interpolation), so
+            // the documented \{ / \} brace escapes are NOT processed --
+            // unescape them here like an in-page head { } block.
+            html = html.replace(
+              "</head>",
+              "  " + headBody[1].trim().replace(/\\([{}])/g, "$1") + "\n</head>",
+            );
           }
         } catch (e: any) {
           console.log("  Warning: head.tw failed: " + e.message);
@@ -753,6 +776,7 @@ const runtimeSrc = _bundleDir
 
   console.log("\n  \x1b[32mBuild complete!\x1b[0m");
   console.log("  Pages: " + pageCount + " compiled");
+  if (pageCount === 0) console.warn("  [!] No static pages were compiled -- every page is SSR/API. Static hosts (Vercel/Cloudflare Pages output) will serve an empty site. Use `render static` or check your render modes.");
   console.log("  APIs:  " + apiCount + " routes");
   // ISR manifest (docs/isr.md): serve reads this to route revalidate pages
   // through the render pipeline (MISS/HIT/STALE) instead of static files.

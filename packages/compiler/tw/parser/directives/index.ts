@@ -103,6 +103,7 @@ function parsePageDirective(cursor: TokenCursor, token: Token): PageDirective | 
   if (valToken && (valToken.type === "STRING" || valToken.type === "NUMBER")) {
     cursor.advance();
     value = valToken.value;
+    if (valToken.type === "STRING") value = String(value).replace(/\\([{}"])/g, "$1");
     if (valToken.type === "NUMBER") value = parseFloat(valToken.value);
   } else if (cursor.match("EQUALS") || cursor.match("COLON")) {
     cursor.skipWhitespace();
@@ -110,6 +111,7 @@ function parsePageDirective(cursor: TokenCursor, token: Token): PageDirective | 
     if (vToken) {
       cursor.advance();
       value = vToken.value;
+      if (vToken.type === "STRING") value = String(value).replace(/\\([{}"])/g, "$1");
       if (vToken.type === "NUMBER") value = parseFloat(vToken.value);
       if (vToken.type === "BOOLEAN") value = vToken.value === "true";
     }
@@ -141,7 +143,9 @@ function parsePageDirective(cursor: TokenCursor, token: Token): PageDirective | 
     const nextToken = cursor.peek();
     if (nextToken && (nextToken.type === "STRING" || nextToken.type === "NUMBER" || nextToken.type === "IDENT" || nextToken.type === "KEYWORD")) {
       cursor.advance();
-      options[optName] = nextToken.value;
+      options[optName] = nextToken.type === "STRING"
+        ? String(nextToken.value).replace(/\\([{}"])/g, "$1")
+        : nextToken.value;
     } else if (cursor.match("EQUALS")) {
       cursor.skipWhitespace();
       const optVal = cursor.consumeValue();
@@ -607,6 +611,7 @@ function consumeStateValue(cursor: TokenCursor): string {
   if (!t) return "";
   if (t.type === "STRING" || t.type === "NUMBER" || t.type === "IDENT" || t.type === "KEYWORD") {
     cursor.advance();
+    if (t.type === "STRING") return String(t.value).replace(/\\([{}"])/g, "$1");
     return t.value;
   }
   if (t.type as any === "LBRACKET" || t.type as any === "LBRACE" || t.type as any === "LBRACK") {
@@ -619,7 +624,7 @@ function consumeStateValue(cursor: TokenCursor): string {
       else if (tk.type as any === "RBRACKET" || tk.type as any === "RBRACE" || tk.type as any === "RBRACK") depth--;
       const after = cursor.peek(1);
       if (tk.type === "STRING") {
-        parts.push(`"${tk.value}"`);
+        parts.push(`"${String(tk.value).replace(/\\([{}"])/g, "$1")}"`);
       } else if (tk.type === "IDENT" && after && after.type === "COLON" && depth > 0) {
         // Object keys inside a literal must be quoted for JSON.parse to work:
         // { name: "x" } -> {"name":"x"}

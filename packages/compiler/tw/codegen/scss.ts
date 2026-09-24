@@ -36,7 +36,11 @@ function stripComments(src: string): string {
       const q = c;
       out += c;
       i++;
-      while (i < n && src[i] !== q) { out += src[i++]; }
+      // honor escapes: \" inside the string must not end it
+      while (i < n && src[i] !== q) {
+        if (src[i] === "\\") { out += src[i++]; if (i < n) out += src[i++]; continue; }
+        out += src[i++];
+      }
       out += src[i] ?? "";
       i++;
     } else {
@@ -397,8 +401,20 @@ function emit(items: Item[], parent: string, env: Env, mixins: Map<string, Mixin
 
 /** Compile a SCSS source string to plain CSS. */
 export function compileSCSS(source: string): string {
+  // Round 4: silent data loss used to hide every unsupported construct
+  // (unrecognized declarations and at-rules were dropped with no signal).
+  const cleaned0 = stripComments(source);
+  const UNSUPPORTED = /@(import|mixin|include|extend|use|forward|function|each|if)\b/g;
+  const m = cleaned0.match(UNSUPPORTED);
+  if (m) {
+    const seen = Array.from(new Set(m.map((x) => x.trim())));
+    console.warn("[scss] unsupported at-rule(s) ignored: " + seen.join(", ") + " -- TW's SCSS subset supports nesting, $vars and & references only");
+  }
   const items = parseItems(stripComments(source));
   const out: string[] = [];
   emit(items, "", [new Map()], new Map(), out);
+  if (out.length === 0 && cleaned0.replace(/[\s;]/g, "").length > 0) {
+    console.warn("[scss] compileSCSS produced no output for a non-empty source -- check for unsupported syntax (TW uses `color: #fff` declarations, not `color #fff`)");
+  }
   return out.join("\n");
 }

@@ -89,3 +89,43 @@ export function maskSourceStringsAndComments(src: string): string {
 
   return out;
 }
+
+
+/**
+ * String-aware comment stripper: removes // and /* *\/ comments but keeps
+ * every quoted string intact (escapes honored). Use before regex-scanning
+ * authored config files so commented-out directives never come alive.
+ */
+export function stripCommentsStringAware(src: string): string {
+  let out = "";
+  let i = 0;
+  const n = src.length;
+  while (i < n) {
+    const c = src[i];
+    if (c === '"' || c === "'") {
+      const q = c;
+      out += c;
+      i++;
+      while (i < n && src[i] !== q) {
+        if (src[i] === "\\") { out += src[i++]; if (i < n) out += src[i++]; continue; }
+        out += src[i++];
+      }
+      out += src[i] ?? "";
+      i++;
+      continue;
+    }
+    if (c === "/" && src[i + 1] === "/") {
+      while (i < n && src[i] !== "\n") i++;
+      continue;
+    }
+    if (c === "/" && src[i + 1] === "*") {
+      const end = src.indexOf("*/", i + 2);
+      i = end === -1 ? n : end + 2;
+      out += " ";
+      continue;
+    }
+    out += c;
+    i++;
+  }
+  return out;
+}
