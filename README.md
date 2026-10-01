@@ -1,5 +1,9 @@
 <p align="center">
-  <img src="assets/logo.jpg" alt="TW Framework" width="140" />
+  <img src="assets/brand/banner.png" alt="TW Framework" width="820" />
+</p>
+
+<p align="center">
+  <img src="assets/brand/logo.png" alt="TW Framework logo" width="72" />
 </p>
 
 <h1 align="center">TW Framework</h1>
@@ -10,9 +14,10 @@
 
 <p align="center">
   <a href="https://github.com/tw-origin/tw-framework/actions/workflows/ci.yml"><img src="https://github.com/tw-origin/tw-framework/actions/workflows/ci.yml/badge.svg" alt="CI" /></a>
-  <img src="https://img.shields.io/badge/version-1.0.0-22c55e" alt="version 1.0.0" />
+  <img src="https://img.shields.io/badge/version-1.0.8-22c55e" alt="version 1.0.8" />
   <img src="https://img.shields.io/badge/runtime-Bun%20%7C%20Node-22c55e" alt="Bun and Node runtimes" />
   <img src="https://img.shields.io/badge/language-TypeScript-3178c6" alt="TypeScript" />
+  <img src="https://img.shields.io/badge/tests-2790%20passing-22c55e" alt="tests" />
 </p>
 
 ---
@@ -279,13 +284,31 @@ The complete index of all 182 documents lives in the
 Developers: Aslam Alam · Rohit Kumar · Badal Kumar · TW Mlkraj
 
 TW Framework has been in development for 8–12 months, from the first line of the parser to the
-1.0.0 release — compiler, VDOM, styling engine, server and toolchain all built in-house.
+current 1.0.8 release — compiler, VDOM, styling engine, server and toolchain all built in-house.
 
 Debugging support during development: Indus (Sarvam AI), Claude Max, ChatGPT Terra 4, DeepSeek v4 Coder.
 
 ## Security
 
 Found something that looks like a security issue? See **[SECURITY.md](SECURITY.md)** — the built-in protections, reporting contact and scope.
+
+## Brand assets
+
+Logos and banners live in `assets/brand/`. Use the light banner on light
+backgrounds and the dark banner on dark ones:
+
+<p align="center">
+  <img src="assets/brand/banner.png" alt="TW Framework banner (light)" width="620" />
+</p>
+
+| File | Use |
+|------|-----|
+| `assets/brand/banner.png` | README / docs header (light backgrounds) |
+| `assets/brand/banner-dark.png` | dark backgrounds, slides |
+| `assets/brand/og-card.png` | link previews (social, chat) |
+| `assets/brand/logo.png` | logo mark, app icon |
+| `assets/brand/favicon.ico` | website favicon |
+| `assets/brand/terminal.png` | CLI / terminal sections |
 
 ## Contact
 

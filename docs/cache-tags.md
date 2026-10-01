@@ -54,7 +54,7 @@ Response headers on every cacheable route: `x-tw-cache: HIT|STALE|MISS`, `x-tw-c
 
 ### Legacy compatibility — exact
 
-`page { revalidate 60 }` desugars to `{ revalidate: 60, stale: 0, expire: Infinity }`: fresh for 60s, then stale-while-revalidate forever, never a blocking MISS — the v1.0.5 behavior byte-for-byte. `routes.json` keeps bare numbers for these routes.
+`page { revalidate 60 }` desugars to `{ revalidate: 60, stale: 0, expire: Infinity }`: fresh for 60s, then stale-while-revalidate forever, never a blocking MISS — the documented behavior, byte-for-byte. `routes.json` keeps bare numbers for these routes.
 
 ## cacheLife profiles — tw.config.ts
 

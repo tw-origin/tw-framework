@@ -220,4 +220,4 @@ Route modules push updates with `import { setSignal } from "tw"`; connected brow
 
 ## Error boundary on SSR/stream pages
 
-Every `render ssr` / `render stream` response is wrapped in an empty `<div data-error-boundary>` marker (v1.0.7+). It is a ~25-byte placeholder: on a runtime render failure the server replaces it with your `error.tw` markup. Static pages never ship it. The loading skeleton (`loading.tw`) is only inlined into responses whose body actually carries Suspense/PPR boundaries -- plain pages do not carry it.
+Every `render ssr` / `render stream` response is wrapped in an empty `<div data-error-boundary>` marker. It is a ~25-byte placeholder: on a runtime render failure the server replaces it with your `error.tw` markup. Static pages never ship it. The loading skeleton (`loading.tw`) is only inlined into responses whose body actually carries Suspense/PPR boundaries -- plain pages do not carry it.
