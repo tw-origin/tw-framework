@@ -1,3 +1,28 @@
+# AGENTS.md — project conventions
+
+## Naming & content rules (MUST FOLLOW — highest priority)
+
+1. **No internal iteration labels anywhere in the repository.** Never ship
+   names or text like `round 1/2/3`, `BUG 27`, `paste-1-18`, `v108-round3`,
+   `phase3`, `batch 16` in file names, test names, describe/test titles,
+   comments, docs or commit messages. They are internal bookkeeping and look
+   unprofessional in a public framework.
+2. **Test files are named by area**, not by when they were written:
+   `regressions-compiler.test.ts`, `regressions-runtime.test.ts`,
+   `regressions-tooling.test.ts`, `signals.test.ts`, `docs-contract.test.ts`.
+3. **Comments explain the behaviour, not the history.** Write
+   "Middleware rules with no condition blocks apply to every matching
+   request (fail-closed)." — never "round 4 (BUG 29): ...".
+4. **No stale version numbers.** Source files and docs do not carry version
+   tags. The README badge and release notes are the only place a version
+   number belongs, and it must be the current one.
+5. **English only** in code, comments, docs, error messages and commit
+   messages.
+
+Violations of this section are release blockers.
+
+---
+
 # AGENTS.md -- The Complete TW Framework Operating Manual
 
 This document covers one thing completely: how to work inside the TW Framework
@@ -57,7 +82,7 @@ language:
   interpolation `{expr}`, and `on:event "expr"` handlers.
 - **`.tss`** stylesheets -- CSS with shorthand properties and utility classes.
 - **`.twm`** modules -- server-side handlers (`fn get/post/...`), middleware
-  rules, actions, and `fn cached` handlers with the v1.0.6 explicit cache
+  rules, actions, and `fn cached` handlers with the explicit cache
   layer.
 - One CLI (`tw dev | build | serve | ship | check`) drives everything.
 
@@ -137,7 +162,7 @@ Root-level infrastructure: `bench/` (6 metrics + gate), `evals/` (322 cases),
 page {
   title "Chai Shop"
   render ssr                      // static | ssr | island | stream
-  cache { revalidate 30, tag "products" }   // v1.0.6 explicit form
+  cache { revalidate 30, tag "products" }   // explicit form
 }
 
 state { count = 0, items = ["a", "b"] }
@@ -200,7 +225,7 @@ rule "guard admin" {
 
 ## 6. The render pipeline and cache semantics
 
-Three windows, from the canonical design doc (TW-v1.0.6-cache-design.md):
+Three windows, from the canonical design doc:
 
 | Age of entry | Result | Headers |
 |---|---|---|
@@ -317,7 +342,7 @@ issues gets them closed as works-as-designed:
 1. **Never claim without running.** Every change ships with a verification
    run. "Should work" is a defect, not a sentence.
 2. **No breaking changes.** Legacy `page { revalidate N }` is byte-identical
-   to v1.0.5 behavior forever. The regression suite locks this.
+   to the documented behavior forever. The regression suite locks this.
 3. **A feature without a docs/ page does not exist.** Canonical English,
    "This document covers one thing completely:" opener, one topic per file.
 4. **Diagnostics over crashes.** The compiler teaches (TW0xx); it never
@@ -340,9 +365,9 @@ Full process: contributing/release-process.md. Shape: bump 3 files ->
 node_modules/.tw -> fresh-verify from the zip -> changelog + UPGRADING.md
 entry for breaking changes.
 
-The 1.0.x line so far: 1.0.0 core, 1.0.1 revalidatePath/revalidateRoute,
-1.0.2 middleware rule DSL, 1.0.3 signal streaming, 1.0.4 PPR/render modes,
-1.0.5 50-bug hardening, 1.0.6 explicit cache layer + 2702-test suite + full
+Release history on the 1.0.x line: core compiler/VDOM/server, then the
+middleware rule DSL, signal streaming, PPR/render modes, a large hardening
+pass, and the explicit cache layer + full test suite + full
 repo infrastructure (this manual, evals, bench gate, 30 examples).
 
 ## 14. Security model
@@ -363,7 +388,7 @@ repo infrastructure (this manual, evals, bench gate, 30 examples).
 - **`.claude/commands/`** -- 5 slash commands: test, bench (gate-aware),
   release (verify-gated), triage, new-diagnostic.
 - **`skills/`** -- 5 packaged skills: add-example, release, add-diagnostic,
-  write-docs, bug-hunt (the process that produced 50+ real bugs in 1.0.5).
+  write-docs, adversarial review.
 - **`.claude-plugin/`** -- plugin + marketplace manifests for the tw-dev
   command pack.
 - **`.cursor/rules/tw.mdc`** -- editor rules for AI editors.
@@ -381,7 +406,7 @@ render modes, cache, actions, middleware, and unicode routes.
 
 ## 17. Docs index
 
-184 topics in `docs/`. Key entry points: GETTING-STARTED.md, RENDER-SYSTEM.md, docs/cache-tags.md (v1.0.6 cache layer), docs/isr.md, docs/error-reference.md, docs/testing.md, docs/middleware.md. Full index:
+184 topics in `docs/`. Key entry points: GETTING-STARTED.md, RENDER-SYSTEM.md, docs/cache-tags.md, docs/isr.md, docs/error-reference.md, docs/testing.md, docs/middleware.md. Full index:
 
 - `docs/RouterLink.md`- `docs/animation.md`- `docs/api-routes.md`- `docs/async-components.md`- `docs/body-limits.md`- `docs/browser-e2e.md`- `docs/build-output.md`- `docs/build-profiler.md`- `docs/cache-manager.md`- `docs/cache-tags.md`- `docs/catch-all-routes.md`- `docs/ci-workflow.md`- `docs/client-modules.md`- `docs/client-runtime.md`- `docs/clipboard.md`- `docs/code-splitting.md`- `docs/commands-reference.md`- `docs/component-api.md`- `docs/compression-api.md`- `docs/configuration.md`- `docs/context-api.md`- `docs/cookie-manager-api.md`- `docs/cookies.md`- `docs/core-system.md`- `docs/cors.md`- `docs/crypto-utilities.md`- `docs/csp-nonce.md`- `docs/csrf-api.md`- `docs/csrf.md`- `docs/dark-mode.md`- `docs/debug-utilities.md`- `docs/deployment-adapters.md`- `docs/dev-server.md`- `docs/devtools.md`- `docs/directives-api.md`- `docs/dom-utilities.md`- `docs/drag-drop.md`- `docs/dynamic-routes.md`- `docs/edge-runtime.md`- `docs/error-boundaries.md`- `docs/error-handling-routes.md`- `docs/error-recovery.md`- `docs/error-reference.md`- `docs/etags.md`- `docs/event-bus.md`- `docs/event-delegation.md`- `docs/extensions-guide.md`- `docs/focus-trap.md`- `docs/fonts.md`- `docs/form-state.md`- `docs/form-validators.md`- `docs/framework-overview.md`- `docs/gesture-recognition.md`- `docs/global-state.md`- `docs/guide-assets-images.md`- `docs/guide-auth.md`- `docs/guide-aws.md`- `docs/guide-blog.md`- `docs/guide-cloudflare.md`- `docs/guide-dashboard.md`- `docs/guide-data-fetching.md`- `docs/guide-deployment-choose.md`- `docs/guide-digitalocean.md`- `docs/guide-ecommerce-catalog.md`- `docs/guide-environments.md`- `docs/guide-firebase.md`- `docs/guide-fly.md`- `docs/guide-forms.md`- `docs/guide-github-pages.md`- `docs/guide-netlify.md`- `docs/guide-performance.md`- `docs/guide-plugins.md`- `docs/guide-railway.md`- `docs/guide-render.md`- `docs/guide-self-hosted.md`- `docs/guide-seo.md`- `docs/guide-testing-ci.md`- `docs/guide-troubleshooting.md`- `docs/guide-vercel.md`- `docs/gzip.md`- `docs/head-tw-files.md`- `docs/headers-config.md`- `docs/health-checks.md`- `docs/hot-reload.md`- `docs/http-client.md`- `docs/i18n.md`- `docs/id-generator.md`- `docs/image-handler.md`- `docs/image-optimizer-client.md`- `docs/images-config.md`- `docs/intercepting-routes.md`- `docs/isr.md`- `docs/jwt-manager-api.md`- `docs/keep-alive.md`- `docs/keyboard-shortcuts.md`- `docs/layouts.md`- `docs/lib-modules.md`- `docs/load-testing.md`- `docs/logging.md`- `docs/lsp.md`- `docs/metadata.md`- `docs/middleware.md`- `docs/minification.md`- `docs/modal-dialog.md`- `docs/multipart-forms.md`- `docs/no-terminal-guide.md`- `docs/not-found-pages.md`- `docs/optImage.md`- `docs/optimization-passes.md`- `docs/parallel-routes.md`- `docs/password-hashing.md`- `docs/path-traversal-api.md`- `docs/plain-css.md`- `docs/plugins.md`- `docs/portal.md`- `docs/production-css.md`- `docs/project-tree.md`- `docs/query-params.md`- `docs/range-requests.md`- `docs/rate-limiting.md`- `docs/redirects-config.md`- `docs/render-modes.md`- `docs/request-lifecycle.md`- `docs/request-object.md`- `docs/request-validation.md`- `docs/response-shapes.md`- `docs/rewrites.md`- `docs/route-groups.md`- `docs/sanitizer-api.md`- `docs/scheduler.md`- `docs/scoped-styles.md`- `docs/scss-guide.md`- `docs/security-headers-api.md`- `docs/security.md`- `docs/server-actions.md`- `docs/server-features.md`- `docs/sessions.md`- `docs/setup-guide.md`- `docs/signal-streaming.md`- `docs/signals.md`- `docs/sourcemaps.md`- `docs/ssrf-protector-api.md`- `docs/static-assets-public.md`- `docs/stores.md`- `docs/streaming.md`- `docs/styling-guide.md`- `docs/suspense.md`- `docs/syntax-attributes.md`- `docs/syntax-bindings.md`- `docs/syntax-components.md`- `docs/syntax-conditionals.md`- `docs/syntax-events.md`- `docs/syntax-guide.md`- `docs/syntax-head-block.md`- `docs/syntax-imports.md`- `docs/syntax-interpolation.md`- `docs/syntax-loops.md`- `docs/syntax-markup.md`- `docs/syntax-page-config.md`- `docs/syntax-slots.md`- `docs/syntax-state.md`- `docs/tailwind.md`- `docs/template-engine.md`- `docs/testing-utilities.md`- `docs/testing.md`- `docs/theme-manager.md`- `docs/timing-protector-api.md`- `docs/tips-deployment.md`- `docs/tips-styling.md`- `docs/tips-syntax.md`- `docs/toast-notifications.md`- `docs/transitions.md`- `docs/tree-shaking.md`- `docs/tss-syntax.md`- `docs/two-way-binding.md`- `docs/virtual-list.md`- `docs/vnode-pool.md`- `docs/watch-api.md`- `docs/web-vitals.md`- `docs/web-workers.md`- `docs/webhooks.md`- `docs/websocket-client.md`- `docs/websocket-server.md`- `docs/worker-pool.md`
 
@@ -396,7 +421,7 @@ render modes, cache, actions, middleware, and unicode routes.
 - **Signal** -- a named streamed value (`render stream` + setSignal).
 - **fn cached** -- a .twm handler wrapped by the canonical handler cache.
 - **updateTag** -- action-result `revalidateTag` (tag bump after a write).
-- **PPR** -- partial prerendering (v1.0.4 render modes).
+- **PPR** -- partial prerendering (render modes).
 - **Master gate** -- `bun run verify`.
 - **Fresh-verify** -- unzip the artifact, install, run tests on IT.
 
@@ -408,7 +433,7 @@ render modes, cache, actions, middleware, and unicode routes.
 2. **Why do evals avoid `bun test`?** The bunfig.toml happy-dom preload
    changes diagnostic behavior and fetch CORS -- evals need determinism.
 3. **Why node:http in e2e?** Global fetch is CORS-blocked under the preload.
-4. **Why object values in routes.json?** v1.0.6 needed to carry full window
+4. **Why object values in routes.json?** the cache layer needs to carry full window
    triples while keeping bare numbers valid forever (zero breaking change).
 5. **Why build-time profile resolution?** Serve-time resolution would put
    config parsing on the request path; build gates (TW090-TW093) catch bad
@@ -647,7 +672,7 @@ The ARIA matrix (tests/unit-aria.test.ts) locks role/attribute pairing.
 
 ## 28. Cache cookbook
 
-Recipes verified live during the v1.0.6 build (fixtures: examples/ecommerce-shop,
+Recipes verified live against the current build (fixtures: examples/ecommerce-shop,
 examples/analytics, examples/api-server):
 
 **A. Cache a page for 30s, invalidate on publish**
@@ -683,7 +708,7 @@ background. After 60s: MISS.
 page { revalidate 60 }
 ```
 
-Exactly the v1.0.5 semantics: fresh 60s, then stale-while-revalidate
+Exactly the documented semantics: fresh 60s, then stale-while-revalidate
 forever. Do NOT touch this form when modernizing other pages.
 
 **D. Custom profiles in tw.config.ts**
@@ -821,7 +846,7 @@ What each suite in tests/ actually locks (49 files, 2702 tests):
 - **tests/semantic-deep.test.ts** -- Framework suite; see the describe blocks for the locked behavior (every suite follows contributing/core-testing.md).
 - **tests/shared.test.ts** -- Framework suite; see the describe blocks for the locked behavior (every suite follows contributing/core-testing.md).
 - **tests/signal-stream.test.ts** -- Framework suite; see the describe blocks for the locked behavior (every suite follows contributing/core-testing.md).
-- **tests/unit-aria.test.ts** -- All 80 ARIA_ROLES with their supported attributes; role/attr pairing rules; the four attributes added in the v1.0.6 ARIA bugfix plus the missing `table` role.
+- **tests/unit-aria.test.ts** -- All 80 ARIA_ROLES with their supported attributes; role/attr pairing rules; the four attributes added in the ARIA bugfix plus the missing `table` role.
 - **tests/unit-css-matrix.test.ts** -- All 328 CSS_PROPERTIES compile in TSS; TSS_SHORTHANDS produce the mapped CSS; CSS_FUNCTIONS (calc, rgb, var...); CSS_MEDIA_FEATURES in @media; minification preserves semantics.
 - **tests/unit-events.test.ts** -- All 116 EVENT_TYPES as on:<event> handlers; EVENT_HANDLER_ATTRS mapping; invalid event names produce diagnostics.
 - **tests/unit-html-attributes.test.ts** -- All 278 HTML_ATTRIBUTES across elements; boolean attrs; keyword-collision attributes in HTML-form syntax.
@@ -884,7 +909,7 @@ What actually happens to a `.tw` file between disk and HTML:
    (`name "value"`), HTML-form segments (`<tag attr="v">`), directives
    (`page { ... }`), state blocks, interpolation braces.
 3. **Parse to AST** -- tokens to a Program. Directive bodies (including the
-   v1.0.6 nested `cache { }` block) land in page options. A parse cache
+   nested `cache { }` block) land in page options. A parse cache
    keyed by `filePath + content hash` short-circuits re-parses of unchanged
    files -- which is also why diagnostics can differ between cached and
    uncached paths under the test preload (quirk 8).
@@ -974,7 +999,7 @@ cat > /scratch/repro.tw <<'X'
 page { cache { life "nope" } }
 div { "x" }
 X
-bun -e 'import {compileSync} from "/scratch/repos/tw-1.0.6/tw-framework/packages/compiler/tw/index.ts";
+bun -e 'import {compileSync} from "/scratch/repos/tw-framework/packages/compiler/tw/index.ts";
 const out = compileSync(await Bun.file("/scratch/repro.tw").text(), {filePath:"/scratch/repro.tw"});
 console.log(out.diagnostics)'
 ```
@@ -989,7 +1014,7 @@ Then reproduce the ORIGINAL page, not the reduction, before claiming fixed.
 
 ## 39. "Add a feature" -- the full checklist
 
-1. Design note first (see TW-v1.0.6-cache-design.md for the template:
+1. Design note first (see the cache design note for the template:
    semantics -> keys -> purity -> diagnostics -> milestones).
 2. Implement in the owning package (section 4 table).
 3. Diagnostics if any new failure mode exists (skills/add-diagnostic).
@@ -1016,10 +1041,10 @@ same change, with a note (contributing/code-review.md makes silent bumps a
 blocker). The tolerance is 25% -- smaller dips are pod noise (decision
 log #6).
 
-## 41. "Hunt for bugs" -- the repeatable round
+## 41. "Hunt for bugs" -- the repeatable procedure
 
-skills/bug-hunt is the packaged form. The loop that found 50+ bugs in
-1.0.5: pick a surface -> generate adversarial inputs from the REAL tables
+skills/bug-hunt is the packaged form. The loop:
+Pick a surface -> generate adversarial inputs from the REAL tables
 -> predict expected behavior from docs/ first -> run -> classify (bug /
 quirk / harness artifact) -> re-verify at the deterministic layer -> fix +
 lock with a regression test. The scale and fuzz evals are the automated
@@ -1134,7 +1159,7 @@ module failed to EXECUTE, not to compile -- and the error was in the
 serve log all along (this one was found by finally NOT redirecting
 stderr to /dev/null).
 
-## 47. The new matrix batch (16 apps)
+## 47. The application matrix
 
 docs-site, url-shortener, weather-app, wiki, changelog, recipe-site,
 countdown, calculator, quiz-app, kanban-board, comments, headers-demo,

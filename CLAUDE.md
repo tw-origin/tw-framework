@@ -17,7 +17,7 @@ bun run verify # the master gate before claiming anything works
 
 1. **Never claim without running.** "Should work" is a defect.
 2. **Never break legacy syntax** -- `page { revalidate N }` is
-   byte-identical to v1.0.5 forever.
+   byte-identical to the documented behavior forever.
 3. **A feature without a docs/ page does not exist.**
 4. **The zip must be fresh-verified** (unzip -> install -> test) before
    any release claim.

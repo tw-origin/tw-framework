@@ -10,7 +10,7 @@ is optional; the order is not advisory.
 ## 1. Pick the version
 
 Semver. The 1.0.x line has used patch releases for feature batches by
-convention (1.0.5 hardening, 1.0.6 cache layer) -- keep that convention
+convention -- keep that convention
 unless the user explicitly asks for a minor/major.
 
 ## 2. Bump exactly THREE files

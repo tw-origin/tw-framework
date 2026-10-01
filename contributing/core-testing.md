@@ -20,7 +20,7 @@ bun test -t "cache"                  # by name
 - **Table matrices** (unit-html-elements, unit-html-attributes, unit-events,
   unit-aria, unit-css-matrix, unit-web-tables): the `it.each` pattern --
   every entry of a shared table gets a real behavioral assertion. These
-  files are the automated bug-hunt, frozen: they exist because iterating
+  files are the automated adversarial suite, frozen: they exist because iterating
   the real tables found four missing ARIA attributes and a missing role
   that no hand-written test ever would.
 - **Directive grammar** (unit-router-directives): the `page { }` surface --

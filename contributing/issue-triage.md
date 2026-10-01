@@ -57,7 +57,7 @@ issue and test at compileSync/resolveCache instead.
 
 ## Feature requests
 
-Route to the design-doc pattern (see TW-v1.0.6-cache-design.md for the
+Route to the design-doc pattern (see the cache design note for the
 template): RFC -> review round -> locked decisions -> milestone plan.
 Features skip the queue-jump: a feature without a design conversation
 does not start.
