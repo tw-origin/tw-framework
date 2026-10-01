@@ -1126,7 +1126,6 @@ export function securityHeadersMiddleware(): (req: Request, res: Response, next:
   return (req: Request, res: Response, next: () => void) => {
     res.headers.set("X-Content-Type-Options", "nosniff");
     res.headers.set("X-Frame-Options", "SAMEORIGIN");
-    res.headers.set("X-XSS-Protection", "1; mode=block");
     res.headers.set("X-Permitted-Cross-Domain-Policies", "none");
     res.headers.set("Referrer-Policy", "strict-origin-when-cross-origin");
     res.headers.set("Cross-Origin-Opener-Policy", "same-origin");

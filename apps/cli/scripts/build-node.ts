@@ -34,6 +34,19 @@ const proc = spawnSync(esbuildBin, [
 if (proc.status !== 0) process.exit(proc.status ?? 1);
 chmodSync(out, 0o755);
 
+// v1.0.8 round 5 (BUG 39): server bundle for serverless adapters (Vercel
+// functions etc.). `import { TWServer } from "tw-framework/server"`.
+{
+  const serverOut = join(cliDir, "dist", "tw-server.mjs");
+  const proc3 = spawnSync(esbuildBin, [
+    join(repoRoot, "packages", "server", "tw", "index.ts"),
+    "--bundle", "--platform=node", "--target=node18", "--format=esm",
+    "--outfile=" + serverOut,
+    "--external:esbuild",
+  ], { stdio: "inherit" });
+  if (proc3.status !== 0) process.exit(proc3.status ?? 1);
+}
+
 // CJS bundle of the testing helpers. Published apps import
 // `@tw/server/tw/testing` in their tests; `tw test` shims that specifier to
 // this file when the app does not have the monorepo workspace packages.

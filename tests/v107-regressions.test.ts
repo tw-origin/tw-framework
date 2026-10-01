@@ -308,10 +308,101 @@ describe("round 4: glob semantics + runtime", () => {
     const orig = console.warn;
     console.warn = (m: string) => { warns.push(String(m)); };
     try {
-      compileSCSS('.a { color: #fff }\n@mixin m { color: #000 }');
+      // v1.0.8 round 5 (BUG 45): @mixin/@include are SUPPORTED now -- warn
+      // only for genuinely unsupported at-rules.
+      compileSCSS('.a { color: #fff }\n@function f($x) { @return $x }');
     } finally {
       console.warn = orig;
     }
-    expect(warns.some((w) => w.includes("mixin"))).toBe(true);
+    expect(warns.some((w) => w.includes("function"))).toBe(true);
+    // mixins compile silently with inlined output
+    const clean = compileSCSS('@mixin pad { padding: 12px }\n.b { @include pad; }');
+    expect(clean).toContain("padding: 12px");
+  });
+});
+
+// --- 7. v1.0.8 bug-report regressions ----------------------------------------
+
+describe("v1.0.8 bug report: parser + layout composition", () => {
+  const getCompiler = async () => await import("../packages/compiler/tw/index.ts");
+
+  test("BUG 2: mixed attr + text body -- a.brand { href \"/\" \"Name\" }", async () => {
+    const { compileSync } = await getCompiler();
+    const out = compileSync('a.brand { href "/" "MyApp" }', { filePath: "b2.tw" });
+    expect(out.html).toContain('<a class="brand" href="/">MyApp</a>');
+    expect(out.html).not.toContain("<href>");
+  });
+
+  test("BUG 2: $ is plain text, not a parse breaker", async () => {
+    const { compileSync } = await getCompiler();
+    const out = compileSync('a.brand { href "/" "$x" }', { filePath: "b2b.tw" });
+    expect(out.html).toContain('<a class="brand" href="/">$x</a>');
+  });
+
+  test("child elements still win over attribute pairs (p \"text\")", async () => {
+    const { compileSync } = await getCompiler();
+    const out = compileSync('div.box { p "hello" }', { filePath: "b2c.tw" });
+    expect(out.html).toContain("<p>hello</p>");
+  });
+
+  test("BUG 3: SSR layout composition never nests a second document", async () => {
+    const fs = await import("node:fs");
+    const os = await import("node:os");
+    const path = await import("node:path");
+    const dir = fs.mkdtempSync(path.join(os.tmpdir(), "twv108-"));
+    fs.mkdirSync(path.join(dir, "home"), { recursive: true });
+    fs.writeFileSync(path.join(dir, "home", "layout.tw"), [
+      "html {",
+      "  head {",
+      '    meta charset "utf-8"',
+      "  }",
+      "  body {",
+      '    header.sitenav {',
+      '      a.brand { href "/" "MyApp" }',
+      "    }",
+      '    main.site { slot { } }',
+      "  }",
+      "}",
+    ].join("\n"));
+    fs.writeFileSync(path.join(dir, "home", "page.tw"), [
+      "page { title \"Home\" render ssr }",
+      "",
+      'div.hero { h1 "Hello" }',
+    ].join("\n"));
+    try {
+      const { RenderPipeline } = await import("../packages/server/tw/routing/render-pipeline.ts");
+      const p = new (RenderPipeline as any)({ rootDir: dir, homeDir: path.join(dir, "home"), enableCache: false, dev: false });
+      const r = (p as any).render("/");
+      const html: string = r.html;
+      expect((html.match(/<!DOCTYPE/g) || []).length).toBe(1);
+      expect((html.match(/<html/g) || []).length).toBe(1);
+      expect(html).toContain("<header");
+      expect(html).toContain("<main");
+      expect(html).toContain("Hello");
+      // head ELEMENT content must not contain body markup or nested docs
+      const headStart = html.indexOf("<head");
+      const headEnd = html.indexOf("</head>");
+      const headPart = html.slice(headStart, headEnd);
+      expect(headPart).not.toContain("<main");
+      expect(headPart).not.toContain("<header");
+      expect(headPart).not.toContain("<!DOCTYPE");
+    } finally {
+      fs.rmSync(dir, { recursive: true, force: true });
+    }
+  });
+});
+
+describe("v1.0.8 BUG 4 regression: derivedSignal renders computed value", () => {
+  test("span shows 300.5, not the expression string (all paths)", async () => {
+    const { compileSync } = await import("../packages/compiler/tw/index.ts");
+    const src = [
+      'page { title "d" render ssr }',
+      'state { price = 150.25 qty = 2 total = derivedSignal("price * qty") }',
+      'p "Total: {total}"',
+    ].join("\n");
+    const r = compileSync(src, { filePath: "ds.tw" });
+    expect(r.html).toContain(">300.5</span>");
+    expect(r.html).not.toContain(">price * qty<");
+    expect((r as any).stateSeed.total).toBe(300.5);
   });
 });

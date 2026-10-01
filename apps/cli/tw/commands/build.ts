@@ -323,6 +323,9 @@ export async function buildCommand(): Promise<void> {
   } catch { /* defaults */ }
 
   let pageCount = 0;
+  // Minor (v1.0.8): request-time-rendered pages were invisible in the
+  // summary -- "Pages: 1" while the site had many SSR routes looked broken.
+  let requestRenderedCount = 0;
   let apiCount = 0;
   let errorCount = 0;
   const isrRoutes = new Map<string, number | Record<string, any>>();
@@ -330,6 +333,15 @@ export async function buildCommand(): Promise<void> {
   // -- 1. Compile all page.tw files to HTML --------------------------------
   const pageFiles: string[] = [];
   collectFiles(homeDir, "page.tw", pageFiles);
+  // v1.0.8 round 3 (BUG 23): page.tw + index.tw in one directory resolve
+  // to the same route with index.tw winning at runtime -- and the build
+  // said nothing. Warn loudly instead.
+  for (const pf of pageFiles) {
+    if (existsSync(join(dirname(pf), "index.tw"))) {
+      console.log("  \x1b[33m!\x1b[0m " + dirname(pf).replace(homeDir, "").replace(/^\//, "") + "/ has BOTH page.tw and index.tw");
+      console.log("      index.tw wins this route -- delete one of them");
+    }
+  }
   begin("compile", pageFiles.length);
   const htmlOutputs: Array<{ outputDir: string; html: string; route: string }> = [];
   (_compilerMod as any).clearCssCapture?.();
@@ -355,11 +367,29 @@ export async function buildCommand(): Promise<void> {
           const pmod: any = await loadTWMModule(paramsTwm, rootDir);
           if (typeof pmod.generate === "function") {
             const arr = pmod.generate();
-            if (Array.isArray(arr) && arr.length > 0) paramSets = arr.map((x: any) => {
-              const o: Record<string, string> = {};
-              for (const [k, v] of Object.entries(x)) o[k] = String(v);
-              return o;
-            });
+            if (Array.isArray(arr) && arr.length > 0) {
+              // v1.0.8 round 4 (BUG 27): the DOCS form returns plain values
+              // (`return ["one", "two", "three"]` next to a [item]/page.tw).
+              // Object.entries() on a string produced garbage ({0:"o",...})
+              // so every variant wrote the same literal [item] output path
+              // with empty interpolation. Map plain values to the route's
+              // dynamic segment; object entries map as before.
+              const dynNames = pageFile
+                .split("/")
+                .map((seg: string) => /^\[([^\]]+)\]$/.exec(seg)?.[1])
+                .filter(Boolean) as string[];
+              paramSets = arr.map((x: any) => {
+                if (x !== null && typeof x !== "object") {
+                  const o: Record<string, string> = {};
+                  const key = dynNames[0] ?? "slug";
+                  o[key] = String(x);
+                  return o;
+                }
+                const o: Record<string, string> = {};
+                for (const [k, v] of Object.entries(x)) o[k] = String(v);
+                return o;
+              });
+            }
           }
         } catch (e: any) {
           console.log("  Warning: params.twm failed: " + e.message);
@@ -434,6 +464,7 @@ export async function buildCommand(): Promise<void> {
     // the enumerated param sets are prebuilt like static ones.
     const hasExplicitParams = paramSets.length > 1 || Object.keys(paramSets[0] ?? {}).length > 0;
     if ((renderMode === "ssr" || renderMode === "stream") && !hasExplicitParams) {
+      requestRenderedCount++;
       console.log("  \x1b[36m~\x1b[0m " + routePath + " [" + renderMode + ": rendered at request time]");
       try {
         const src = readFileSync(pageFile, "utf-8");
@@ -443,6 +474,36 @@ export async function buildCommand(): Promise<void> {
           console.log("  \x1b[33m! " + routePath + " (" + errs.length + " diagnostics)\x1b[0m");
           for (const d of errs.slice(0, 5)) console.log("      " + d.line + ":" + d.col + "  " + d.message);
           errorCount++;
+        }
+        // v1.0.8 round 3 (BUG 22): SSR pages print warnings too, not just
+        // the static-compile path.
+        const warns = (r.diagnostics || []).filter((d: any) => d.severity !== "error");
+        if (warns.length > 0) {
+          console.log("      \x1b[33m" + warns.length + " warning" + (warns.length === 1 ? "" : "s") + "\x1b[0m");
+          for (const d of warns.slice(0, 3)) {
+            console.log("        " + d.line + ":" + d.col + "  " + d.code + "  " + d.message);
+          }
+          if (warns.length > 3) console.log("        ... " + (warns.length - 3) + " more (tw check)");
+        }
+        // v1.0.8 round 3: SSR pages skipped the unknown-component check the
+        // static path had -- a missing component only failed for static pages.
+        {
+          const used = new Set<string>();
+          collectComponentUsages(r.ast, used);
+          const BUILTIN_ALIASES = new Set(["Link", "RouterLink", "Image", "optImage", "Suspense"]);
+          const unknownSsr = [...used].filter(t => !BUILTIN_ALIASES.has(t) && !registeredComponentNames.has(t));
+          if (unknownSsr.length > 0) {
+            const importSpecs = new Map<string, string>();
+            for (const im of src.matchAll(/import\s+([A-Za-z_]\w*)\s+from\s+["']([^"']+)["']/g)) {
+              importSpecs.set(im[1], im[2]);
+            }
+            const hints = unknownSsr.map(t =>
+              importSpecs.has(t)
+                ? `<${t}> (imported from ${importSpecs.get(t)} -- file not found)`
+                : `<${t}> (no components/${t}.tw found)`);
+            console.log("  \x1b[31m✗ " + routePath + ": unknown component" + (unknownSsr.length > 1 ? "s" : "") + " " + hints.join(", ") + "\x1b[0m");
+            errorCount++;
+          }
         }
       } catch (e: any) {
         console.log("  \x1b[33m! " + routePath + ": " + (e && e.message ? e.message : e) + "\x1b[0m");
@@ -467,7 +528,19 @@ export async function buildCommand(): Promise<void> {
         const BUILTIN_ALIASES = new Set(["Link", "RouterLink", "Image", "optImage", "Suspense"]);
         const unknown = [...used].filter(t => !BUILTIN_ALIASES.has(t) && !registeredComponentNames.has(t));
         if (unknown.length > 0) {
-          console.error("  \x1b[31m\u2717 " + pageFile.replace(rootDir + "/", "") + ": unknown component" + (unknown.length > 1 ? "s" : "") + " <" + unknown.join(">, <") + "> -- no components/" + unknown[0] + ".tw found (create the file or fix the import)\x1b[0m");
+          // v1.0.8 round 3 (BUG 24): for explicitly-imported components the
+          // old message pointed at the CONVENTION path (components/<Name>.tw)
+          // even though the import named a different file. Show the actual
+          // import path when there is one.
+          const importSpecs = new Map<string, string>();
+          for (const im of source.matchAll(/import\s+([A-Za-z_]\w*)\s+from\s+["']([^"']+)["']/g)) {
+            importSpecs.set(im[1], im[2]);
+          }
+          const hints = unknown.map(t =>
+            importSpecs.has(t)
+              ? `<${t}> (imported from ${importSpecs.get(t)} -- file not found)`
+              : `<${t}> (no components/${t}.tw found)`);
+          console.error("  \x1b[31m\u2717 " + pageFile.replace(rootDir + "/", "") + ": unknown component" + (unknown.length > 1 ? "s" : "") + " " + hints.join(", ") + " -- create the file or fix the import\x1b[0m");
           process.exit(1);
         }
       }
@@ -579,12 +652,24 @@ export async function buildCommand(): Promise<void> {
           const pu = buildPageScope(rootDir, pageMods.own);
           if (pu) clientTag += `<script defer src="/${pu}"></script>\n  `;
         }
+        // Zero-JS static pages (BUG 6, v1.0.8): the runtime used to ship on
+        // EVERY page, breaking the "static pages ship 0 bytes of JavaScript"
+        // promise (~21KB per page, even for plain /about). Only pages that
+        // actually need the client ship it: interactive markers, client
+        // imports, or CSR/PPR/stream/signalStream modes.
         // `defer` keeps the island shell parseable without JS -- the browser
         // builds the full static DOM first, then hydration attaches (order
         // between deferred scripts is preserved).
-        const runtimeTag = `<script defer src="/__tw_runtime.js"></script>`;
-        html = html.replace("</body>", "  " + clientTag + runtimeTag + "\n</body>");
-        needsRuntime = true;
+        const needsClient = interactive
+          || pageMods.deps.length > 0
+          || pageMods.own.length > 0
+          || renderMode === "csr" || renderMode === "ppr"
+          || renderMode === "stream" || renderMode === "signalStream";
+        if (needsClient) {
+          const runtimeTag = `<script defer src="/__tw_runtime.js"></script>`;
+          html = html.replace("</body>", "  " + clientTag + runtimeTag + "\n</body>");
+          needsRuntime = true;
+        }
       }
 
       if (renderMode === "csr") {
@@ -653,6 +738,17 @@ export async function buildCommand(): Promise<void> {
       } else {
         console.log("  \x1b[32mOK\x1b[0m " + displayPath + " -> " + (outRoute === "" ? ".tw/index.html" : ".tw/" + outRoute + "/index.html"));
       }
+      // v1.0.8 round 3 (BUG 22): warnings were collected but never shown --
+      // `tw check` flags <ul2> while `tw build` printed nothing. Surface
+      // them (capped) so both surfaces agree.
+      const warnings = result.diagnostics.filter((d: any) => d.severity !== "error");
+      if (warnings.length > 0) {
+        console.log("      \x1b[33m" + warnings.length + " warning" + (warnings.length === 1 ? "" : "s") + "\x1b[0m");
+        for (const d of warnings.slice(0, 3)) {
+          console.log("        " + d.line + ":" + d.col + "  " + d.code + "  " + d.message);
+        }
+        if (warnings.length > 3) console.log("        ... " + (warnings.length - 3) + " more (tw check)");
+      }
       pageCount++;
     } catch (err: any) {
       console.log("  \x1b[31mX " + routePath + ": " + err.message + "\x1b[0m");
@@ -675,8 +771,19 @@ export async function buildCommand(): Promise<void> {
     const outputDir = routeName === "" ? outDir : join(outDir, routeName);
     mkdirSync(outputDir, { recursive: true });
     copyFileSync(twmFile, join(outputDir, "route.twm"));
-    console.log("  \x1b[32mOK\x1b[0m /" + routeName + " [api]");
-    apiCount++;
+    // v1.0.8 round 3 (BUG 8): a syntax-broken .twm used to pass the build
+    // ("OK /api/broken [api]") and only fail at runtime with a misleading
+    // 405. Validate the file's syntax now -- failure = build error.
+    const { validateTWMSyntax } = await import("../../../../packages/server/tw/routing/twm-loader.ts");
+    const syntaxError = validateTWMSyntax(twmFile);
+    if (syntaxError) {
+      console.log("  \x1b[31mX\x1b[0m /" + routeName + " [api] -- .twm syntax error");
+      console.log("      " + twmFile.replace(rootDir + "/", "") + ": " + syntaxError);
+      errorCount++;
+    } else {
+      console.log("  \x1b[32mOK\x1b[0m /" + routeName + " [api]");
+      apiCount++;
+    }
   }
 
   // -- 3. Copy lib/ directory -----------------------------------------------
@@ -775,7 +882,7 @@ const runtimeSrc = _bundleDir
   }
 
   console.log("\n  \x1b[32mBuild complete!\x1b[0m");
-  console.log("  Pages: " + pageCount + " compiled");
+  console.log("  Pages: " + pageCount + " compiled" + (requestRenderedCount > 0 ? " (+" + requestRenderedCount + " rendered at request time)" : ""));
   if (pageCount === 0) console.warn("  [!] No static pages were compiled -- every page is SSR/API. Static hosts (Vercel/Cloudflare Pages output) will serve an empty site. Use `render static` or check your render modes.");
   console.log("  APIs:  " + apiCount + " routes");
   // ISR manifest (docs/isr.md): serve reads this to route revalidate pages

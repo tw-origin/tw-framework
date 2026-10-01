@@ -43,6 +43,30 @@ rule "rule-name" {
 
 The `**` wildcard matches any suffix — `/api/**` covers `/api`, `/api/users`, `/api/users/7`.
 
+### Rules with no condition blocks
+
+`match` alone is a valid rule. A rule with `match` + `response` and **no
+condition blocks** applies to **every request on the matching paths** — the
+`response` is sent for all of them and no page or route code runs:
+
+```twm
+// Take the whole site offline (except /health) — every matching request
+// gets the 503 below, unconditionally.
+rule "maintenance" {
+  match "/**"
+  response {
+    status 503
+    html "<h1>Back soon</h1>"
+  }
+}
+```
+
+This is the fail-closed reading of the model: a rule answers "what does a
+request that trips this rule get?" — with no checks to trip, every matching
+request trips it. Use it deliberately: at startup `tw serve` lists each rule
+and marks these ones as `no conditions -> every matching request gets this
+response`, so an unconditional guard is never a surprise.
+
 ---
 
 ## Complete Example

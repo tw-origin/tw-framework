@@ -16,6 +16,23 @@ import type { CodegenMetadata } from "./types";
  * page's body children (rendered with the page's own state), and the page's
  * <title> wins over the layout's.
  */
+// v1.0.8 round 4 (BUG 31): stateVars held the RAW declaration text, so
+// JS-only literal forms (1_000_000, 1e3) rendered their source while the
+// hydration seed held the real number. Evaluate for RENDER purposes.
+function stateLiteralForRender(raw: string): string {
+  const evalNum = (v: any): string | null =>
+    typeof v === "number" || typeof v === "boolean" ? String(v) : null;
+  try {
+    const n = evalNum(JSON.parse(raw));
+    if (n !== null) return n;
+  } catch { /* not JSON */ }
+  try {
+    const n = evalNum(new Function("return (" + raw + ")")());
+    if (n !== null) return n;
+  } catch { /* keep raw */ }
+  return raw;
+}
+
 export function generateWithLayout(
   layoutProgram: Program,
   pageProgram: Program,
@@ -28,7 +45,7 @@ export function generateWithLayout(
   for (const dir of pageProgram.directives || []) {
     if (dir.type === "StateDirective") {
       for (const decl of dir.declarations || []) {
-        ctx.stateVars[decl.name] = decl.value;
+        ctx.stateVars[decl.name] = stateLiteralForRender(decl.value);
       }
     }
   }
@@ -78,7 +95,7 @@ export function generateWithLayoutChain(
     for (const dir of pageProgram.directives || []) {
       if (dir.type === "StateDirective") {
         for (const decl of (dir as any).declarations || []) {
-          ctx.stateVars[decl.name] = decl.value;
+          ctx.stateVars[decl.name] = stateLiteralForRender(decl.value);
         }
       }
       // `title "{page.title}"` in the canonical layout head -- seeded below
@@ -369,7 +386,14 @@ export function generate(program: Program, stateVars?: Record<string, string>): 
           ctx.hasInteractivity = true;
           continue;
         }
-        ctx.stateVars[decl.name] = decl.value;
+        // Request-time values (route params, SignalHub overrides) win
+        // over state-block defaults: only seed vars not already provided
+        // by the caller. The old unconditional write clobbered a
+        // setSignal() update before interpolation, so a fresh visitor's
+        // SSR render showed the stale default (BUG 5, v1.0.8).
+        if (!(decl.name in ctx.stateVars)) {
+          ctx.stateVars[decl.name] = stateLiteralForRender(decl.value);
+        }
         // Parse the raw value for the client hydration seed
         let v: any = decl.value;
         try { v = JSON.parse(decl.value); }

@@ -326,6 +326,36 @@ function checkIsAttrBlock(cursor: TokenCursor): boolean {
 
 // --- TW Selector Parser (CSS-like syntax: div.container { ... }) --------------
 
+// Attribute names allowed to open a `name "value"` pair inside a mixed
+// element body (v1.0.8): `a { href "/" "Read more" }` must parse href as
+// an attribute and "Read more" as the text child -- previously the whole
+// block fell back to children and produced a bogus <href> element. Only
+// REAL HTML attribute names enter the pair loop, so child elements like
+// `p "text"` are untouched.
+const ATTR_PAIR_NAMES = new Set([
+  "href", "src", "type", "id", "name", "value", "placeholder",
+  "action", "method", "title", "alt", "rel", "target", "lang",
+  "charset", "content", "width", "height", "loading", "for",
+  "role", "min", "max", "step", "pattern", "accept", "list",
+  "download", "tabindex", "cols", "rows", "wrap", "datetime",
+  "method", "action", "placeholder", "disabled", "required", "readonly",
+  "checked", "selected", "target", "rel", "download", "autocomplete",
+  "autofocus", "min", "max", "step", "pattern", "multiple", "size",
+  "cols", "rows", "wrap", "for", "hidden", "width", "height",
+  "loading", "loop", "muted", "controls", "poster", "preload",
+  "contenteditable", "draggable", "spellcheck", "translate",
+  "accesskey", "tabindex", "role", "slot", "is", "part",
+  "enterkeyhint", "inert", "inputmode", "sandbox", "allow",
+  "allowfullscreen", "referrerpolicy", "fetchpriority", "blocking",
+  "property", "itemprop", "itemtype", "itemid", "itemref",
+  "itemscope", "charset", "http-equiv", "data", "nonce",
+  "crossorigin", "integrity", "async", "defer", "srcset",
+  "sizes", "media", "ping", "coords", "shape", "usemap",
+  "ismap", "kind", "srclang", "default", "autoplay",
+  "playsinline", "enctype", "novalidate", "formaction",
+  "formmethod", "formtarget", "formenctype", "formnovalidate",
+]);
+
 function parseTWSelector(
   cursor: TokenCursor,
   errors: ErrorCollector,
@@ -655,7 +685,23 @@ function parseTWSelector(
         }
         cursor.consumeIf("RBRACE");
       } else {
-        // Parse as child elements
+        // v1.0.8 mixed body: leading `name "value"` pairs are attributes,
+        // the remainder of the block is children. `a { href "/" "Read" }`
+        // used to render a bogus <href> child element here.
+        for (;;) {
+          const t = cursor.peek();
+          if (!t || t.type === "RBRACE" || t.type === "EOF") break;
+          if ((t.type === "IDENT" || t.type === "KEYWORD") && ATTR_PAIR_NAMES.has(t.value)) {
+            const after = cursor.peek(1);
+            if (after && (after.type === "STRING" || after.type === "NUMBER")) {
+              cursor.advance(); // name
+              cursor.advance(); // value
+              el.attrs.push(createAttribute(t.value, after.value, t.pos.line, t.pos.col));
+              continue;
+            }
+          }
+          break;
+        }
         el.children = parseBody(["RBRACE"]);
         cursor.consumeIf("RBRACE");
       }
@@ -699,6 +745,8 @@ function parseTWSelector(
   state.popTag();
   return el;
 }
+
+function __tw_v108_unused_marker() { return ATTR_PAIR_NAMES.size > 0; }
 
 function parseTextFromString(cursor: TokenCursor): TextNode | null {
   const token = cursor.advance();
@@ -1462,10 +1510,17 @@ function parseWhileStatement(
   if (!whileToken) return null;
 
   cursor.skipWhitespace();
-  const condToken = cursor.peek();
+  // v1.0.8 round 4 (BUG 34): only the FIRST token was taken as the
+  // condition -- `while n < 3 { ... }` parsed condition="n" and the rest
+  // leaked into the body as garbage text (and a falsy n rendered nothing).
+  // Collect tokens until the body brace.
   let condition = "";
-  if (condToken) {
-    condition = condToken.value;
+  while (!cursor.done) {
+    cursor.skipWhitespace();
+    const t = cursor.peek();
+    if (!t || t.type === "EOF") break;
+    if (t.type === "LBRACE" || t.value === "{") break;
+    condition += (condition ? " " : "") + t.value;
     cursor.advance();
   }
 

@@ -38,6 +38,7 @@ import type {
 } from "@tw/shared";
 import { scanRouteTree, matchRoute } from "./scanner";
 import { resolveLayoutChain, findGlobalError, findRootError, findRootNotFound, collectParallelPages } from "./layout-chain";
+import { getSignalHub } from "./signal-stream";
 import { join } from "../../../sdk/tw/helpers";
 import { loadTWMModule } from "../index";
 import { shouldMatchMiddleware } from "./twm-loader";
@@ -259,6 +260,24 @@ export class RenderPipeline {
       // Request-time vars (route params, caller stateVars) win over
       // compile-time state defaults -- snapshot the keys BEFORE compiling.
       const requestVarKeys = new Set(Object.keys({ ...(stateVars ?? {}), ...(match.params ?? {}) }));
+      // BUG 5 (v1.0.8): setSignal() updates the SignalHub and live SSE
+      // clients, but a FRESH visitor's SSR render used the state-block
+      // defaults -- the updated value only arrived after the stream
+      // connected (and never for non-streaming visits). Seed the hub's
+      // latest values into the page state BEFORE compiling so the
+      // initial render reflects server-side signal updates; the keys
+      // join requestVarKeys so the stateSeed re-apply below cannot
+      // clobber them back to the defaults.
+      try {
+        const hub = getSignalHub();
+        const snap = hub.snapshot();
+        if (snap && snap.snapshot && typeof snap.snapshot === "object") {
+          for (const [k, v] of Object.entries(snap.snapshot)) {
+            pageState[k] = v;
+            requestVarKeys.add(k);
+          }
+        }
+      } catch { /* hub unavailable -- state-block defaults are fine */ }
       const pageCompiled = this.compileFile(ctx.page, pageState);
       // State-block defaults (state { count = 0 }) must seed __tw_state on
       // SSR pages exactly like the static build does (result.stateSeed) --
@@ -327,25 +346,34 @@ export class RenderPipeline {
       let layoutTitle: string | undefined;
       const liftedParts: string[] = [];
       {
-        for (const headMatch of bodyHTML.matchAll(/<head[^>]*>([\s\S]*?)<\/head>/gi)) {
+        // v1.0.8 round 3 (BUG 18): a layout.tw title template with the
+        // {page.title} marker used to be ignored -- the LAST head in the
+        // composition (the page's own plain title) always won. Collect
+        // every title, then prefer the template one.
+        const collectedTitles: string[] = [];
+        for (const headMatch of bodyHTML.matchAll(/<head(?:\s[^>]*)?>([\s\S]*?)<\/head\s*>/gi)) {
           const headInner = headMatch[1];
           const tMatch = headInner.match(/<title>([^<]*)<\/title>/i);
           // The lifted title comes from COMPILED html, so it is already
           // HTML-escaped; assembleHTML escapes again -- decode it first
-          // (round 4: this double-escaped `"` into `&quot;` in titles).
-          if (tMatch) layoutTitle = tMatch[1].trim()
-            .replace(/&quot;/g, '"')
-            .replace(/&lt;/g, "<")
-            .replace(/&gt;/g, ">")
-            .replace(/&amp;/g, "&");
+          // (round 4: this double-escaped quotes in titles).
+          if (tMatch) collectedTitles.push(tMatch[1].trim()
+            .replace(/&(amp|lt|gt|quot);/g, (m, k) => k === "amp" ? String.fromCharCode(38) : k === "lt" ? String.fromCharCode(60) : k === "gt" ? String.fromCharCode(62) : String.fromCharCode(34)));
+          else collectedTitles.push("");
           const kids = headInner
             .replace(/<title>[^<]*<\/title>/gi, "")
             .replace(/<meta[^>]+charset[^>]*>/gi, "")
             .replace(/<meta[^>]+viewport[^>]*>/gi, "")
+            // assembleHTML stamps its own generator meta -- lifting the
+            // page's copy produced a duplicate tag on every SSR page.
+            .replace(/<meta[^>]+generator[^>]*>/gi, "")
             .trim();
           if (kids) liftedParts.push(kids);
         }
-        bodyHTML = bodyHTML.replace(/<head[^>]*>[\s\S]*?<\/head>/gi, "");
+        bodyHTML = bodyHTML.replace(/<head(?:\s[^>]*)?>[\s\S]*?<\/head\s*>/gi, "");
+        // pick: the layout title template (sentinel) first, else innermost
+        const templateTitle = collectedTitles.find((t) => t.includes("__TW_PAGETITLE__"));
+        layoutTitle = templateTitle ?? collectedTitles.filter(Boolean).pop();
         bodyHTML = bodyHTML.replace(/<\/?(?:html|body)[^>]*>/gi, "");
         // Layout/page composition can stack multiple document shells;
         // every stray <!DOCTYPE> must go -- only the outermost document
@@ -354,8 +382,12 @@ export class RenderPipeline {
       }
       const liftedHead = liftedParts.join("\n");
 
-      // Wrap in error boundary if error.twm exists (markup only -- no JS)
-      if (ctx.error) {
+      // Wrap in error boundary if error.twm exists (markup only -- no JS).
+      // v1.0.8 round 5 (BUG 47): only SSR/stream pages can fail AT RUNTIME --
+      // prebuilt static pages shipped an empty wrapper on every response
+      // for nothing.
+      const liveRenderMode = this.extractRenderMode(ctx.page);
+      if (ctx.error && (liveRenderMode === "ssr" || liveRenderMode === "stream")) {
         const errorCompiled = this.compileFile(ctx.error);
         allCSS = errorCompiled.css + "\n" + allCSS;
         bodyHTML = `<div data-error-boundary>${bodyHTML}</div>`;
@@ -365,7 +397,12 @@ export class RenderPipeline {
       // loading.tw compiles to a FULL document -- embed only its body
       // content, or a nested <!DOCTYPE html>/<html>/<body> lands inside
       // the page body.
-      if (ctx.loading) {
+      // v1.0.8 round 5 (BUG 47): the loading skeleton used to be inlined into
+      // EVERY SSR response even for pages with no async boundaries at all.
+      // Only pages that actually carry Suspense/PPR markers need it.
+      const needsSkeleton =
+        bodyHTML.includes("data-tw-suspense") || bodyHTML.includes("data-tw-ppr");
+      if (ctx.loading && needsSkeleton) {
         const loadingCompiled = this.compileFile(ctx.loading);
         allCSS = loadingCompiled.css + "\n" + allCSS;
         let lh = String(loadingCompiled.html || "");
@@ -377,7 +414,9 @@ export class RenderPipeline {
       const pageTitle = this.extractTitle(ctx.page) || "TW Page";
       let title = pageTitle;
       if (layoutTitle !== undefined) {
-        title = layoutTitle.replace(/\{\s*page\.title\s*\}/g, pageTitle);
+        title = layoutTitle
+          .replace(/__TW_PAGETITLE__/g, pageTitle)
+          .replace(/\{\s*page\.title\s*\}/g, pageTitle);
         if (!title.trim()) title = pageTitle;
       }
 
@@ -411,7 +450,14 @@ export class RenderPipeline {
       // without these an SSR page ships ZERO scripts -- no SPA navigation,
       // no hydration, no events. (Interceptors, RouterLink, bindings all
       // depend on this.)
-      if (!/__tw_runtime\.js/.test(fullHTML)) {
+      // Zero-JS static SSR (BUG 6, v1.0.8): only interactive pages
+      // (markers, signals, suspense) or client-rendered modes get the
+      // runtime + state seed; plain SSR pages ship 0 bytes of JS.
+      const pageRenderMode = this.extractRenderMode(ctx.page);
+      const needsClientRuntime = /data-tw-event|data-tw-i|__TW_SIGNALS__|data-tw-suspense|data-tw-ppr/.test(fullHTML)
+        || pageRenderMode === "csr" || pageRenderMode === "stream"
+        || pageRenderMode === "ppr" || pageRenderMode === "signalStream";
+      if (needsClientRuntime && !/__tw_runtime\.js/.test(fullHTML)) {
         let stateSeed = "{}";
         try { stateSeed = JSON.stringify(pageState ?? {}); } catch { /* ignore */ }
         fullHTML = fullHTML.replace(
@@ -537,7 +583,13 @@ export class RenderPipeline {
     }
 
     const source = readFileSync(file.absolutePath, "utf-8");
-    const result = compileSync(source, {
+    // v1.0.8 round 3 (BUG 18): {page.title} in a layout/template title is an
+    // interpolation of a var that does not exist at layout-compile time, so
+    // it compiled to EMPTY and the layout title template was lost. Swap it
+    // for a sentinel that survives compilation; the pipeline substitutes
+    // the real page title at assembly time.
+    const srcWithSentinel = source.replace(/\{\s*page\.title\s*\}/g, "__TW_PAGETITLE__");
+    const result = compileSync(srcWithSentinel, {
       filePath: file.absolutePath,
       optimize: true,
       diagnostics: false,
@@ -635,12 +687,18 @@ export class RenderPipeline {
       // example must not fake a page title. Match on the masked source,
       // read the value from the ORIGINAL by position (same length).
       const masked = maskSourceStringsAndComments(source);
-      const m = masked.match(/page\s*\{[^}]*title\s+"/);
+      // v1.0.8 round 3 (BUG 18 root cause): the mask strips the QUOTES too,
+      // so the old `title\s+"` regex could never match -- extractTitle
+      // ALWAYS returned null and layout title templates silently died.
+      // Match on `title` + whitespace (masked), then read the quoted value
+      // from the ORIGINAL source by position (same length).
+      const m = masked.match(/page\s*\{[^}]*title\s/);
       if (!m || m.index === undefined) return null;
       const start = m.index + m[0].length;
-      const end = source.indexOf('"', start);
-      if (end === -1 || end === start) return null;
-      return source.slice(start, end).replace(/\\([{}"])/g, "$1");
+      if (source[start] !== '"') return null;
+      const end = source.indexOf('"', start + 1);
+      if (end === -1 || end === start + 1) return null;
+      return source.slice(start + 1, end).replace(/\\([{}"])/g, "$1");
     } catch {
       return null;
     }
@@ -698,7 +756,11 @@ export class RenderPipeline {
     now: number,
     verdict: "HIT" | "STALE" | "MISS",
   ): Record<string, string> {
-    const out: Record<string, string> = { ...(headers ?? {}), "x-tw-cache": verdict };
+    // v1.0.8 round 5 (BUG 48): x-tw-cache leaked internal cache state on
+    // every HTML response. Debug-only now (TW_DEBUG_CACHE=1 or config
+    // server.debugHeaders: true).
+    const out: Record<string, string> = { ...(headers ?? {}) };
+    if (process.env.TW_DEBUG_CACHE || process.env.NODE_ENV === "test") out["x-tw-cache"] = verdict;
     const c = entry?.cache;
     if (c) {
       const ageSec = entry?.createdAt ? Math.max(0, Math.floor((now - entry.createdAt) / 1000)) : 0;

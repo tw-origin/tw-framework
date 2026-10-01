@@ -39,14 +39,14 @@ html {
 ```
 
 Pages are compiled to static HTML at build time. When a page declares `render interactive`,
-TW Compiler marks the live regions and the ~5KB client runtime makes them reactive in the
+TW Compiler marks the live regions and the ~21KB client runtime makes them reactive (static pages ship zero JS) in the
 browser — state, conditionals, lists, two-way inputs and client-side navigation.
 
 ## Core Features
 
 - **TW Compiler** — compiles `.tw` templates to HTML, with live-region marking for interactivity
 - **TW VDOM 1** — on-demand virtual DOM for interactive islands, lean static output everywhere else
-- **TW Runtime** — ~5KB client runtime: reactive state, live lists, conditionals, two-way binding
+- **TW Runtime** — ~21KB client runtime: reactive state, live lists, conditionals, two-way binding (loaded only on interactive pages)
 - **SPA navigation** — internal links swap pages without reloads (history, popstate, hover prefetch)
 - **TW Styles (`.tss`)** — CSS-first styling compiled at build time, component and global scopes
 - **File-system routing** — `home/page.tw` becomes `/`, dynamic routes, catch-alls, parallel slots

@@ -495,28 +495,44 @@
     }
 
     var es = null;
+    // v2: exponential backoff reconnect -- 1s, 2s, 4s, 8s, cap 10s.
+    // Every successfully applied frame resets the delay, so a healthy
+    // connection never grows its retry window; a dead server stops the
+    // client from hammering it every 1.5s forever.
+    var backoffMs = 1000, reconnectTimer = null;
     function open() {
+      if (reconnectTimer) { clearTimeout(reconnectTimer); reconnectTimer = null; }
       es = new EventSource(
         "/_tw/stream?s=" + encodeURIComponent(names.join(",")) + "&since=" + lastSeq
       );
       es.onmessage = function (ev) {
-        try { apply(JSON.parse(ev.data)); } catch (e) { /* malformed frame */ }
+        try {
+          apply(JSON.parse(ev.data));
+          backoffMs = 1000; // healthy frame -> reset the backoff
+        } catch (e) { /* malformed frame */ }
       };
       es.onerror = function () {
         // EventSource retries on its own, but with the original URL; close
         // and reopen so the connection resumes from lastSeq.
         try { es.close(); } catch (e) { /* already closed */ }
-        setTimeout(open, 1500);
+        es = null;
+        reconnectTimer = setTimeout(open, backoffMs);
+        backoffMs = Math.min(backoffMs * 2, 10000);
       };
     }
     open();
     activeStream = {
       close: function () {
+        if (reconnectTimer) { clearTimeout(reconnectTimer); reconnectTimer = null; }
         try { es.close(); } catch (e) { /* already closed */ }
         activeStream = null;
       },
     };
-    window.__tw.signalStream = { reconnect: open, lastSeq: function () { return lastSeq; } };
+    window.__tw.signalStream = {
+      reconnect: open,
+      lastSeq: function () { return lastSeq; },
+      backoffMs: function () { return backoffMs; },
+    };
   }
 
   // expose for debugging / userland

@@ -52,11 +52,30 @@ export function getBuiltinImageConfig(): ImageConfig {
  * Map of localName -> specifier for every builtin imported by a page.
  * `import optImage from "@tw/optImage"` -> { "optImage": "@tw/optImage" }.
  */
+// v1.0.8 round 4 (BUG 32): `import { RouterLink } from "tw"` is a plausible
+// spelling users write -- resolve named imports from the "tw" / "@tw/server"
+// specifier to the matching builtin component.
+const TW_NAMED_BUILTINS: Record<string, string> = {
+  RouterLink: "@tw/RouterLink",
+  optImage: "@tw/optImage",
+  Image: "@tw/optImage",
+};
+
 export function collectBuiltinImports(program: Program): Map<string, string> {
   const out = new Map<string, string>();
   for (const dir of (program as any).directives ?? []) {
     if (dir.type !== "ImportDirective") continue;
     const imp = dir as ImportDirective;
+    if (imp.source === "tw" || imp.source === "@tw/server") {
+      for (const item of imp.items ?? []) {
+        const name = item.split(" as ").pop()!.trim();
+        const spec = TW_NAMED_BUILTINS[name];
+        if (spec) out.set(name, spec);
+      }
+      if (imp.defaultImport && TW_NAMED_BUILTINS[imp.defaultImport]) {
+        out.set(imp.defaultImport, TW_NAMED_BUILTINS[imp.defaultImport]);
+      }
+    }
     if (!BUILTIN_COMPONENT_SPECIFIERS.includes(imp.source)) continue;
     if (imp.defaultImport) out.set(imp.defaultImport, imp.source);
     for (const item of imp.items ?? []) {
@@ -171,7 +190,8 @@ function normalizePrefetchProp(props: Record<string, string>): any {
  * links get safe defaults (new tab + noopener) unless overridden.
  */
 export function generateRouterLinkTag(props: Record<string, string>, textContent: string): string {
-  const href = (props.href ?? "").trim();
+  // v1.0.8 round 4: accept Next-style `to` as an href alias
+  const href = (props.href ?? props.to ?? "").trim();
   if (!href) return `<!-- @tw/RouterLink: missing href -->`;
 
   const opts: LinkTagOptions = {

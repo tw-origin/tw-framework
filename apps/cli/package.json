@@ -46,5 +46,10 @@
   "homepage": "https://github.com/tw-origin/tw-framework",
   "bugs": {
     "url": "https://github.com/tw-origin/tw-framework/issues"
+  },
+  "exports": {
+    ".": "./dist/tw.mjs",
+    "./server": "./dist/tw-server.mjs",
+    "./testing": "./dist/testing.cjs"
   }
 }

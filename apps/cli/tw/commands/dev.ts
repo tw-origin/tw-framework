@@ -626,6 +626,7 @@ async function ensureDevClientBundle(rootDir: string, pageSource: string, layout
   // tw.config.ts redirects + headers in dev (both forms, like `tw serve`)
   let devRedirects: { from: string; to: string; status?: number }[] = [];
   let devCfgHeaders: { source: string; headers: Record<string, string> }[] = [];
+  let devSigCfg: any = undefined;
   try {
     const cfgFile = join(rootDir, "tw.config.ts");
     if (existsSync(cfgFile)) {
@@ -643,6 +644,7 @@ async function ensureDevClientBundle(rootDir: string, pageSource: string, layout
           ? cfg.headers
           : Object.entries(cfg.headers).map(([source, headers]: any) => ({ source, headers }));
       }
+      if (cfg?.signalStream) devSigCfg = cfg.signalStream;
     }
   } catch { /* config optional */ }
   const devPathMatch = (pattern: string, pathname: string): boolean =>
@@ -653,6 +655,17 @@ async function ensureDevClientBundle(rootDir: string, pageSource: string, layout
 
   async function devFetchInner(req: Request): Promise<Response> {
       const url = new URL(req.url);
+      // BUG 13 parity: canonical 308 (same as `tw serve`)
+      try {
+        let rawPath = url.pathname;
+        const decoded = decodeURIComponent(rawPath);
+        if (decoded !== rawPath) rawPath = decoded;
+        let canonical = rawPath.replace(/\/{2,}/g, "/");
+        if (canonical.length > 1 && canonical.endsWith("/")) canonical = canonical.slice(0, -1);
+        if (canonical !== rawPath) {
+          return new Response(null, { status: 308, headers: { Location: encodeURI(canonical) + url.search } });
+        }
+      } catch { /* malformed escape: fall through */ }
       const path = url.pathname;
       const time = new Date().toISOString().split("T")[1].split(".")[0];
 
@@ -991,52 +1004,114 @@ async function ensureDevClientBundle(rootDir: string, pageSource: string, layout
       });
   }
 
-  const server = Bun.serve({
-    port,
-    hostname: host,
-    async fetch(req: Request): Promise<Response> {
-      // tw.config.ts redirects first (same precedence as `tw serve`)
-      const reqUrl = new URL(req.url);
-      for (const r of devRedirects) {
-        if (!r?.from || !r?.to) continue;
-        if (devPathMatch(r.from, reqUrl.pathname)) {
-          const status = [301, 302, 307, 308].includes(r.status as number) ? r.status : 301;
-          let loc = r.to.startsWith("http") ? r.to : new URL(r.to, req.url).toString();
-          // Preserve the query string unless the target has its own.
-          if (reqUrl.search && !loc.includes("?")) loc += reqUrl.search;
-          return new Response(null, { status, headers: { Location: loc } });
-        }
-      }
-      // Real middleware.twm: Response -> intercept; { headers } -> merge
-      const mwHeaders = await runUserMiddleware(req);
-      if (mwHeaders instanceof Response) return mwHeaders;
-      // /_tw/img/* — optimized image variants
+  // BUG 8 (v1.0.8): `tw dev` was Bun-only -- under Node it died at
+  // Bun.serve (or, through global-fetch paths, crashed with an undici
+  // WebAssembly.instantiate OOM on the first watched-file edit). The
+  // SAME handler now serves through node:http when Bun is unavailable,
+  // so the Node dev flow works instead of crashing.
+  async function devHandle(req: Request): Promise<Response> {
+    // Signal Streaming (v2): `tw dev` had NO /_tw/stream endpoint at all,
+    // so `render signalStream` pages were dead in development. Wire the
+    // SAME shared handler `tw serve` uses, plus the client-writes POST.
+    {
       const u = new URL(req.url);
-      if (u.pathname === "/_tw/img" || u.pathname.startsWith("/_tw/img/")) {
-        const imgRes = await devImageHandler?.handle(req);
-        if (imgRes) return imgRes;
+      if (u.pathname === "/_tw/stream") {
+        const { createSignalStream } = await import("../../../../packages/server/tw/routing/signal-stream.ts");
+        return createSignalStream(req, u, devSigCfg ? { maxClients: devSigCfg.maxClients, maxHistory: devSigCfg.maxHistory } : undefined);
       }
-      const response = await devFetchInner(req);
-      if (mwHeaders && typeof mwHeaders === "object") {
-        for (const key of Object.keys(mwHeaders)) {
-          try { if (!response.headers.has(key)) response.headers.set(key, mwHeaders[key]); } catch { /* skip */ }
+      if (u.pathname === "/_tw/signal" && req.method === "POST") {
+        const { writeSignalFromClient } = await import("../../../../packages/server/tw/routing/signal-stream.ts");
+        return writeSignalFromClient(req, { clientWrites: devSigCfg?.clientWrites });
+      }
+    }
+    // tw.config.ts redirects first (same precedence as `tw serve`)
+    const reqUrl = new URL(req.url);
+    for (const r of devRedirects) {
+      if (!r?.from || !r?.to) continue;
+      if (devPathMatch(r.from, reqUrl.pathname)) {
+        const status = [301, 302, 307, 308].includes(r.status as number) ? r.status : 301;
+        let loc = r.to.startsWith("http") ? r.to : new URL(r.to, req.url).toString();
+        // Preserve the query string unless the target has its own.
+        if (reqUrl.search && !loc.includes("?")) loc += reqUrl.search;
+        return new Response(null, { status, headers: { Location: loc } });
+      }
+    }
+    // Real middleware.twm: Response -> intercept; { headers } -> merge
+    const mwHeaders = await runUserMiddleware(req);
+    if (mwHeaders instanceof Response) return mwHeaders;
+    // /_tw/img/* — optimized image variants
+    const u = new URL(req.url);
+    if (u.pathname === "/_tw/img" || u.pathname.startsWith("/_tw/img/")) {
+      const imgRes = await devImageHandler?.handle(req);
+      if (imgRes) return imgRes;
+    }
+    const response = await devFetchInner(req);
+    if (mwHeaders && typeof mwHeaders === "object") {
+      for (const key of Object.keys(mwHeaders)) {
+        try { if (!response.headers.has(key)) response.headers.set(key, mwHeaders[key]); } catch { /* skip */ }
+      }
+    }
+    const u2 = new URL(req.url);
+    for (const h of devCfgHeaders) {
+      if (h?.source && h?.headers && devPathMatch(h.source, u2.pathname)) {
+        for (const key of Object.keys(h.headers)) {
+          // single-line values only (strip CR/LF)
+          try { if (!response.headers.has(key)) response.headers.set(key, String(h.headers[key]).replace(/[\r\n]/g, "")); } catch { /* skip */ }
         }
       }
-      const u2 = new URL(req.url);
-      for (const h of devCfgHeaders) {
-        if (h?.source && h?.headers && devPathMatch(h.source, u2.pathname)) {
-          for (const key of Object.keys(h.headers)) {
-            // single-line values only (strip CR/LF)
-            try { if (!response.headers.has(key)) response.headers.set(key, String(h.headers[key]).replace(/[\r\n]/g, "")); } catch { /* skip */ }
-          }
-        }
+    }
+    if (devSecurityHeaders) {
+      try { return devSecurityHeaders.apply(response); } catch { /* keep response */ }
+    }
+    return response;
+  }
+
+  if (typeof Bun !== "undefined" && typeof (Bun as any).serve === "function") {
+    Bun.serve({ port, hostname: host, fetch: devHandle });
+  } else {
+    const { createServer } = await import("node:http");
+    const srv = createServer(async (nreq: any, nres: any) => {
+      try {
+        const hostHdr = String(nreq.headers.host ?? `${host}:${port}`);
+        const chunks: Buffer[] = [];
+        for await (const c of nreq) chunks.push(Buffer.from(c as Buffer));
+        const raw = (nreq.method === "GET" || nreq.method === "HEAD") ? undefined : Buffer.concat(chunks);
+        const request = new Request(`http://${hostHdr}${nreq.url}`, {
+          method: nreq.method,
+          headers: nreq.headers as any,
+          body: raw && raw.length > 0 ? raw : undefined,
+        });
+        const resp = await devHandle(request);
+        const out = Buffer.from(await resp.arrayBuffer());
+        const headers: Record<string, string> = {};
+        resp.headers.forEach((v: any, k: any) => { headers[k] = v; });
+        nres.writeHead(resp.status, headers);
+        nres.end(out);
+      } catch (e: any) {
+        nres.writeHead(500, { "Content-Type": "text/plain" });
+        nres.end("Internal dev server error: " + (e?.message ?? e));
       }
-      if (devSecurityHeaders) {
-        try { return devSecurityHeaders.apply(response); } catch { /* keep response */ }
-      }
-      return response;
-    },
-  });
+    });
+    await new Promise<void>((r) => srv.listen(port, host, () => r()));
+    console.log("  [tw] runtime: node (Bun not found — using node:http)");
+  }
+
+  // Watcher feedback (BUG 8, v1.0.8): `tw dev` recompiles fresh on every
+  // request, but the developer got NO signal that a change was picked up
+  // (and no watcher existed at all). Best-effort log line on file changes.
+  try {
+    const { watch } = await import("node:fs");
+    const seen = new Set<string>();
+    watch(rootDir, { recursive: true }, (_t: any, f: any) => {
+      const name = String(f);
+      if (name.includes("node_modules") || name.includes(".git") || name.split("/").includes(".tw")) return;
+      if (seen.has(name)) return;
+      seen.add(name);
+      const t: any = setTimeout(() => seen.delete(name), 400);
+      if (typeof t?.unref === "function") t.unref();
+      console.log(`  [tw] ${name} changed -- reload the browser`);
+    });
+  } catch { /* watching is best-effort feedback only */ }
 
   console.log("  Server running! Open http://" + host + ":" + port + " in your browser.");
   console.log("  Press Ctrl+C to stop.\n");

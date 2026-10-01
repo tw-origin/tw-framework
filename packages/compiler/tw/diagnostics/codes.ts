@@ -111,4 +111,8 @@ export const ERROR_CODES: Record<ErrorCode, { message: string; severity: Diagnos
   TW091: { message: "fn cached handler is impure (request.cookies/headers/body or setSignal)", severity: "error", category: "semantic" },
   TW092: { message: "Unknown cache profile", severity: "error", category: "semantic" },
   TW093: { message: "Non-deterministic call in a cached handler (value freezes into the cache entry)", severity: "warning", category: "best-practice" },
+  TW094: { message: "Invalid state literal -- array/object elements must be comma-separated (and objects need colons)", severity: "error", category: "syntax" },
+  TW095: { message: "Invalid for-loop iterable -- use {varName} or a valid comma-separated literal", severity: "error", category: "syntax" },
+  TW096: { message: "Unknown state variable in interpolation (renders empty)", severity: "warning", category: "semantic" },
+  TW097: { message: "while with a comparison renders its body ONCE at build time (state cannot mutate during SSR) -- use for loops for repetition", severity: "warning", category: "semantic" },
 };

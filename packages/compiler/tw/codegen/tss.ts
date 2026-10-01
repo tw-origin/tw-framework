@@ -147,6 +147,39 @@ function stripTssComments(src: string): string {
 
 /** Compile a TSS source string into CSS. */
 export function compileTSS(source: string): string {
+  // v1.0.8 round 5 (BUG 44): a syntax-broken .tss used to compile into
+  // garbage "CSS" and the whole stylesheet then vanished silently from
+  // the page. Unbalanced braces are a hard syntax error now.
+  {
+    let depth = 0;
+    let line = 1;
+    let inString: string | null = null;
+    let inComment = false;
+    let inUrl = false;
+    for (let i = 0; i < source.length; i++) {
+      const ch = source[i];
+      const prev = i > 0 ? source[i - 1] : "";
+      if (ch === "\n") { line++; inComment = false; continue; }
+      if (inComment) continue;
+      if (inString) { if (ch === inString && prev !== "\\") inString = null; continue; }
+      // url(...) contents are opaque: `https://` is not a comment
+      if (inUrl) { if (ch === ")") inUrl = false; continue; }
+      if (ch === "/" && source[i + 1] === "/" && source.slice(Math.max(0, i - 3), i).includes(":")) { inUrl = true; continue; }
+      if (ch === "u" && source.slice(i, i + 4) === "url(") { inUrl = true; i += 3; continue; }
+      if (ch === "/" && source[i + 1] === "/") { inComment = true; continue; }
+      if (ch === '"' || ch === "'") { inString = ch; continue; }
+      if (ch === "{") depth++;
+      else if (ch === "}") {
+        depth--;
+        if (depth < 0) {
+          throw new Error("TW303: unbalanced '}' in stylesheet (line " + line + ")\n  " + (source.split("\n")[line - 1] ?? "").trim().slice(0, 80));
+        }
+      }
+    }
+    if (depth !== 0) {
+      throw new Error("TW303: " + depth + " unclosed '{' in stylesheet -- a rule block is never closed\n  last line: " + (source.split("\n").pop() ?? "").trim().slice(0, 80));
+    }
+  }
   const __twOut = __twCompileTSSInner(source);
   // Round 4: an unsubstituted $var used to ship broken CSS silently
   // (`color: $main-color` where no such state var exists).

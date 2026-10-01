@@ -408,6 +408,15 @@ function matchPath(pattern: string, pathname: string): boolean {
 function ruleBlocked(rule: MiddlewareRule, request: Request, pathname: string): boolean {
   const headers = request.headers;
 
+  // v1.0.8 round 4 (BUG 29): a rule with ONLY `match` + `response` (no
+  // condition sections) used to NEVER fire -- ruleBlocked() had nothing to
+  // trip on, so an unconditional exact-path guard was silently inactive.
+  // Match alone is a valid condition: the rule's response applies.
+  const hasCondition =
+    rule.userAgent || rule.path || rule.auth || rule.rateLimit ||
+    rule.origin || (rule.methods && rule.methods.length > 0);
+  if (!hasCondition) return true;
+
   // user_agent: block-list substring match; allow-list wins; empty handling.
   if (rule.userAgent) {
     const ua = (headers.get("user-agent") ?? "").toLowerCase();

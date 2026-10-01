@@ -63,6 +63,32 @@ const libCache = new Map<string, Record<string, any>>();
  * the build silent). Walk the source and only strip comments that are
  * NOT inside ' " ` string literals.
  */
+/**
+ * v1.0.8 round 3 (BUG 8): compile-only syntax validation for .twm files.
+ * `tw build` uses this so a syntax-broken route FAILS the build with
+ * file + reason, instead of copying it and returning a misleading
+ * "405 Method not allowed" at runtime. Returns null when valid.
+ */
+export function validateTWMSyntax(filePath: string): string | null {
+  let source: string;
+  try { source = readFileSync(filePath, "utf-8"); }
+  catch (err: any) { return "cannot read: " + (err?.message ?? err); }
+  if (isRuleDsl(source)) {
+    try { parseRules(source, filePath); return null; }
+    catch (err: any) { return "rule DSL: " + (err?.message ?? String(err)); }
+  }
+  try {
+    const imports = extractImports(source);
+    const jsCode = compileTwm(source);
+    const codeWithoutImports = stripImports(jsCode);
+    // compile-only check: same body the loader would run, but never executed
+    new Function("__tw_unused", codeWithoutImports);
+    return null;
+  } catch (err: any) {
+    return (err?.message ?? String(err)).replace(/\n/g, " ").slice(0, 200);
+  }
+}
+
 export function stripCommentsSafe(src: string): string {
   let out = "";
   let i = 0;
@@ -362,6 +388,11 @@ export async function loadTWMModule(filePath: string, rootDir?: string): Promise
     "PUT: typeof PUT !== 'undefined' ? PUT : null, " +
     "PATCH: typeof PATCH !== 'undefined' ? PATCH : null, " +
     "DELETE: typeof DELETE !== 'undefined' ? DELETE : null, " +
+    // v1.0.8 round 4 (BUG 33): fn options(request) was compiled but never
+    // exported from the module -- every OPTIONS request 405'd even though
+    // the handler existed.
+    "options: typeof options !== 'undefined' ? options : null, " +
+    "OPTIONS: typeof OPTIONS !== 'undefined' ? OPTIONS : null, " +
     "middleware: typeof middleware !== 'undefined' ? middleware : null, " +
     "generate: typeof generate !== 'undefined' ? generate : null, " +
     "config: typeof config !== 'undefined' ? config : null, " +
@@ -383,6 +414,8 @@ export async function loadTWMModule(filePath: string, rootDir?: string): Promise
       put: H.put || H.PUT || undefined,
       delete: H.deleteFn || H.DELETE || undefined,
       patch: H.patch || H.PATCH || undefined,
+      // v1.0.8 round 4 (BUG 33): route-level OPTIONS handlers
+      options: H.options || H.OPTIONS || undefined,
       middleware: H.middleware || undefined,
       generate: H.generate || undefined,
       config: H.config || undefined,
@@ -609,20 +642,56 @@ export async function executeRouteHandler(
     // Round 4: chunked bodies carry no content-length, so the header
     // guard above skipped them. Read as text WITH a hard cap so the
     // 10 MB limit holds for every encoding.
+    //
+    // BUG 2 + 15 (v1.0.8 round 3): every parse failure used to become a
+    // silent {} -- the client got 2xx while the server received NOTHING.
+    // Now: JSON content types parse strictly (400 on malformed bodies),
+    // text/* passes through as the raw string, urlencoded parses as a
+    // form, and unknown content types answer 415 instead of emptying.
     try {
       const rawBody = await request.text();
       if (rawBody.length > MAX_BODY_BYTES) {
         return { status: 413, json: { ok: false, error: "Payload too large" } };
       }
-      parsedBody = rawBody ? JSON.parse(rawBody) : {};
-    } catch { parsedBody = {}; }
+      if (!rawBody) {
+        parsedBody = {};
+      } else if (__ct.includes("application/x-www-form-urlencoded")) {
+        parsedBody = Object.fromEntries(new URLSearchParams(rawBody).entries());
+      } else if (__ct.startsWith("text/")) {
+        // text/plain and friends: pass the raw string through -- never
+        // silently replaced with {}
+        parsedBody = rawBody;
+      } else if (__ct.includes("json") || __ct === "") {
+        try {
+          parsedBody = JSON.parse(rawBody);
+        } catch (e: any) {
+          return { status: 400, json: { ok: false, error: "Invalid JSON body: " + (e?.message ?? "parse error") } };
+        }
+      } else {
+        return { status: 415, json: { ok: false, error: "Unsupported Content-Type: " + (__ct || "(none)") } };
+      }
+    } catch { /* body already consumed upstream (middleware): keep {} */ }
   } else if (request?.body && typeof request.body === "object") {
     parsedBody = request.body;
   }
-  let query: Record<string, string> = {};
+  let query: Record<string, any> = {};
   try {
     const u = new URL(request.url);
-    query = Object.fromEntries(u.searchParams.entries());
+    // v1.0.8 round 5 (BUG 43): duplicate keys used to silently keep only
+    // the LAST value (a=1&a=2 -> {a:"2"}). Now repeated keys and PHP-style
+    // `arr[]` parameters collect into arrays: { a: ["1","2"], arr: ["x","y"] }.
+    for (const [rawKey, value] of u.searchParams.entries()) {
+      const isPhpArray = rawKey.endsWith("[]");
+      const key = isPhpArray ? rawKey.slice(0, -2) : rawKey;
+      const existing = query[key];
+      if (existing === undefined) {
+        query[key] = isPhpArray ? [value] : value;
+      } else if (Array.isArray(existing)) {
+        existing.push(value);
+      } else {
+        query[key] = [existing, value];
+      }
+    }
   } catch { /* ignore */ }
   const headersObj: Record<string, string> =
     typeof request.headers?.entries === "function"
@@ -776,9 +845,22 @@ export async function executeRouteHandler(
     console.error("[tw] route handler error (" + filePath + "):", err?.message ?? err);
     return { status: 500, json: { ok: false, error: "Internal Server Error" } };
   }
-  if (!result || typeof result !== "object") {
-    console.error("[tw] route handler returned no result (" + filePath + ")");
-    return { status: 500, json: { ok: false, error: "Internal Server Error" } };
+  // v1.0.8 round 4 (BUG 36): a bare string return used to 500 with a
+  // generic "Internal Server Error" and no hint. A string is a natural
+  // text response -- treat it as { status: 200, text }. Any other
+  // non-object return gets a CLEAR error naming the supported shapes.
+  if (typeof result === "string") {
+    result = { status: 200, text: result };
+  } else if (!result || typeof result !== "object") {
+    console.error("[tw] route handler returned " + JSON.stringify(result) + " (" + filePath + ")");
+    return {
+      status: 500,
+      json: {
+        ok: false,
+        error: "Unsupported handler return shape: " + (result === null ? "null" : typeof result) +
+          ". Return { status, json|text|html } (or a plain string for text/plain).",
+      },
+    };
   }
   const finalResult = {
     status: typeof result.status === "number" ? result.status : 200,

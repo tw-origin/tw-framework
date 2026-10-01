@@ -64,8 +64,11 @@ import { WebSocketManager } from "./websocket-manager";
 import { getSignalHub } from "./routing";
 import { join } from "node:path";
 import { existsSync, readFileSync } from "node:fs";
+import { parseRules } from "./routing/twm-rules";
 import { RouteRegistry, type RouteContext } from "./router";
 import { MiddlewarePipeline, corsMiddleware, loggingMiddleware, rateLimitMiddleware, securityHeadersMiddleware, bodyParserMiddleware, compressionMiddleware, type Middleware } from "./middleware";
+import { compress, isLargeEnough, negotiateEncoding } from "./compression";
+import { createSignalStream, writeSignalFromClient } from "./routing/signal-stream";
 import { StaticHandler } from "./static";
 import { createSecurityHeaders, strictSecurityHeaders, devSecurityHeaders } from "@tw/security";
 import { SSRRenderer } from "./ssr";
@@ -87,7 +90,7 @@ export interface TWServerOptions {
   pagesDir?: string;
   cors?: boolean;
   rateLimit?: { windowMs: number; max: number };
-  compression?: boolean;
+  compression?: boolean | "gzip" | "brotli" | "none";
   securityHeaders?: boolean;
   ssl?: { cert: string; key: string };
   workers?: number;
@@ -135,6 +138,7 @@ export class TWServer {
   }
   private ssr: SSRRenderer | null = null;
   private server: any = null;
+  private compressionMode: "off" | "gzip" | "brotli" = "off";
   private isRunning = false;
   private pluginManager: any = null;
   private imageHandler: { handle(request: Request): Promise<Response | null> } | null = null;
@@ -158,6 +162,42 @@ export class TWServer {
         cfgIn.redirects = entries.map(([from, to]) =>
           typeof to === "string" ? { from, to } : { from, ...to });
       }
+      // v1.0.8 round 4 (BUG 35): mistyped redirect fields were silently
+      // ignored -- a Next.js-style entry (source/destination/permanent)
+      // built fine and then 404'd at runtime. Map the known aliases AND
+      // warn about anything still unrecognized.
+      if (Array.isArray(cfgIn.redirects)) {
+        const REDIRECT_KNOWN = new Set(["from", "to", "status", "source", "destination", "permanent"]);
+        let redirectDropped = false;
+        const normalizedRedirects = cfgIn.redirects.map((r: any) => {
+          if (!r || typeof r !== "object") return r;
+          let touched = false;
+          const mapped: any = { ...r };
+          if (mapped.from === undefined && mapped.source !== undefined) { mapped.from = mapped.source; touched = true; }
+          if (mapped.to === undefined && mapped.destination !== undefined) { mapped.to = mapped.destination; touched = true; }
+          if (mapped.status === undefined && mapped.permanent !== undefined) {
+            mapped.status = mapped.permanent ? 301 : 302;
+            touched = true;
+          }
+          const unknown = Object.keys(mapped).filter((k) => !REDIRECT_KNOWN.has(k));
+          if (unknown.length > 0) {
+            console.warn("[tw] redirects: unrecognized field" + (unknown.length > 1 ? "s" : "") + " " + unknown.join(", ") +
+              " in entry { from: " + JSON.stringify(mapped.from) + " } -- accepted fields: from, to, status");
+          }
+          if (typeof mapped.from !== "string" || typeof mapped.to !== "string") {
+            console.warn("[tw] redirects: entry missing from/to after normalization -- skipped (" + JSON.stringify(r).slice(0, 80) + ")");
+            redirectDropped = true;
+            return null;
+          }
+          // preserve object identity for already-clean entries (deep-round
+          // config normalization test relies on pass-through)
+          return touched ? mapped : r;
+        }).filter((x: any) => x !== null || (redirectDropped = true));
+        // keep the ORIGINAL array reference when nothing changed at all
+        if (redirectDropped || normalizedRedirects.some((x: any, i: number) => x !== cfgIn.redirects[i])) {
+          cfgIn.redirects = normalizedRedirects.filter(Boolean);
+        }
+      }
       if (cfgIn.headers && !Array.isArray(cfgIn.headers)) {
         const entries = Object.entries(cfgIn.headers) as [string, any][];
         cfgIn.headers = entries.map(([source, headers]) => ({ source, headers }));
@@ -180,6 +220,16 @@ export class TWServer {
       }
     }
     this.pluginManager = this.options.plugins ?? null;
+
+    // BUG 7 (v1.0.8): `compression` was accepted but never wired --
+    // compressionMiddleware() was a deliberate no-op and no response path
+    // compressed anything. Resolve the mode ONCE here.
+    {
+      const raw = (this.options.compression ?? true) as any;
+      if (raw === false || raw === "none" || raw === "off" || raw === "false") this.compressionMode = "off";
+      else if (raw === "gzip") this.compressionMode = "gzip";
+      else this.compressionMode = "brotli"; // true / "brotli": negotiate, br preferred
+    }
 
     // Image optimizer: /_tw/img/* (source: public/, cache: .tw/img)
     try {
@@ -312,6 +362,29 @@ export class TWServer {
     if (existsSync(middlewarePath)) {
       this.middlewarePath = middlewarePath;
       console.log("  Middleware: middleware.twm loaded");
+      // v1.0.8 round 5 (BUG 29): print what each rule will do. A rule with
+      // only `match` + `response` (no condition blocks) applies to EVERY
+      // matching request -- a fail-closed guard that is easy to misread as
+      // "inert". Naming it at startup removes the guesswork.
+      try {
+        const src = readFileSync(middlewarePath, "utf-8");
+        const rules = parseRules(src, "middleware.twm");
+        for (const r of rules) {
+          const conds: string[] = [];
+          if (r.userAgent) conds.push("user_agent");
+          if (r.path) conds.push("path");
+          if (r.auth) conds.push("auth");
+          if (r.rateLimit) conds.push("rate_limit");
+          if (r.origin) conds.push("origin");
+          if (r.methods && r.methods.length > 0) conds.push("methods");
+          const label = conds.length > 0
+            ? conds.join(" + ")
+            : "no conditions -> every matching request gets this response";
+          console.log(`    \u2022 "${r.name}" [${label}]`);
+        }
+      } catch {
+        /* rule syntax errors surface loudly on the first request */
+      }
     }
     return this;
   }
@@ -319,24 +392,50 @@ export class TWServer {
   async start(): Promise<void> {
     if (this.isRunning) return;
 
-    const { port, host } = this.options;
+    const host = this.options.host ?? "0.0.0.0";
+    const wanted = this.options.port ?? 8000;
 
-    this.server = (typeof Bun !== "undefined" ? Bun : null as any)?.serve({
-      port,
-      hostname: host,
-      fetch: async (request: Request) => {
-        const res = await this.handleRequest(request);
-        if (this.securityHeaders) {
-          try { return this.securityHeaders.apply(res); } catch { return res; }
-        }
-        return res;
-      },
-      error: (err: Error) => {
-        console.error("Server error:", err);
-        return new Response("Internal Server Error", { status: 500 });
-      },
-    });
-
+    // BUG 10 (v1.0.8): the "running" banner printed BEFORE binding and a
+    // busy port crashed with a raw EADDRINUSE stack trace (the user was
+    // told the server was up when it was dead). Bind FIRST -- trying
+    // wanted, wanted+1 ... wanted+9 as the docs promise -- then announce.
+    let port = wanted;
+    let bound: any = null;
+    let lastErr: any = null;
+    for (let p = wanted; p < wanted + 10; p++) {
+      try {
+        bound = (typeof Bun !== "undefined" ? Bun : null as any)?.serve({
+          port: p,
+          hostname: host,
+          fetch: async (request: Request) => {
+            const res = await this.handleRequest(request);
+            let withHeaders = res;
+            if (this.securityHeaders) {
+              try { withHeaders = this.securityHeaders.apply(res); } catch { withHeaders = res; }
+            }
+            return this.compressResponse(withHeaders, request);
+          },
+          error: (err: Error) => {
+            console.error("Server error:", err);
+            return new Response("Internal Server Error", { status: 500 });
+          },
+        });
+        port = p;
+        break;
+      } catch (e: any) {
+        lastErr = e;
+        const msg = String(e?.message ?? e);
+        if (!/address already in use|EADDRINUSE|Failed to start server/i.test(msg)) throw e;
+        if (p < wanted + 9) console.log(`  Port ${p} busy — trying ${p + 1}...`);
+      }
+    }
+    if (!bound) {
+      console.error(`\n  ERROR: could not bind ${host} on ports ${wanted}–${wanted + 9}.`);
+      console.error(`  ${lastErr?.message ?? lastErr}\n`);
+      throw lastErr ?? new Error("could not start server");
+    }
+    this.server = bound;
+    this.options.port = port;
     this.isRunning = true;
     console.log(`\n  TW Server running at http://${host}:${port}\n`);
     console.log(`  Routes: ${this.router.size()}`);
@@ -348,6 +447,8 @@ export class TWServer {
   // finishes ongoing requests, then closes
   async gracefulShutdown(timeout: number = 5000): Promise<void> {
     this.isRunning = false;
+    // v2: close every signal-stream client so SSE sockets free immediately
+    try { getSignalHub().closeAll(); } catch { /* no hub */ }
     if (this.server) {
       // Stop accepting new connections
       this.server.stop?.(false); // Bun API -- wait for pending
@@ -378,7 +479,39 @@ export class TWServer {
    *   - return { headers: {...} }  -> headers merged into the final response
    *   - return null/undefined      -> continue
    */
-  private async handleRequest(request: Request): Promise<Response> {
+  /** BUG 7 (v1.0.8): real response compression. `compression` in
+   * tw.config.ts was silently ignored -- the middleware was a no-op and
+   * nothing on the response path ever set Content-Encoding. */
+  private async compressResponse(res: Response, request: Request): Promise<Response> {
+    if (this.compressionMode === "off") return res;
+    try {
+      if (res.headers.get("content-encoding")) return res;
+      const ct = res.headers.get("content-type") || "";
+      // SSE / stream responses must never be buffered
+      if (ct.includes("text/event-stream")) return res;
+      if ((res as any).__twRawStream) return res;
+      const buf = new Uint8Array(await res.arrayBuffer());
+      if (!isLargeEnough(buf.length)) return new Response(buf, { status: res.status, headers: res.headers });
+      const accept = request.headers.get("accept-encoding") || "";
+      let enc = negotiateEncoding(accept);
+      if (this.compressionMode === "gzip" && enc === "brotli") enc = "gzip";
+      if (!enc) return new Response(buf, { status: res.status, headers: res.headers });
+      const out = await compress(buf, enc);
+      // Never serve a LARGER body than the raw one.
+      if (out.length >= buf.length) return new Response(buf, { status: res.status, headers: res.headers });
+      const h = new Headers(res.headers);
+      h.set("Content-Encoding", enc === "brotli" ? "br" : enc);
+      h.set("Vary", "Accept-Encoding");
+      h.delete("Content-Length");
+      return new Response(out as any, { status: res.status, headers: h });
+    } catch {
+      return res; // compression must never break a response
+    }
+  }
+
+  /** v1.0.8 round 5 (BUG 39): public now -- serverless adapters (Vercel
+   *  functions, edge runtimes) drive the server through this entry. */
+  async handleRequest(request: Request): Promise<Response> {
     // Normalize the request URL once, up front: collapse duplicate slashes
     // (`//admin` -> `/admin`). The WHATWG URL parser preserves `//`, and user
     // middleware.twm re-parses request.url itself, so the rewritten URL must
@@ -577,56 +710,13 @@ export class TWServer {
    * `data: {"v":1,"seq":N,"updates":[...]}` frames.
    */
   private handleSignalStream(request: Request, url: URL): Response {
-    const hub = getSignalHub();
-    const names = (url.searchParams.get("s") ?? "").split(",").map((x) => x.trim()).filter(Boolean);
-    const since = Number(url.searchParams.get("since") ?? "0") || 0;
-    const declared = new Map<string, string>();
-    for (const n of names) declared.set(n, "public"); // kind refined on updates
-    // Per-user private delivery: the session key comes from the tw_session
-    // cookie (docs/signal-streaming.md, security layer docs/52).
-    let session: string | undefined;
-    try {
-      const header = request.headers.get("cookie") ?? "";
-      const m = /(?:^|;\s*)tw_session=([^;]+)/.exec(header);
-      if (m) session = decodeURIComponent(m[1].trim().replace(/^"|"$/g, ""));
-    } catch { /* anonymous stream */ }
+    const cfg = (this.options as any).config?.signalStream;
+    return createSignalStream(request, url, cfg ? { maxClients: cfg.maxClients, maxHistory: cfg.maxHistory } : undefined);
+  }
 
-    const enc = new TextEncoder();
-    const sse = (payload: string) => enc.encode("data: " + payload + "\n\n");
-
-    const stream = new ReadableStream({
-      start(controller) {
-        const client = hub.register(declared, session);
-        client.send = (payload: string) => {
-          try { controller.enqueue(sse(payload)); } catch { client.close(); }
-        };
-        client.close = () => {
-          try { controller.close(); } catch { /* already closed */ }
-          hub["clients" as never]; // no-op type access guard
-        };
-        // Resume: replay missed updates or send a fresh snapshot
-        for (const payload of hub.connectPayloads(since, declared, session)) {
-          try { controller.enqueue(sse(payload)); } catch { break; }
-        }
-        // Keep-alive comment every 25s so proxies do not idle the connection
-        const keepAlive = setInterval(() => {
-          try { controller.enqueue(enc.encode(": keep-alive\n\n")); } catch { clearInterval(keepAlive); }
-        }, 25000);
-        (client as any).close = () => {
-          clearInterval(keepAlive);
-          try { controller.close(); } catch { /* already closed */ }
-        };
-      },
-    });
-    return new Response(stream, {
-      status: 200,
-      headers: {
-        "Content-Type": "text/event-stream; charset=utf-8",
-        "Cache-Control": "no-store",
-        "X-Accel-Buffering": "no",
-        Connection: "keep-alive",
-      },
-    });
+  private async handleClientSignalWrite(request: Request): Promise<Response> {
+    const cfg = (this.options as any).config?.signalStream;
+    return writeSignalFromClient(request, { clientWrites: cfg?.clientWrites });
   }
 
   /**
@@ -703,16 +793,41 @@ export class TWServer {
         controller.close();
       },
     });
-    return new Response(stream, {
+    const streamRes = new Response(stream, {
       status: 200,
       headers: { "Content-Type": "text/html; charset=utf-8" },
     });
+    (streamRes as any).__twRawStream = true; // never buffer a streamed shell
+    return streamRes;
   }
 
   private async handleRequestInner(request: Request): Promise<Response> {
     const url = new URL(request.url);
     const method = request.method;
-    const pathname = normalizePathname(url.pathname);
+    // v1.0.8 round 3 (BUG 13): URL canonicalization. //about, /about/ and
+    // the percent-encoded /%2f%2fabout all used to serve the same content
+    // as /about with a 200 (SEO duplicate content). Answer 308 (method and
+    // body preserved) to the canonical form instead.
+    let rawPath = url.pathname;
+    try {
+      const decoded = decodeURIComponent(rawPath);
+      if (decoded !== rawPath) rawPath = decoded;
+    } catch { /* malformed escape: keep raw */ }
+    let canonical = normalizePathname(rawPath);
+    if (canonical.length > 1 && canonical.endsWith("/")) {
+      canonical = canonical.slice(0, -1);
+    }
+    // compare against the DECODED form, not url.pathname: a unicode route
+    // is percent-ENCODED in url.pathname -- comparing against the raw form
+    // built a Location header carrying raw unicode (500 from the header
+    // validator) and would re-encode to the same URL anyway.
+    if (canonical !== rawPath) {
+      return new Response(null, {
+        status: 308,
+        headers: { Location: encodeURI(canonical) + url.search },
+      });
+    }
+    const pathname = canonical;
 
     // /_tw/img/* — optimized image variants (served before static routing so
     // the .tw cache dir and raw sources are never exposed).
@@ -726,6 +841,11 @@ export class TWServer {
     // signals (private delivery filter), ?since=N resumes after a drop.
     if (pathname === "/_tw/stream") {
       return this.handleSignalStream(request, url);
+    }
+
+    // /_tw/signal — v2 client->server push (config-gated, public-only)
+    if (pathname === "/_tw/signal" && method === "POST") {
+      return this.handleClientSignalWrite(request);
     }
 
     // /_tw/ppr — PPR hole fills: `render ppr` pages serve a prebuilt static

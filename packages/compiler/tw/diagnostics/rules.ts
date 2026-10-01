@@ -512,3 +512,99 @@ export function checkUnusedDeclarations(program: Program, filePath: string, diag
   }
 }
 
+
+
+// --- v1.0.8 round 3: silent-garbage guards ----------------------------------
+
+/** JS-eval a literal the same way generate() does, without throwing. */
+function literalIsBroken(value: string): boolean {
+  const v = value.trim();
+  if (!v.startsWith("[") && !v.startsWith("{")) return false;
+  try { new Function("return (" + v + ")"); return false; } catch { return true; }
+}
+
+/** BUG 6: space-separated arrays / colon-less objects silently compiled into
+ *  mangled strings. They must be build ERRORS, not silent garbage. */
+export function checkStateLiterals(program: Program, filePath: string, diags: Diagnostic[]): void {
+  for (const decl of collectStateDecls(program)) {
+    if (decl.signalKind === "derived") continue; // expression, not a literal
+    if (literalIsBroken(String(decl.value))) {
+      diags.push(createDiagnostic("TW094", decl.line, decl.col, filePath,
+        `${decl.name} = ${decl.value}`,
+        [
+          `Comma-separate array elements: ${decl.name} = ["a", "b", "c"]`,
+          `Objects need colons: ${decl.name} = { key: "value" }`,
+        ]));
+    }
+  }
+}
+
+/** BUG 7: invalid for-loop syntax (`for x in ["a" "b"]` -- missing braces,
+ *  bare array literal) produced mangled output. Must be an error. */
+export function checkLoopIterables(program: Program, filePath: string, diags: Diagnostic[]): void {
+  forEachNode(program, (node: any) => {
+    if (!node || node.type !== "For") return;
+    const iterable = String(node.iterable ?? "").trim();
+    if (!iterable) {
+      diags.push(createDiagnostic("TW095", node.line, node.col, filePath,
+        "for-loop has no iterable", [`Use: for item in {list} { ... }`]));
+      return;
+    }
+    // brace form {name} is the documented syntax; {name.index} is fine too
+    if (/^\{[A-Za-z_][\w.]*\}$/.test(iterable)) return;
+    if (/^[A-Za-z_][\w.]*$/.test(iterable)) return; // bare state var
+    if (literalIsBroken(iterable)) {
+      diags.push(createDiagnostic("TW095", node.line, node.col, filePath,
+        "for x in " + iterable,
+        [
+          `Wrap a state variable in braces: for item in {items}`,
+          `Literals need commas: for item in {["a", "b", "c"]}`,
+        ]));
+    }
+  });
+}
+
+/** BUG 20: {ghost_variable} renders empty with zero feedback. Warn when an
+ *  interpolation references a name that is neither state, a loop variable,
+ *  nor a common builtin. (Route params cannot be known statically, so this
+ *  stays a WARNING, never an error.) */
+export function checkUnknownStateVars(program: Program, filePath: string, diags: Diagnostic[]): void {
+  const known = new Set<string>();
+  for (const decl of collectStateDecls(program)) known.add(decl.name);
+  forEachNode(program, (node: any) => {
+    if (node && node.type === "For" && node.varName) known.add(node.varName);
+    if (node && node.type === "For" && node.indexName) known.add(node.indexName);
+  });
+  const BUILTINS = new Set([
+    "params", "props", "Math", "Date", "JSON", "String", "Number", "Boolean",
+    "Array", "Object", "window", "true", "false", "null", "undefined",
+  ]);
+  forEachNode(program, (node: any) => {
+    if (!isText(node)) return;
+    const text = String(node.value ?? "");
+    if (!text.includes("{")) return;
+    for (const m of text.matchAll(/\{\s*([A-Za-z_][\w]*)\s*\}/g)) {
+      const name = m[1];
+      if (known.has(name) || BUILTINS.has(name)) continue;
+      diags.push(createDiagnostic("TW096", node.line, node.col, filePath,
+        `{${name}}`,
+        [`Declare it in the state block, or check the spelling`]));
+    }
+  });
+}
+
+
+/** BUG 34: `while n < 3` renders the body exactly once under static SSR
+ *  semantics (state cannot mutate during codegen). Warn so nobody expects
+ *  a loop. */
+export function checkWhileComparisons(program: Program, filePath: string, diags: Diagnostic[]): void {
+  forEachNode(program, (node: any) => {
+    if (!node || node.type !== "While") return;
+    const cond = String(node.condition ?? "");
+    if (/[<>=!]/.test(cond)) {
+      diags.push(createDiagnostic("TW097", node.line, node.col, filePath,
+        "while " + cond,
+        ["Use `for item in {list}` for repetition", "while is for boolean flags (state { loading = true })"]));
+    }
+  });
+}

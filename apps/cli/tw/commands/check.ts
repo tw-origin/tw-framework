@@ -1,7 +1,7 @@
 /** tw check -- type check and diagnostics. */
 
 import { maskSourceStringsAndComments } from "@tw/shared";
-import { join } from "node:path";
+import { join, dirname } from "node:path";
 import { existsSync, readFileSync, readdirSync, statSync } from "node:fs";
 
 export async function checkCommand(): Promise<void> {
@@ -44,6 +44,44 @@ export async function checkCommand(): Promise<void> {
         const errors = diagnostics.filter((d: any) => d.severity === "error");
         const warnings = diagnostics.filter((d: any) => d.severity === "warning");
         const info = diagnostics.filter((d: any) => d.severity === "info");
+
+        // v1.0.8 round 5 (BUG 41): undefined components passed "no issues".
+        // A capitalized tag that no import resolves and no components/<X>.tw
+        // file backs is almost certainly a typo -- flag it.
+        const checkSource = readFileSync(filePath, "utf-8");
+        const usedTags = new Set<string>();
+        const collectUsed = (n: any) => {
+          if (!n) return;
+          if (n.type === "Element" || n.type === "Component") {
+            const t = n.tag ?? n.name;
+            if (typeof t === "string" && t[0] === t[0].toUpperCase()) usedTags.add(t);
+          }
+          for (const c of n.children ?? []) collectUsed(c);
+          if (n.type === "If" || n.type === "For" || n.type === "While") for (const c of n.body ?? []) collectUsed(c);
+        };
+        if (result.ast) { for (const n of result.ast.body ?? []) collectUsed(n); }
+        const SAFE_TAGS = new Set(["Link", "Suspense", "RouterLink", "Image", "optImage"]);
+        const importedNames = new Set<string>();
+        for (const im of checkSource.matchAll(/import\s+([A-Za-z_]\w*)\s+from/g)) importedNames.add(im[1]);
+        for (const im of checkSource.matchAll(/import\s*\{([^}]+)\}/g)) {
+          for (const part of im[1].split(",")) {
+            const nm = part.split(" as ").pop()!.trim();
+            if (nm) importedNames.add(nm);
+          }
+        }
+        const unknownComponents: string[] = [];
+        for (const tag of usedTags) {
+          if (SAFE_TAGS.has(tag) || importedNames.has(tag)) continue;
+          if (findComponentUp(dirname(filePath), tag)) continue;
+          unknownComponents.push(tag);
+        }
+        if (unknownComponents.length > 0) {
+          console.debug(`  ? ${relativePath} -- ${unknownComponents.length} unknown component(s)`);
+          for (const t of unknownComponents) {
+            console.debug(`    ? TW098 unknown component <${t}> -- no import resolves it and no components/${t}.tw exists`);
+          }
+          totalWarnings += unknownComponents.length;
+        }
 
         totalErrors += errors.length;
         totalWarnings += warnings.length;
@@ -91,12 +129,43 @@ export async function checkCommand(): Promise<void> {
 
   console.log(`\n  Summary: ${totalErrors} errors, ${totalWarnings} warnings, ${totalInfo} info`);
 
+  // v1.0.8 round 5 (BUG 41): warnings never failed `tw check`, so it could
+  // not gate CI. --max-warnings=N (or --strict for 0) exits 1 over the cap.
+  const argv = process.argv.slice(2);
+  let maxWarnings: number | null = null;
+  if (argv.includes("--strict")) maxWarnings = 0;
+  const mwIdx = argv.indexOf("--max-warnings");
+  if (mwIdx !== -1 && argv[mwIdx + 1] !== undefined && /^\d+$/.test(argv[mwIdx + 1])) {
+    maxWarnings = Number(argv[mwIdx + 1]);
+  } else {
+    const eq = argv.find((a) => a.startsWith("--max-warnings="));
+    if (eq && /^\d+$/.test(eq.split("=")[1])) maxWarnings = Number(eq.split("=")[1]);
+  }
+
   if (totalErrors > 0) {
     console.log("  Status: FAILED\n");
+    process.exit(1);
+  } else if (maxWarnings !== null && totalWarnings > maxWarnings) {
+    console.log(`  Status: FAILED -- ${totalWarnings} warnings exceed --max-warnings=${maxWarnings}\n`);
     process.exit(1);
   } else {
     console.log("  Status: PASSED\n");
   }
+}
+
+/** Walk up from dir looking for components/<name>.tw (v1.0.8 round 5). */
+function findComponentUp(dir: string, name: string): boolean {
+  let cur = dir;
+  for (let i = 0; i < 12 && cur && cur !== "/"; i++) {
+    try {
+      const candidate = join(cur, "components", name + ".tw");
+      if (existsSync(candidate)) return true;
+    } catch { /* ignore */ }
+    const parent = dirname(cur);
+    if (parent === cur) break;
+    cur = parent;
+  }
+  return false;
 }
 
 function collectFiles(dir: string, ext: string, results: string[]): void {

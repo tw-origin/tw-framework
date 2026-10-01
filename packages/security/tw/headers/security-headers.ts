@@ -32,8 +32,14 @@ export interface SecurityHeadersConfig {
   coop?: "unsafe-none" | "same-origin-allow-popups" | "same-origin";
   /** Cross-Origin-Resource-Policy. */
   corp?: "same-site" | "same-origin" | "cross-origin";
-  /** X-XSS-Protection (legacy, but still useful). */
+  /** X-XSS-Protection (legacy, but still useful).
+   *  v1.0.8 round 5: deprecated -- default OFF, opt in explicitly. */
   xssProtection?: "0" | "1" | "1; mode=block";
+  /** v1.0.8 round 5 (BUG 40): baseline Content-Security-Policy. Default
+   *  keeps TW's inline hydration scripts + inline critical CSS working
+   *  (unsafe-inline for script/style). false disables; a string replaces
+   *  the whole policy; use @tw/security CSPBuilder for strict/nonce CSP. */
+  csp?: boolean | string;
   /** X-Powered-By -- set to false to remove. */
   removePoweredBy?: boolean;
   /** Server header value. */
@@ -41,6 +47,11 @@ export interface SecurityHeadersConfig {
 }
 
 /** Default security headers configuration. */
+const BASELINE_CSP =
+  "default-src 'self'; script-src 'self' 'unsafe-inline'; style-src 'self' 'unsafe-inline'; " +
+  "img-src 'self' data: blob:; font-src 'self' data:; connect-src 'self'; media-src 'self'; " +
+  "object-src 'none'; base-uri 'self'; form-action 'self'; frame-ancestors 'self'";
+
 const DEFAULTS: SecurityHeadersConfig = {
   hstsMaxAge: 31536000, // 1 year
   hstsIncludeSubdomains: true,
@@ -48,7 +59,9 @@ const DEFAULTS: SecurityHeadersConfig = {
   frameOptions: "SAMEORIGIN",
   contentTypeOptions: true,
   referrerPolicy: "strict-origin-when-cross-origin",
-  xssProtection: "1; mode=block",
+  // v1.0.8 round 5 (BUG 48): x-xss-protection deprecated since 2019 --
+  // OFF by default now; opt back in with security.xssProtection.
+  xssProtection: undefined,
   removePoweredBy: true,
   coep: "unsafe-none",
   coop: "same-origin",
@@ -149,6 +162,14 @@ export class SecurityHeaders {
     // Server header
     if (this.config.serverHeader) {
       headers["Server"] = this.config.serverHeader;
+    }
+
+    // v1.0.8 round 5 (BUG 40): README says "Security built in -- CSP" but no
+    // Content-Security-Policy shipped. Baseline CSP by default now.
+    if (this.config.csp !== false && !headers["Content-Security-Policy"]) {
+      headers["Content-Security-Policy"] = typeof this.config.csp === "string"
+        ? this.config.csp
+        : BASELINE_CSP;
     }
 
     return headers;

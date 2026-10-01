@@ -244,14 +244,14 @@ export function collectTssImports(programs: Program[], ctx: CodegenContext): voi
               else ctx.inlineStyles.push(css);
             }
           } catch (e: any) {
-            if (e && typeof e.message === "string" && /^TW30[12]/.test(e.message)) throw e;
+            if (e && typeof e.message === "string" && /^TW30[123]/.test(e.message)) throw e;
             /* missing .tss file -- skip */
           }
         }
       }
     }
   } catch (e: any) {
-    if (e && typeof e.message === "string" && /^TW30[12]/.test(e.message)) throw e;
+    if (e && typeof e.message === "string" && /^TW30[123]/.test(e.message)) throw e;
     /* fs unavailable */
   }
 }
@@ -599,6 +599,19 @@ function generateSuspense(el: ElementNode, ctx: CodegenContext): string {
 function generateElement(el: ElementNode, ctx: CodegenContext): string {
   const tag = el.tag;
   const voidTag = VOID_TAGS.has(tag.toLowerCase());
+
+  // v1.0.8 round 4 (BUG 32): an UNIMPORTED capitalized tag (e.g. `Nope`)
+  // used to compile to raw invalid HTML with zero feedback. Capitalized
+  // tags are component syntax -- fail LOUDLY instead of garbage markup.
+  if (
+    tag.length > 0 && tag[0] === tag[0].toUpperCase() &&
+    !["Link", "Suspense"].includes(tag) &&
+    !componentRegistry.has(tag) &&
+    !resolveBuiltin(tag, activeBuiltinImports)
+  ) {
+    console.warn("[tw] unknown component <" + tag + "> (" + el.line + ":" + el.col + ") -- no import resolves it; nothing was rendered");
+    return "<!-- TW: unknown component '" + tag + "' -- check the import -->";
+  }
 
   // Builtin framework components (import optImage from "@tw/optImage",
   // import RouterLink from "@tw/RouterLink", ...). With the text shorthand
@@ -949,8 +962,17 @@ function generateComponent(comp: ComponentNode, ctx: CodegenContext): string {
     (ctx as any).slotContent = savedSlot;
     ctx.inHead = compSavedInHead;
   } else {
-    // Fallback: render children (inline mode)
-    childrenHTML = comp.children.map(c => generateNode(c, ctx)).join("");
+    // v1.0.8 round 4 (BUG 32): an unresolvable component used to render as
+    // RAW invalid HTML with no build error and no tw check flag. Fail
+    // LOUDLY instead: a comment in the page source + a console warning.
+    const known = ["Link", "Suspense"];
+    if (!known.includes(compName)) {
+      console.warn("[tw] unknown component <" + compName + "> (" + (comp as any).line + ":" + (comp as any).col + ") -- unresolvable import; nothing was rendered");
+      childrenHTML = "<!-- TW: unknown component '" + compName + "' -- check the import -->";
+    } else {
+      // Fallback: render children (inline mode)
+      childrenHTML = comp.children.map(c => generateNode(c, ctx)).join("");
+    }
   }
 
   // Restore stateVars

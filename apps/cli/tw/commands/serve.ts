@@ -5,6 +5,29 @@ import { existsSync } from "node:fs";
 
 export async function serveCommand(): Promise<void> {
   const args = process.argv.slice(3);
+
+  // BUG 9 (v1.0.8): `tw serve --help` used to START the server instead
+  // of showing help -- the flag was never parsed.
+  if (args.includes("-h") || args.includes("--help")) {
+    console.log(`
+  tw serve — start the production server
+
+  Usage:
+    tw serve [--port <number>] [--host <address>]
+
+  Options:
+    --port <number>   port to listen on (default: 8000; tw.config.ts
+                      server.port and the PORT env var also work,
+                      in that order of precedence)
+    --host <address>  bind address (default: 0.0.0.0)
+    -h, --help        show this help
+
+  Requires a build first (tw build); serves .tw/ output with SSR,
+  middleware and API routes.
+`);
+    process.exit(0);
+  }
+
   let port: number | null = null;
   let host = "0.0.0.0";
 
@@ -75,7 +98,9 @@ export async function serveCommand(): Promise<void> {
     const server = new TWServer({
       rootDir, port, host, staticDir: outDir, config,
       ...(config?.rateLimit ? { rateLimit: config.rateLimit } : {}),
-      ...(typeof config?.compression === "boolean" ? { compression: config.compression } : {}),
+      ...(config?.compression !== undefined || (config?.server as any)?.compression !== undefined
+        ? { compression: ((config?.compression ?? (config?.server as any)?.compression) as any) }
+        : {}),
       ...(pluginManager && pluginManager.size() > 0 ? { plugins: pluginManager } : {}),
       ...(config?.images ? { images: config.images } : {}),
       ...(config?.security ? { security: config.security } : {}),

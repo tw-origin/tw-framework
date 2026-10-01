@@ -6,7 +6,7 @@ This document covers one thing completely: `.scss` files — using Sass/SCSS wit
 
 ## What SCSS Support Is
 
-`.scss` files are compiled by the SCSS compiler as part of the build. Everything SCSS offers works — nesting, variables, mixins, functions, loops, conditionals:
+`.scss` files are compiled by TW's SCSS compiler as part of the build. The supported subset: nesting, `$variables`, `&` references, and `@mixin`/`@include` (inlined at compile time). Higher-order features — `@function`, loops (`@each`/`@for`), `@if/@else` conditionals, `@extend`, `@use`/`@forward` — are NOT compiled and print a build warning when used:
 
 ```scss
 /* style/themes.scss */

@@ -3,7 +3,7 @@
 import { join } from "node:path";
 import { createRequire as _cr } from "node:module";
 const _require: NodeRequire = _cr(import.meta.url);
-import { existsSync, readdirSync, statSync } from "node:fs";
+import { existsSync, readdirSync, statSync, readFileSync } from "node:fs";
 
 function collectTests(dir: string, out: string[]): void {
   if (!existsSync(dir)) return;
@@ -67,6 +67,21 @@ export async function testCommand(): Promise<void> {
   }
 
   console.log("\n  tw test -- running " + files.length + " test file" + (files.length === 1 ? "" : "s") + "\n");
+
+  // v1.0.8 round 5 (BUG 42): a test file using any format other than
+  // bun:test (export const tests = [...], export const run, ...) ran ZERO
+  // of its tests and still printed "Tests passed" -- false confidence.
+  // Warn loudly for files that define no runnable tests.
+  for (const f of files) {
+    try {
+      const src = readFileSync(f, "utf-8");
+      const hasBunTest = src.includes("bun:test");
+      const hasTestCall = /\b(test|it|describe)\s*\(/.test(src);
+      if (!hasBunTest && !hasTestCall) {
+        console.log("  \x1b[33m! " + f.replace(rootDir + "/", "") + " defined no tests -- only bun:test format runs (import { test, expect } from \"bun:test\")\x1b[0m");
+      }
+    } catch { /* unreadable: bun test will surface it */ }
+  }
 
   if (files.length === 0) {
     console.log("  No tests found. Create tests/your-name.test.ts:");

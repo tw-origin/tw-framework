@@ -155,13 +155,24 @@ export function compressionMiddleware(): Middleware {
   };
 }
 
-export function securityHeadersMiddleware(): Middleware {
+export function securityHeadersMiddleware(opts?: { csp?: boolean | string }): Middleware {
   return async (ctx, next) => {
     ctx.headers["x-content-type-options"] = "nosniff";
     ctx.headers["x-frame-options"] = "DENY";
-    ctx.headers["x-xss-protection"] = "1; mode=block";
+    // v1.0.8 round 5 (BUG 48): x-xss-protection removed -- deprecated since
+    // 2019, rejected by modern browsers and can introduce bugs in old ones.
     ctx.headers["referrer-policy"] = "strict-origin-when-cross-origin";
     ctx.headers["permissions-policy"] = "camera=(), microphone=(), geolocation=()";
+    // v1.0.8 round 5 (BUG 40): baseline CSP. TW ships inline hydration
+    // scripts + inline critical CSS, so the DEFAULT keeps 'unsafe-inline'
+    // for script/style -- strict/nonce CSP stays available via @tw/security
+    // (CSPBuilder.withNonce). Pass { csp: false } to opt out, or a string
+    // to override the whole policy.
+    if (opts?.csp !== false && !ctx.headers["content-security-policy"]) {
+      ctx.headers["content-security-policy"] = typeof opts?.csp === "string"
+        ? opts.csp
+        : "default-src 'self'; script-src 'self' 'unsafe-inline'; style-src 'self' 'unsafe-inline'; img-src 'self' data: blob:; font-src 'self' data:; connect-src 'self'; media-src 'self'; object-src 'none'; base-uri 'self'; form-action 'self'; frame-ancestors 'self'";
+    }
     await next();
   };
 }

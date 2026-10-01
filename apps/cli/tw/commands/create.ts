@@ -291,21 +291,54 @@ ${name}/
 }
 
 async function createVercelJson(dir: string): Promise<void> {
+  // v1.0.8 round 5 (BUG 39): the old config was a STATIC deployment
+  // (outputDirectory: .tw) while the scaffold app is SSR + API routes --
+  // home and /api/* had nothing to serve on Vercel. The scaffold now ships
+  // a serverless function that runs the TW server, with every route
+  // rewritten to it. installCommand matches the shipped package-lock.json.
   const config = {
     buildCommand: "npx tw build",
-    outputDirectory: ".tw",
-    installCommand: "bun install",
-    framework: null,
+    installCommand: "npm install",
+    functions: {
+      "api/tw-server.ts": { memory: 512 },
+    },
+    rewrites: [
+      { source: "/(.*)", destination: "/api/tw-server" },
+    ],
   };
 
   await writeFile(join(dir, "vercel.json"), JSON.stringify(config, null, 2));
   console.log("  \u2713 vercel.json");
+
+  const fnDir = join(dir, "api");
+  await mkdir(fnDir, { recursive: true });
+  await writeFile(join(fnDir, "tw-server.ts"), [
+    "// TW Framework -- Vercel serverless entry (v1.0.8 round 5, BUG 39).",
+    "// Runs the full TW server (SSR pages + .twm API routes) as a Vercel",
+    "// function. vercel.json rewrites every route here.",
+    'import { TWServer } from "tw-framework/server";',
+    "",
+    "const server = new TWServer({",
+    "  rootDir: process.cwd(),",
+    "});",
+    "",
+    "export default async function handler(request: Request): Promise<Response> {",
+    "  return server.handleRequest(request);",
+    "}",
+    "",
+  ].join("\n"));
+  console.log("  \u2713 api/tw-server.ts");
 }
 
 // --- Default Template --------------------------------------------------
 
 async function createDefaultProject(dir: string, name: string): Promise<void> {
-  const T = (s: string) => s;
+  // v1.0.8: T() used to be an identity stub -- every `${name}`
+  // placeholder in the templates below shipped LITERALLY into the
+  // scaffolded project (bug report: `a.brand { href "/" "${name}" }`
+  // rendered a bogus <href> element and `app: "${name}"` in the API
+  // JSON). Substitute the real project name here.
+  const T = (s: string) => s.split("${name}").join(name);
 
   // The template's write targets -- created up front (recursive, so the
   // [slug] / [id] bracket dirs are no problem).
@@ -325,8 +358,6 @@ html {
   head {
     meta charset "utf-8"
     meta name "viewport" content "width=device-width, initial-scale=1"
-    meta name "description" content "{page.description}"
-    title "{page.title} -- ${'$'}{name}"
   }
   body {
     header.sitenav {
@@ -693,6 +724,10 @@ a:hover { td underline }
 // This sample blocks known bot user agents everywhere. Guards are
 // fail-closed: a matching request that fails the condition gets the
 // rule's response, and no page code ever runs.
+//
+// Note: a rule with ONLY match + response (no condition blocks) applies
+// to EVERY matching request -- e.g. a site-wide maintenance page. tw serve
+// lists each rule at startup and flags those unconditional ones.
 
 rule "block bots" {
     match "/**"

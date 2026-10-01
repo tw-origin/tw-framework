@@ -404,11 +404,15 @@ export function compileSCSS(source: string): string {
   // Round 4: silent data loss used to hide every unsupported construct
   // (unrecognized declarations and at-rules were dropped with no signal).
   const cleaned0 = stripComments(source);
-  const UNSUPPORTED = /@(import|mixin|include|extend|use|forward|function|each|if)\b/g;
+  // v1.0.8 round 5 (BUG 45): @mixin/@include ARE supported (they compile
+  // to inlined output) -- the old warning called them "ignored" and
+  // developers ripped out working mixins. Only genuinely unsupported
+  // at-rules warn now.
+  const UNSUPPORTED = /@(import|extend|use|forward|function|each|if|else|for|while)\b/g;
   const m = cleaned0.match(UNSUPPORTED);
   if (m) {
     const seen = Array.from(new Set(m.map((x) => x.trim())));
-    console.warn("[scss] unsupported at-rule(s) ignored: " + seen.join(", ") + " -- TW's SCSS subset supports nesting, $vars and & references only");
+    console.warn("[scss] unsupported at-rule(s) ignored: " + seen.join(", ") + " -- TW's SCSS subset supports nesting, $vars, & references and @mixin/@include");
   }
   const items = parseItems(stripComments(source));
   const out: string[] = [];
