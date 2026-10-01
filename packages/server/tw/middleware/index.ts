@@ -171,7 +171,7 @@ export function securityHeadersMiddleware(opts?: { csp?: boolean | string }): Mi
     if (opts?.csp !== false && !ctx.headers["content-security-policy"]) {
       ctx.headers["content-security-policy"] = typeof opts?.csp === "string"
         ? opts.csp
-        : "default-src 'self'; script-src 'self' 'unsafe-inline'; style-src 'self' 'unsafe-inline'; img-src 'self' data: blob:; font-src 'self' data:; connect-src 'self'; media-src 'self'; object-src 'none'; base-uri 'self'; form-action 'self'; frame-ancestors 'self'";
+        : "default-src 'self'; script-src 'self' 'unsafe-inline' 'unsafe-eval'; style-src 'self' 'unsafe-inline'; img-src 'self' data: blob:; font-src 'self' data:; connect-src 'self'; media-src 'self'; object-src 'none'; base-uri 'self'; form-action 'self'; frame-ancestors 'self'";
     }
     await next();
   };
