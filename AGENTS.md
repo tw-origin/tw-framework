@@ -3,7 +3,7 @@
 ## Naming & content rules (MUST FOLLOW — highest priority)
 
 1. **No internal iteration labels anywhere in the repository.** Never ship
-   names or text like `round 1/2/3`, `BUG 27`, `paste-1-18`, `v108-round3`,
+   names or text like `round 1/2/3`, `BUG 27`, `paste-1-18`, `body-parsing-diagnostics`,
    `phase3`, `batch 16` in file names, test names, describe/test titles,
    comments, docs or commit messages. They are internal bookkeeping and look
    unprofessional in a public framework.
@@ -87,7 +87,7 @@ language:
 - One CLI (`tw dev | build | serve | ship | check`) drives everything.
 
 The repo is a Bun workspace: 11 packages, 2 apps, 30 examples, 185 docs
-pages, a 2702-test suite (11s), a 322-case eval harness, and a 6-metric
+pages, a 3250-test suite (11s), a 322-case eval harness, and a 6-metric
 benchmark gate. Every claim in that sentence has a command in section 3
 that proves it.
 
@@ -98,7 +98,7 @@ that proves it.
 | Command | What it does | Time |
 |---|---|---|
 | `bun install` | workspace install | ~2s |
-| `bun test` | 2702 tests, 49 files, unit + isolated e2e | ~11s |
+| `bun test` | 3250 tests, 83 files, unit + isolated e2e | ~11s |
 | `bun run lint` | tsc typecheck across all 11 packages | ~20s |
 | `bun run verify` | MASTER GATE: lint -> tests -> evals -> 14 example builds -> bench gate -> errors.json sync | ~3m20s |
 
@@ -248,12 +248,12 @@ Three windows, from the canonical design doc:
 
 ## 7. The test suite
 
-`bun test` runs **2702 tests across 49 files in ~11s**. Unit tests are browser-free and deterministic; e2e tests build and serve a
+`bun test` runs **3250 tests across 83 files in ~11s**. Unit tests are browser-free and deterministic; e2e tests build and serve a
 complete fixture app on a random port with raw node:http (NOT fetch -- the
 happy-dom bunfig preload enforces CORS on localhost). Conventions live in
 contributing/core-testing.md. The catalog:
 
-- `tests/adapters.test.ts`- `tests/cache-tags.test.ts`- `tests/codegen-deep.test.ts`- `tests/compiler-advanced.test.ts`- `tests/compiler.test.ts`- `tests/deep-round.test.ts`- `tests/docs-round.test.ts`- `tests/e2e-isolated-app.test.ts`- `tests/e2e.test.ts`- `tests/external-hunt.test.ts`- `tests/hunt-round.test.ts`- `tests/hunt-round2.test.ts`- `tests/image.test.ts`- `tests/interactivity-e2e.test.ts`- `tests/layout-params.test.ts`- `tests/lexer.test.ts`- `tests/link.test.ts`- `tests/middleware-rules.test.ts`- `tests/native.test.ts`- `tests/next-parity.test.ts`- `tests/node-bundle-css.test.ts`- `tests/optimizer-deep.test.ts`- `tests/parity.test.ts`- `tests/parser-deep.test.ts`- `tests/parser.test.ts`- `tests/phase3-runtime.test.ts`- `tests/plugins-load.test.ts`- `tests/plugins.test.ts`- `tests/render-modes.test.ts`- `tests/runtime-new-2.test.ts`- `tests/runtime-new.test.ts`- `tests/runtime-server.test.ts`- `tests/runtime.test.ts`- `tests/scss.test.ts`- `tests/security-hunt.test.ts`- `tests/security.test.ts`- `tests/self-hunt.test.ts`- `tests/semantic-deep.test.ts`- `tests/shared.test.ts`- `tests/signal-stream.test.ts`- `tests/unit-aria.test.ts`- `tests/unit-css-matrix.test.ts`- `tests/unit-events.test.ts`- `tests/unit-html-attributes.test.ts`- `tests/unit-html-elements.test.ts`- `tests/unit-router-directives.test.ts`- `tests/unit-web-tables.test.ts`- `tests/wiring.test.ts`
+- `tests/adapters.test.ts`- `tests/cache-tags.test.ts`- `tests/codegen-deep.test.ts`- `tests/compiler-advanced.test.ts`- `tests/compiler.test.ts`- `tests/deep-behaviour.test.ts`- `tests/docs-claims.test.ts`- `tests/e2e-isolated-app.test.ts`- `tests/e2e.test.ts`- `tests/external-review.test.ts`- `tests/runtime-edge-cases.test.ts`- `tests/audit-regressions.test.ts`- `tests/image.test.ts`- `tests/interactivity-e2e.test.ts`- `tests/layout-params.test.ts`- `tests/lexer.test.ts`- `tests/link.test.ts`- `tests/middleware-rules.test.ts`- `tests/native.test.ts`- `tests/next-parity.test.ts`- `tests/node-bundle-css.test.ts`- `tests/optimizer-deep.test.ts`- `tests/parity.test.ts`- `tests/parser-deep.test.ts`- `tests/parser.test.ts`- `tests/runtime-scheduler-events.test.ts`- `tests/plugins-load.test.ts`- `tests/plugins.test.ts`- `tests/render-modes.test.ts`- `tests/runtime-new-2.test.ts`- `tests/runtime-new.test.ts`- `tests/runtime-server.test.ts`- `tests/runtime.test.ts`- `tests/scss.test.ts`- `tests/security-audit.test.ts`- `tests/security.test.ts`- `tests/self-audit.test.ts`- `tests/semantic-deep.test.ts`- `tests/shared.test.ts`- `tests/signal-stream.test.ts`- `tests/unit-aria.test.ts`- `tests/unit-css-matrix.test.ts`- `tests/unit-events.test.ts`- `tests/unit-html-attributes.test.ts`- `tests/unit-html-elements.test.ts`- `tests/unit-router-directives.test.ts`- `tests/unit-web-tables.test.ts`- `tests/wiring.test.ts`
 
 ## 8. The eval harness
 
@@ -804,20 +804,20 @@ Full working app: examples/chat-stream.
 
 # PART IV -- THE TEST CATALOG, ANNOTATED
 
-What each suite in tests/ actually locks (49 files, 2702 tests):
+What each suite in tests/ actually locks (83 files, 3250 tests):
 
 - **tests/adapters.test.ts** -- Framework suite; see the describe blocks for the locked behavior (every suite follows contributing/core-testing.md).
 - **tests/cache-tags.test.ts** -- Framework suite; see the describe blocks for the locked behavior (every suite follows contributing/core-testing.md).
 - **tests/codegen-deep.test.ts** -- Framework suite; see the describe blocks for the locked behavior (every suite follows contributing/core-testing.md).
 - **tests/compiler-advanced.test.ts** -- Framework suite; see the describe blocks for the locked behavior (every suite follows contributing/core-testing.md).
 - **tests/compiler.test.ts** -- Framework suite; see the describe blocks for the locked behavior (every suite follows contributing/core-testing.md).
-- **tests/deep-round.test.ts** -- Framework suite; see the describe blocks for the locked behavior (every suite follows contributing/core-testing.md).
-- **tests/docs-round.test.ts** -- Framework suite; see the describe blocks for the locked behavior (every suite follows contributing/core-testing.md).
+- **tests/deep-behaviour.test.ts** -- Framework suite; see the describe blocks for the locked behavior (every suite follows contributing/core-testing.md).
+- **tests/docs-claims.test.ts** -- Framework suite; see the describe blocks for the locked behavior (every suite follows contributing/core-testing.md).
 - **tests/e2e-isolated-app.test.ts** -- Full-stack proof: fixture app -> tw build -> tw serve on a random port (8300-8700) -> real HTTP with node:http. Locks MISS->HIT->STALE windows, Cache-Control headers, canonical query order-independence, revalidateTag via action, TW090/091/092 build gates, TW093 warning, legacy infinite-SWR regression, route naming (/secret not /secret/page).
 - **tests/e2e.test.ts** -- Framework suite; see the describe blocks for the locked behavior (every suite follows contributing/core-testing.md).
-- **tests/external-hunt.test.ts** -- Framework suite; see the describe blocks for the locked behavior (every suite follows contributing/core-testing.md).
-- **tests/hunt-round.test.ts** -- Framework suite; see the describe blocks for the locked behavior (every suite follows contributing/core-testing.md).
-- **tests/hunt-round2.test.ts** -- Framework suite; see the describe blocks for the locked behavior (every suite follows contributing/core-testing.md).
+- **tests/external-review.test.ts** -- Framework suite; see the describe blocks for the locked behavior (every suite follows contributing/core-testing.md).
+- **tests/runtime-edge-cases.test.ts** -- Framework suite; see the describe blocks for the locked behavior (every suite follows contributing/core-testing.md).
+- **tests/audit-regressions.test.ts** -- Framework suite; see the describe blocks for the locked behavior (every suite follows contributing/core-testing.md).
 - **tests/image.test.ts** -- Framework suite; see the describe blocks for the locked behavior (every suite follows contributing/core-testing.md).
 - **tests/interactivity-e2e.test.ts** -- Framework suite; see the describe blocks for the locked behavior (every suite follows contributing/core-testing.md).
 - **tests/layout-params.test.ts** -- Framework suite; see the describe blocks for the locked behavior (every suite follows contributing/core-testing.md).
@@ -831,7 +831,7 @@ What each suite in tests/ actually locks (49 files, 2702 tests):
 - **tests/parity.test.ts** -- Framework suite; see the describe blocks for the locked behavior (every suite follows contributing/core-testing.md).
 - **tests/parser-deep.test.ts** -- Framework suite; see the describe blocks for the locked behavior (every suite follows contributing/core-testing.md).
 - **tests/parser.test.ts** -- Framework suite; see the describe blocks for the locked behavior (every suite follows contributing/core-testing.md).
-- **tests/phase3-runtime.test.ts** -- Framework suite; see the describe blocks for the locked behavior (every suite follows contributing/core-testing.md).
+- **tests/runtime-scheduler-events.test.ts** -- Framework suite; see the describe blocks for the locked behavior (every suite follows contributing/core-testing.md).
 - **tests/plugins-load.test.ts** -- Framework suite; see the describe blocks for the locked behavior (every suite follows contributing/core-testing.md).
 - **tests/plugins.test.ts** -- Framework suite; see the describe blocks for the locked behavior (every suite follows contributing/core-testing.md).
 - **tests/render-modes.test.ts** -- Framework suite; see the describe blocks for the locked behavior (every suite follows contributing/core-testing.md).
@@ -840,9 +840,9 @@ What each suite in tests/ actually locks (49 files, 2702 tests):
 - **tests/runtime-server.test.ts** -- Framework suite; see the describe blocks for the locked behavior (every suite follows contributing/core-testing.md).
 - **tests/runtime.test.ts** -- Framework suite; see the describe blocks for the locked behavior (every suite follows contributing/core-testing.md).
 - **tests/scss.test.ts** -- Framework suite; see the describe blocks for the locked behavior (every suite follows contributing/core-testing.md).
-- **tests/security-hunt.test.ts** -- Framework suite; see the describe blocks for the locked behavior (every suite follows contributing/core-testing.md).
+- **tests/security-audit.test.ts** -- Framework suite; see the describe blocks for the locked behavior (every suite follows contributing/core-testing.md).
 - **tests/security.test.ts** -- Framework suite; see the describe blocks for the locked behavior (every suite follows contributing/core-testing.md).
-- **tests/self-hunt.test.ts** -- Framework suite; see the describe blocks for the locked behavior (every suite follows contributing/core-testing.md).
+- **tests/self-audit.test.ts** -- Framework suite; see the describe blocks for the locked behavior (every suite follows contributing/core-testing.md).
 - **tests/semantic-deep.test.ts** -- Framework suite; see the describe blocks for the locked behavior (every suite follows contributing/core-testing.md).
 - **tests/shared.test.ts** -- Framework suite; see the describe blocks for the locked behavior (every suite follows contributing/core-testing.md).
 - **tests/signal-stream.test.ts** -- Framework suite; see the describe blocks for the locked behavior (every suite follows contributing/core-testing.md).

@@ -20,6 +20,12 @@ export interface CodegenContext {
   inlineScripts: string[];
   hydrationMarkers: HydrationMarker[];
   scopeId?: string;
+  /** compiler.scopedStyles -- when false, `.module.tss` classes stay global. */
+  scopedStyles?: boolean;
+  /** css.prefix -- prefix for generated module class names. Default "tw-". */
+  cssPrefix?: string;
+  /** css.importPaths -- extra dirs to resolve stylesheet imports from. */
+  cssImportPaths?: string[];
   renderMode?: string;
   chunks: string[];
   currentChunk: string;

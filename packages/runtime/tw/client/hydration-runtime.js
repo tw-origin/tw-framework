@@ -173,7 +173,7 @@
         var v = state[key];
         var isCheck = inputs[j].type === "checkbox" || inputs[j].type === "radio";
         if (isCheck) {
-          // Boolean binding for checkboxes/radios (round 4: these used to
+          // Boolean binding for checkboxes/radios (these used to
           // read .value ("on") and never reflect boolean state).
           if (inputs[j].type === "radio") inputs[j].checked = String(v) === inputs[j].value;
           else inputs[j].checked = !!v;
@@ -193,7 +193,7 @@
 
   EVENTS.forEach(function (ev) {
     // Delegate on the BUBBLE phase so the innermost handler runs first
-    // (round 4: capture=true inverted the expected order for nested
+    // (capture=true inverted the expected order for nested
     // data-tw-event elements). focus/blur do not bubble -- those two
     // keep the capture phase.
     var useCapture = ev === "focus" || ev === "blur";
@@ -208,7 +208,7 @@
       if (host.getAttribute("data-tw-event-" + ev + "-stop") === "true") e.stopPropagation();
       window.__twEvent = { target: t, value: t.value, type: ev };
       try { runHandler(code); } finally {
-        // Event context is scoped to THIS handler only (round 4: the
+        // Event context is scoped to THIS handler only (the
         // stale window.__twEvent leaked the previous event's target and
         // value into later handlers that read it).
         try { delete window.__twEvent; } catch (ee) { window.__twEvent = undefined; }
@@ -223,7 +223,7 @@
     if (t && t.getAttribute && t.getAttribute("data-tw-model")) {
       var mk = t.getAttribute("data-tw-model");
       if (t.type === "checkbox" || t.type === "radio") {
-        // checkbox -> boolean; radio -> its value when checked (round 4:
+        // checkbox -> boolean; radio -> its value when checked (
         // the old code wrote the literal string "on").
         state[mk] = t.type === "checkbox" ? !!t.checked : (t.checked ? t.value : state[mk]);
       } else {
@@ -299,7 +299,7 @@
       if (oldRoot.replaceWith) oldRoot.replaceWith(imported);
       else oldRoot.innerHTML = newRoot.innerHTML;
     }
-    // innerHTML-inserted <script> tags never execute (round 4: pages
+    // innerHTML-inserted <script> tags never execute (pages
     // relying on scripts silently died after an SPA swap). Re-create
     // each script node so the browser runs it.
     try {
@@ -388,7 +388,7 @@
   function twPrefetch(href) {
     if (!href || !sameOrigin(href) || prefetched[href]) return;
     prefetched[href] = true;
-    // Bound the cache (round 4: it grew forever on long SPA sessions).
+    // Bound the cache (it grew forever on long SPA sessions).
     prefetchOrder.push(href);
     while (prefetchOrder.length > 60) {
       var old2 = prefetchOrder.shift();
@@ -494,41 +494,97 @@
       refresh();
     }
 
-    var es = null;
+    // Transport is chosen by the manifest (strategy signals.transport):
+    //   "sse"       -> EventSource (default)
+    //   "ws"        -> WebSocket
+    //   "long-poll" -> repeated fetch of /_tw/poll
+    var transport = manifest.transport || "sse";
     // v2: exponential backoff reconnect -- 1s, 2s, 4s, 8s, cap 10s.
-    // Every successfully applied frame resets the delay, so a healthy
-    // connection never grows its retry window; a dead server stops the
-    // client from hammering it every 1.5s forever.
+    // Every successfully applied frame resets the delay.
     var backoffMs = 1000, reconnectTimer = null;
-    function open() {
-      if (reconnectTimer) { clearTimeout(reconnectTimer); reconnectTimer = null; }
-      es = new EventSource(
+    var closer = null;
+
+    function scheduleReconnect(open) {
+      reconnectTimer = setTimeout(open, backoffMs);
+      backoffMs = Math.min(backoffMs * 2, 10000);
+    }
+
+    function openSSE() {
+      var es = new EventSource(
         "/_tw/stream?s=" + encodeURIComponent(names.join(",")) + "&since=" + lastSeq
       );
       es.onmessage = function (ev) {
-        try {
-          apply(JSON.parse(ev.data));
-          backoffMs = 1000; // healthy frame -> reset the backoff
-        } catch (e) { /* malformed frame */ }
+        try { apply(JSON.parse(ev.data)); backoffMs = 1000; } catch (e) { /* malformed */ }
       };
       es.onerror = function () {
-        // EventSource retries on its own, but with the original URL; close
-        // and reopen so the connection resumes from lastSeq.
         try { es.close(); } catch (e) { /* already closed */ }
         es = null;
-        reconnectTimer = setTimeout(open, backoffMs);
-        backoffMs = Math.min(backoffMs * 2, 10000);
+        if (activeStream) scheduleReconnect(openSSE);
       };
+      closer = function () { try { es.close(); } catch (e) { /* already closed */ } };
+    }
+
+    function openWS() {
+      var proto = location.protocol === "https:" ? "wss" : "ws";
+      var ws = new WebSocket(
+        proto + "://" + location.host + "/_tw/ws?s=" +
+        encodeURIComponent(names.join(",")) + "&since=" + lastSeq
+      );
+      ws.onmessage = function (ev) {
+        try { apply(JSON.parse(ev.data)); backoffMs = 1000; } catch (e) { /* malformed */ }
+      };
+      ws.onclose = function () {
+        ws = null;
+        if (activeStream) scheduleReconnect(openWS);
+      };
+      ws.onerror = function () { try { ws.close(); } catch (e) { /* already closed */ } };
+      closer = function () { try { ws.close(); } catch (e) { /* already closed */ } };
+    }
+
+    function openLongPoll() {
+      var ctl = null, stopped = false;
+      function tick() {
+        if (stopped) return;
+        ctl = (typeof AbortController !== "undefined") ? new AbortController() : null;
+        fetch("/_tw/poll?s=" + encodeURIComponent(names.join(",")) + "&since=" + lastSeq, {
+          signal: ctl ? ctl.signal : undefined,
+          cache: "no-store",
+        })
+          .then(function (r) { return r.json(); })
+          .then(function (data) {
+            var frames = (data && data.frames) || [];
+            for (var i = 0; i < frames.length; i++) {
+              try { apply(JSON.parse(frames[i])); } catch (e) { /* malformed */ }
+            }
+            backoffMs = 1000;
+            tick(); // immediately re-poll -- this is the "stream"
+          })
+          .catch(function () {
+            if (stopped) return;
+            reconnectTimer = setTimeout(tick, backoffMs);
+            backoffMs = Math.min(backoffMs * 2, 10000);
+          });
+      }
+      tick();
+      closer = function () { stopped = true; try { ctl && ctl.abort(); } catch (e) { /* no ctl */ } };
+    }
+
+    function open() {
+      if (reconnectTimer) { clearTimeout(reconnectTimer); reconnectTimer = null; }
+      if (transport === "ws") openWS();
+      else if (transport === "long-poll") openLongPoll();
+      else openSSE();
     }
     open();
     activeStream = {
       close: function () {
         if (reconnectTimer) { clearTimeout(reconnectTimer); reconnectTimer = null; }
-        try { es.close(); } catch (e) { /* already closed */ }
+        if (closer) { try { closer(); } catch (e) { /* already closed */ } }
         activeStream = null;
       },
     };
     window.__tw.signalStream = {
+      transport: transport,
       reconnect: open,
       lastSeq: function () { return lastSeq; },
       backoffMs: function () { return backoffMs; },

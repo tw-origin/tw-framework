@@ -202,7 +202,7 @@ export function generateSecurityHeaders(options: SecurityHeadersOptions = {}): R
   // CSP
   if (opts.csp) {
     headers["Content-Security-Policy"] = buildCSPHeader(opts.csp);
-    // Round 4: the client hydration runtime (islands, event handlers)
+    // the client hydration runtime (islands, event handlers)
     // compiles expressions with `new Function`, which needs
     // 'unsafe-eval' in script-src. A configured CSP without it breaks
     // every interactive page -- warn once instead of failing silently.

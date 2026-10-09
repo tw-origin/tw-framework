@@ -1,6 +1,6 @@
 {
   "name": "create-tw-framework",
-  "version": "1.0.7",
+  "version": "2.0.0",
   "description": "The easiest way to get started with TW Framework — scaffolds a complete, ready-to-run TW application in seconds.",
   "bin": {
     "create-tw-framework": "./dist/create.mjs"
@@ -32,7 +32,7 @@
   "author": "Mlk Raj",
   "license": "MIT",
   "dependencies": {
-    "tw-framework": "^1.0.0"
+    "tw-framework": "^2.0.0"
   },
   "engines": {
     "node": ">=18"

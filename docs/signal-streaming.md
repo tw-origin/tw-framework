@@ -4,6 +4,8 @@ This document covers one thing completely: Signal Streaming — the `render sign
 
 ---
 
+
+
 ## The Model
 
 ```tw
@@ -115,3 +117,35 @@ Not the tool for form submissions or one-shot fetches — those remain plain API
 - docs/render-modes.md — the full mode map
 - docs/streaming.md — response streaming (`render stream`), a different feature
 - docs/suspense.md — deferred content boundaries
+
+---
+
+## Transports — SSE, WebSocket, long-poll
+
+Every transport carries the **same frame protocol**
+(`{"v":1,"seq":N,"updates":[[name,value]]}` or `{"v":1,"seq":N,"snapshot":{...}}`),
+so switching transport never touches app code.
+
+| Transport | Endpoint | Notes |
+|-----------|----------|-------|
+| `sse` (default) | `/_tw/stream?s=...&since=N` | one long HTTP stream, proxy-friendly; `id:` lines give `Last-Event-ID` resume |
+| `ws` | `/_tw/ws?s=...&since=N` | WebSocket; served by Bun's native WebSocket server. Client→server writes ride the same gated path as `POST /_tw/signal` |
+| `long-poll` | `/_tw/poll?s=...&since=N` | answers `{"v":1,"frames":[...]}`; holds the request briefly, client re-polls immediately — for networks where streaming is blocked |
+
+Pick one:
+
+```ts
+// tw.config.ts
+export default { strategies: { signals: { transport: "ws" } } };
+```
+
+```bash
+tw build --signals=long-poll
+tw doctor --signals=ws        # shows availability (Bun vs the `ws` package)
+```
+
+The chosen transport is written into each streamed page's
+`<script id="__TW_SIGNALS__">` manifest (`{"v":1,"transport":"ws",...}`), and
+the client runtime opens that transport. All three honour `?since=`, the
+`Last-Event-ID` header, session-scoped `privateSignal` delivery and the
+1000-frame history window.

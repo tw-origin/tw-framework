@@ -14,6 +14,8 @@
  * It produces warnings and errors that the LSP can display.
  */
 
+import { RENDER_MODE_NAMES, resolveRenderMode } from "@tw/shared";
+
 import { Program, ASTNode, ElementNode } from "../ast/nodes";
 import { walk } from "../ast/visitors";
 
@@ -288,11 +290,11 @@ export function validateDirectives(ast: Program): ValidationError[] {
     // Validate specific directives
     switch (name) {
       case "render":
-        if ((dir as any).body && !["ssr", "csr", "ssg", "server", "client", "static", "island", "edge", "interactive"].includes((dir as any).body.trim().replace(/['"]/g, ""))) {
+        if ((dir as any).body && !resolveRenderMode((dir as any).body)) {
           errors.push({
             type: "warning",
             code: "INVALID_RENDER_MODE",
-            message: `@render mode must be one of: static, ssr, island, edge (aliases: ssg, server, client, csr)`,
+            message: `@render mode must be one of: ${RENDER_MODE_NAMES.join(", ")} (aliases: ssg, server, client, interactive; "edge" means ssr on the edge target)`,
             pos: (dir as any).loc?.start ?? { line: 0, col: 0, offset: 0 },
             nodeType: "Directive",
           });

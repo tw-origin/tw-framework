@@ -746,7 +746,7 @@ function parseTWSelector(
   return el;
 }
 
-function __tw_v108_unused_marker() { return ATTR_PAIR_NAMES.size > 0; }
+function __tw_unused_marker() { return ATTR_PAIR_NAMES.size > 0; }
 
 function parseTextFromString(cursor: TokenCursor): TextNode | null {
   const token = cursor.advance();
@@ -1510,7 +1510,7 @@ function parseWhileStatement(
   if (!whileToken) return null;
 
   cursor.skipWhitespace();
-  // v1.0.8 round 4 (BUG 34): only the FIRST token was taken as the
+  // only the FIRST token was taken as the
   // condition -- `while n < 3 { ... }` parsed condition="n" and the rest
   // leaked into the body as garbage text (and a falsy n rendered nothing).
   // Collect tokens until the body brace.

@@ -2,9 +2,58 @@
 import { sha256 } from "./hashing/sha";
 
 export { ObjectUtils, createObjectUtils } from "./utils";
+export { clientIp, ipAddress, normalizeIp, isPrivateIp, inCidr, trustProxy, readHeader, isIpv6, fromForwardedHeader, ipToBigInt, IP_HEADERS, setTrustProxy, getTrustProxy } from "./net/ip";
+export * from "./net/request-context";
+export * from "./api/response";
+export * from "./api/cache";
+export * from "./api/wrappers";
+export type { ClientIp, HeaderBag } from "./net/ip";
 export type { ObjectUtilsConfig } from "./utils";
 export { createDefaultConfig, findConfig, isValidConfig, loadConfig, loadConfigSync, mergeConfig, resolveEnvVars, serializeConfig, toPublicConfig, validateConfig } from "./config";
 export type { BuildConfig, CORSConfig, CSSConfig, CacheConfig, CompilerConfig, DevConfig, HeaderRule, I18nConfig, PluginConfigEntry, RedirectRule, RewriteRule, RouteEntry, RouterConfig, SSLConfig, SecurityConfig, ServerConfig, TwConfig } from "./config";
+export {
+  COMPAT_RULES, SUPPORTED_MATRIX, checkCompatibility, compatErrors, matrixEntryToConfig,
+} from "./config";
+export type { CompatIssue, CompatRule, CompatTier } from "./config";
+export { detectRenderEngine, renderEnginePackages, resolveRenderEngine, ensureRenderEngine } from "./config";
+export type { RenderEngineInfo, ForeignRenderEngine, EnsureResult, EnsureOptions } from "./config";
+export {
+  resolveDevOptions, resolveServerOptions, resolveCorsOptions, resolveSslOptions,
+  resolveBuildOptions, resolveCompilerOptions, resolveCssOptions,
+  resolveRouterOptions, resolveI18nOptions,
+} from "./config";
+export type {
+  EffectiveDevOptions, EffectiveServerOptions, EffectiveCorsOptions,
+  EffectiveBuildOptions, EffectiveCompilerOptions, EffectiveCssOptions,
+  EffectiveRouterOptions, EffectiveI18nOptions,
+} from "./config";
+export {
+  detectPackageManager, resolvePackageManager, installArgs, installAllArgs,
+  execArgs, runScriptArgs, commandLine, runInstall,
+} from "./config";
+export type { PackageManagerName, ManagerInfo, ManagerSource } from "./config";
+export { detectApiRuntime, resolveApiRuntime, checkEdgeSafety, EDGE_UNSAFE_MODULES } from "./config";
+export type { ApiRuntimeName, ApiRuntimeInfo, EdgeViolation } from "./config";
+export { resolveStateModel, describeStateModel, STATE_MODELS } from "./config";
+export type { StateModelName, StateModelInfo } from "./config";
+export { resolveDataLayer, describeDataLayer, DATA_LAYERS } from "./config";
+export { resolveCacheMode, cacheControlFor, purgeManifest, CACHE_MODES } from "./config";
+export { resolveAuthModel, describeAuthModel, AUTH_MODELS } from "./config";
+export { ensurePackages } from "./config";
+export type { DataLayerName, DataLayerInfo } from "./config";
+export type { CacheModeName, CacheModeInfo, PurgeManifest } from "./config";
+export type { AuthModelName, AuthModelInfo } from "./config";
+export type { EnsurePackagesResult } from "./config";
+export {
+  DEFAULT_STRATEGIES, STRATEGY_OPTIONS, STRATEGY_NOTES,
+  changedStrategies, describeStrategies, parseStrategyFlags,
+  resolveStrategies, validateStrategies,
+} from "./config";
+export type {
+  ApiRuntime, CacheMode, CssEngine, DataLayer, HydrationMode, PackageManager,
+  RenderEngine, ServerRuntime, SignalTransport, StateModel, StrategiesConfig,
+  StrategyIssue, StrategyPath,
+} from "./config";
 export { BUILTIN_CACHE_PROFILES, cacheMetaIsUsable, canonicalizeQuery, extractCacheDirective, parseCacheBody, parseCacheProfilesSource, readCacheProfilesSync, resolveCache } from "./cache";
 export { maskSourceStringsAndComments, stripCommentsStringAware } from "./source-mask";
 export type { CacheDirectiveMeta, CacheProfile, ResolvedCache } from "./cache";
@@ -19,8 +68,8 @@ export { HASH_INFO, buildMerkleTree, compareETags, computeETag, computeETagStron
 export type { Fingerprint, MerkleNode } from "./hashing";
 export { ANSI, LEVEL_COLORS, LEVEL_ICONS, LOG_LEVEL_NAMES, LogLevel, Logger, ProgressBar, createConsoleTransport, createFileTransport, createMemoryTransport, createRemoteTransport, getLogger, printTable, resetLogger, setLogger } from "./logger";
 export type { LogEntry, LogTransport } from "./logger";
-export { ROUTE_EXTENSIONS, SPECIAL_FILES, TSS_EXTENSION, TWM_EXTENSION, TWM_FILE_TYPES, TW_EXTENSION, TW_FILE_TYPES, VALID_RENDER_MODES, extractGroupName, extractSlotName, getExtensionForType, getRouteFileType, isApiRoute, isDynamicFolder, isInteractiveFile, isInterceptingFolder, isMiddlewareFile, isParallelSlot, isPrivateFolder, isRouteGroup, parseInterceptingFolder, parseSegment } from "./routing";
-export type { CompiledFileEntry, ParsedSegment, RenderMode, RenderPipelineOptions, RouteFile, RouteFileType, RouteMatchResult, RouteNode, RouteRenderResult, SegmentKind } from "./routing";
+export { RENDER_MODE_ALIASES, RENDER_MODE_NAMES, ROUTE_EXTENSIONS, SPECIAL_FILES, TSS_EXTENSION, TWM_EXTENSION, TWM_FILE_TYPES, TW_EXTENSION, TW_FILE_TYPES, VALID_RENDER_MODES, VALID_RUNTIME_TARGETS, resolveRenderMode, extractGroupName, extractSlotName, getExtensionForType, getRouteFileType, isApiRoute, isDynamicFolder, isInteractiveFile, isInterceptingFolder, isMiddlewareFile, isParallelSlot, isPrivateFolder, isRouteGroup, parseInterceptingFolder, parseSegment } from "./routing";
+export type { CompiledFileEntry, ParsedSegment, RenderMode, ResolvedRenderMode, RuntimeTarget, RenderPipelineOptions, RouteFile, RouteFileType, RouteMatchResult, RouteNode, RouteRenderResult, SegmentKind } from "./routing";
 export { CompileError, ConfigurationError, ParseError, RuntimeError, TWError, TypeError_, ValidationError, andThen, asyncOk, err, isErr, isError, isNone, isOk, isSome, isTWError, map, mapErr, ok, toTWError, unwrap, unwrapOr, unwrapOrElse } from "./types";
 export type { AsyncResult, Brand, Cloneable, Comparable, DeepPartial, DeepReadonly, Disposable, Equatable, Maybe, Result, Tagged } from "./types";
 

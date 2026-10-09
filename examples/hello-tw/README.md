@@ -1,6 +1,6 @@
 # hello-tw
 
-Built with TW Framework 1.0.0.
+Built with TW Framework 2.0.0.
 
 ## Getting Started
 

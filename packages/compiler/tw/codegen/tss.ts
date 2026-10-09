@@ -147,7 +147,7 @@ function stripTssComments(src: string): string {
 
 /** Compile a TSS source string into CSS. */
 export function compileTSS(source: string): string {
-  // v1.0.8 round 5 (BUG 44): a syntax-broken .tss used to compile into
+  // a syntax-broken.tss used to compile into
   // garbage "CSS" and the whole stylesheet then vanished silently from
   // the page. Unbalanced braces are a hard syntax error now.
   {
@@ -181,7 +181,7 @@ export function compileTSS(source: string): string {
     }
   }
   const __twOut = __twCompileTSSInner(source);
-  // Round 4: an unsubstituted $var used to ship broken CSS silently
+  // an unsubstituted $var used to ship broken CSS silently
   // (`color: $main-color` where no such state var exists).
   const leftover = __twOut.match(/\$[A-Za-z_][\w-]*/g);
   if (leftover && !/\$\{/.test(__twOut)) {

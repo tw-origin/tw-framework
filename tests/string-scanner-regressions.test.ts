@@ -1,0 +1,410 @@
+/**
+ * v1.0.7 regression round — the string-aware scanner fixes:
+ *
+ *   1. maskSourceStringsAndComments: same-length source masking.
+ *   2. extractRenderMode / extractCacheDirective / revalidate window:
+ *      directive words inside quoted strings or comments must be ignored.
+ *   3. interpolate: `\{` escapes a literal brace instead of starting
+ *      interpolation (raw-text escape for docs-style pages).
+ */
+import { describe, expect, test } from "bun:test";
+
+const shared = async () => (await import("../packages/shared/tw/index.ts")) as any;
+
+// --- 1. source masking --------------------------------------------------------
+
+describe("maskSourceStringsAndComments", () => {
+  test("blanks double-quoted strings, keeps the rest", async () => {
+    const { maskSourceStringsAndComments } = await shared();
+    const src = `page { title "render ssr" render static }`;
+    const out = maskSourceStringsAndComments(src);
+    expect(out).toHaveLength(src.length);
+    expect(out).not.toContain("render ssr");
+    expect(out).toContain("render static");
+  });
+
+  test("blanks single-quoted strings and template literals", async () => {
+    const { maskSourceStringsAndComments } = await shared();
+    const src = `a "x" b 'y' c \`z\` d`;
+    const out = maskSourceStringsAndComments(src);
+    expect(out).toHaveLength(src.length);
+    expect(out).not.toContain("x"); // the string contents disappear
+    expect(out).not.toContain("y");
+    expect(out).not.toContain("z");
+    expect(out).toContain("a");
+    expect(out).toContain("d");
+  });
+
+  test("honors escaped quotes inside strings", async () => {
+    const { maskSourceStringsAndComments } = await shared();
+    // the \\" quotes are escaped, so the string runs to the LAST quote:
+    // everything inside (revalidate 60, ok) is masked.
+    const src = `p "say \\" revalidate 60 \\" ok"`;
+    const out = maskSourceStringsAndComments(src);
+    expect(out).toHaveLength(src.length);
+    expect(out).not.toContain("revalidate");
+    expect(out).not.toContain("ok");
+    // a real token after the string survives
+    const src2 = `p "say \\" no \\"" div { render static }`;
+    expect(maskSourceStringsAndComments(src2)).toContain("render static");
+  });
+
+  test("blanks line and block comments", async () => {
+    const { maskSourceStringsAndComments } = await shared();
+    const src = `// revalidate 60\npage { title "t" } /* cache { revalidate 30 } */ div { "x" }`;
+    const out = maskSourceStringsAndComments(src);
+    expect(out).not.toContain("revalidate");
+    expect(out).toContain(`page { title`);
+    expect(out).toContain(`div {`);
+    expect(out).toHaveLength(src.length);
+  });
+
+  test("keeps newlines so line numbers stay accurate", async () => {
+    const { maskSourceStringsAndComments } = await shared();
+    const src = `// a\n// b\npage { title "x" }`;
+    const out = maskSourceStringsAndComments(src);
+    expect(out.split("\n")).toHaveLength(3);
+  });
+});
+
+// --- 2. string-aware directive scanning --------------------------------------
+
+describe("string-aware directive scanning", () => {
+  test("extractCacheDirective ignores `cache { }` shown inside a string", async () => {
+    const { extractCacheDirective } = await shared();
+    const src = [
+      `page { title "ISR docs" render static }`,
+      ``,
+      `p "Set page { cache { revalidate 60 } } to enable ISR."`,
+    ].join("\n");
+    expect(extractCacheDirective(src)).toBeNull();
+  });
+
+  test("extractCacheDirective still finds a real cache block", async () => {
+    const { extractCacheDirective } = await shared();
+    const src = `page {\n  title "Shop"\n  cache { life "product", tag "products" }\n}\ndiv { "x" }`;
+    const meta = extractCacheDirective(src);
+    expect(meta).not.toBeNull();
+    expect(meta.life).toBe("product");
+    expect(meta.tag).toBe("products");
+  });
+
+  test("extractRenderMode ignores mode words inside strings (build.ts)", async () => {
+    const { extractRenderMode } = (await import("../apps/cli/tw/commands/build.ts")) as any;
+    // docs page that SHOWS `render ssr` as example text
+    const src = `page { title "render modes" render static }\np "Use page { render ssr } for server rendering."`;
+    expect(extractRenderMode(src)).toBe("static");
+    // the real directive still wins
+    const real = `page { title "x" render ssr }`;
+    expect(extractRenderMode(real)).toBe("ssr");
+  });
+
+  test("revalidate window regex ignores `revalidate N` inside strings", async () => {
+    const { maskSourceStringsAndComments } = await shared();
+    const re = /page\s*\{[^}]*revalidate\s+(\d+)/;
+    // before the fix this raw page would have matched through the string
+    const src = `page { title "ISR docs" render static }\np "Add page { revalidate 60 } for ISR."`;
+    expect(re.exec(maskSourceStringsAndComments(src))).toBeNull();
+    // a real directive still matches
+    const real = `page { title "x" revalidate 60 }`;
+    const m = re.exec(maskSourceStringsAndComments(real));
+    expect(m).not.toBeNull();
+    expect(m![1]).toBe("60");
+  });
+});
+
+// --- 3. interpolation escape --------------------------------------------------
+
+describe("interpolate brace escape", () => {
+  test("\\{ renders a literal brace, never interpolates", async () => {
+    const { interpolate } = await import("../packages/compiler/tw/eval/interpolate.ts");
+    expect(interpolate(`a \\{ b`, {})).toBe("a { b");
+    expect(interpolate(`\\{retries: 3\\}`, {})).toBe("{retries: 3}");
+    // unaffected: normal interpolation
+    expect(interpolate("hi {name}", { name: "tw" })).toBe("hi tw");
+    expect(interpolate("hi {{name}}", { name: "tw" })).toBe("hi tw");
+    // escaped brace next to real interpolation
+    expect(interpolate(`\\{ {name} \\}`, { name: "tw" })).toBe("{ tw }");
+    // a lone backslash elsewhere still passes through raw
+    expect(interpolate(`C:\\path {name}`, { name: "x" })).toBe("C:\\path x");
+  });
+});
+
+
+// --- 4. TSS: URLs, colons, comments () --------------------------
+
+describe("TSS url/colon/comment regressions", () => {
+  const compile = async () => await import("../packages/compiler/tw/codegen/tss.ts");
+
+  test("url(https://...) unquoted survives comment stripping", async () => {
+    const { compileTSS } = await compile();
+    const out = compileTSS(".a { background url(https://example.com/a.png) }");
+    expect(out).toContain("url(https://example.com/a.png)");
+    expect(out).not.toContain("https: //");
+  });
+
+  test("url(\"https://...\") quoted survives comment stripping", async () => {
+    const { compileTSS } = await compile();
+    const out = compileTSS('.a { background url("https://example.com/b.png") }');
+    expect(out).toContain('url("https://example.com/b.png")');
+  });
+
+  test("colon normalization does not corrupt url colons", async () => {
+    const { compileTSS } = await compile();
+    const out = compileTSS(".a { background url(https://example.com/c.png) }");
+    expect(out).toContain("background: url(https://example.com/c.png)");
+    const out2 = compileTSS(".b { color:    #fff }");
+    expect(out2).toContain("color: #fff");
+  });
+
+  test("shorthand expands when the value contains a url colon", async () => {
+    const { compileTSS } = await compile();
+    const out = compileTSS(".a { bg url(https://example.com/d.png) }");
+    expect(out).toContain("background: url(https://example.com/d.png)");
+  });
+
+  test("line + block comments still stripped, strings with // survive", async () => {
+    const { compileTSS } = await compile();
+    const src = [
+      "// real line comment",
+      '.a { content "keep // this" }',
+      ".b { color #fff /* real block comment */ }",
+    ].join("\n");
+    const out = compileTSS(src);
+    expect(out).toContain('"keep // this"');
+    expect(out).not.toContain("real line comment");
+    expect(out).not.toContain("real block comment");
+    expect(out).toContain("color: #fff");
+  });
+
+  test("escaped quotes: the // inside the string survives", async () => {
+    const { compileTSS } = await compile();
+    const out = compileTSS('.a { content "say \\" then // not a comment" }');
+    expect(out).toContain("then");
+    expect(out).toContain("not a comment");
+  });
+});
+
+// --- 5. directive/state escapes ------------------------------------
+
+describe("escape + parity regressions", () => {
+  const getCompiler = async () => await import("../packages/compiler/tw/index.ts");
+  const getShared = async () => await import("../packages/shared/tw/source-mask.ts");
+
+  test("page title: \\{ \\} escapes render as literal braces", async () => {
+    const { compileSync } = await getCompiler();
+    const out = compileSync('page { title "Config \\{ retries: 3 \\} demo" render static }\np "x"', { filePath: "p.tw" });
+    expect(out.html).toContain("Config { retries: 3 } demo");
+    expect(out.html).not.toContain("\\{");
+  });
+
+  test("state string value: \\{ \\} escapes do not leak backslashes", async () => {
+    const { compileSync } = await getCompiler();
+    const out = compileSync(
+      'page { title "s" render island }\nstate { v1 = "JSON \\{ a: 1 \\} inside" count = 0 }\np "{v1}"',
+      { filePath: "s.tw" },
+    );
+    expect(out.html).toContain("JSON { a: 1 } inside");
+    expect(out.html).not.toContain("\\{");
+  });
+
+  test("state object literal: strings inside keep escapes converted", async () => {
+    const { compileSync } = await getCompiler();
+    const out = compileSync(
+      'page { title "s" render island }\nstate { cfg = { label: "a \\{ b \\}" } count = 0 }\np "ok"',
+      { filePath: "s2.tw" },
+    );
+    expect(out.html).not.toContain("a \\{ b \\}");
+  });
+
+  test("stripCommentsStringAware: commented-out code stays dead, strings stay live", async () => {
+    const { stripCommentsStringAware } = await getShared();
+    const src = [
+      '// rule "ghost" { match "/admin" }',
+      'const keep = "// not a comment";',
+      'const url = "https://example.com/x";',
+      'real "code" { here }',
+    ].join("\n");
+    const out = stripCommentsStringAware(src);
+    expect(out).toContain('"// not a comment"');
+    expect(out).toContain("https://example.com/x");
+    expect(out).not.toContain("ghost");
+    expect(out).toContain('real "code" { here }');
+  });
+
+  test("attribute values: \\{ \\} escapes unescape in href/data-*", async () => {
+    const { compileSync } = await getCompiler();
+    const out = compileSync(
+      'page { title "a" render static }\na href "/docs/\\{id\\}" data-json "user \\{ id: 1 \\}" { "x" }',
+      { filePath: "a.tw" },
+    );
+    expect(out.html).toContain('href="/docs/{id}"');
+    expect(out.html).toContain('data-json="user { id: 1 }"');
+  });
+
+  test("directive description with escaped quotes survives parse intact", async () => {
+    const { compileSync } = await getCompiler();
+    const out = compileSync(
+      'page { title "q" description "He said \\"hi\\" loudly" render static }\np "x"',
+      { filePath: "q.tw" },
+    );
+    expect(out.html).toContain("He said " + "&quot;hi&quot; loudly");
+  });
+});
+
+// --- 6. glob semantics, runtime syntax, warns ------------------------
+
+describe("glob semantics + runtime", () => {
+  test("middleware rule /blog/* matches one segment only; /** matches deep", async () => {
+    const { parseRules, evaluateRules } = await import("../packages/server/tw/routing/twm-rules.ts");
+    // NOTE: a rule with NO condition block never blocks (by design --
+    // condition-less rules stay CORS/headers-only), so give it a
+    // user_agent condition.
+    const src = [
+      'rule "one" {',
+      '  match "/blog/*"',
+      '  user_agent { block ["badbot"] }',
+      '  response { status 403 }',
+      '}',
+    ].join("\n");
+    const rules = parseRules(src, "middleware.twm");
+    const mk = (path: string) => new Request("http://x" + path, { headers: { "user-agent": "badbot/1.0" } });
+    expect(evaluateRules(rules, mk("/blog/x"))).not.toBeNull();
+    expect(evaluateRules(rules, mk("/blog/x/y"))).toBeNull();
+    expect(evaluateRules(rules, mk("/blog/"))).not.toBeNull();
+    expect(evaluateRules(rules, mk("/other/x"))).toBeNull();
+
+    const src2 = [
+      'rule "deep" {',
+      '  match "/blog/**"',
+      '  user_agent { block ["badbot"] }',
+      '  response { status 403 }',
+      '}',
+    ].join("\n");
+    const rules2 = parseRules(src2, "middleware.twm");
+    expect(evaluateRules(rules2, mk("/blog/x/y/z"))).not.toBeNull();
+    expect(evaluateRules(rules2, mk("/blog"))).not.toBeNull();
+  });
+
+  test("hydration-runtime.js stays syntactically parseable", async () => {
+    const fs = await import("node:fs");
+    const src = fs.readFileSync("packages/runtime/tw/client/hydration-runtime.js", "utf-8");
+    expect(() => new Function(src)).not.toThrow();
+    expect(src).toContain("__twPrevV");
+    expect(src).toContain("useCapture");
+    expect(src).toContain("warnedExprs");
+    expect(src).toContain("prefetchOrder");
+  });
+
+  test("findMatchingBrace survives braces inside strings (inliner)", async () => {
+    const fs = await import("node:fs");
+    const src = fs.readFileSync("packages/compiler/tw/optimizer/function-inliner.ts", "utf-8");
+    expect(src).toContain("skip string literals");
+  });
+
+  test("scss unsupported at-rules warn instead of silence", async () => {
+    const { compileSCSS } = await import("../packages/compiler/tw/codegen/scss.ts");
+    const warns: string[] = [];
+    const orig = console.warn;
+    console.warn = (m: string) => { warns.push(String(m)); };
+    let fnOut = "";
+    try {
+      fnOut = compileSCSS('@function f($x) { @return $x }\n.a { width: f(4px) }');
+      compileSCSS('@import "other";\n.c { color: red }');
+    } finally {
+      console.warn = orig;
+    }
+    expect(fnOut).toContain("width: 4px");
+    expect(warns.some((w) => w.includes("function"))).toBe(false);
+    expect(warns.some((w) => w.includes("@import"))).toBe(true);
+    // mixins compile silently with inlined output
+    const clean = compileSCSS('@mixin pad { padding: 12px }\n.b { @include pad; }');
+    expect(clean).toContain("padding: 12px");
+  });
+});
+
+// --- 7. v1.0.8 bug-report regressions ----------------------------------------
+
+describe("v1.0.8 bug report: parser + layout composition", () => {
+  const getCompiler = async () => await import("../packages/compiler/tw/index.ts");
+
+ test("mixed attr + text body -- a.brand { href \"/\"\"Name\"}", async () => {
+    const { compileSync } = await getCompiler();
+    const out = compileSync('a.brand { href "/" "MyApp" }', { filePath: "b2.tw" });
+    expect(out.html).toContain('<a class="brand" href="/">MyApp</a>');
+    expect(out.html).not.toContain("<href>");
+  });
+
+ test("$ is plain text, not a parse breaker", async () => {
+    const { compileSync } = await getCompiler();
+    const out = compileSync('a.brand { href "/" "$x" }', { filePath: "b2b.tw" });
+    expect(out.html).toContain('<a class="brand" href="/">$x</a>');
+  });
+
+  test("child elements still win over attribute pairs (p \"text\")", async () => {
+    const { compileSync } = await getCompiler();
+    const out = compileSync('div.box { p "hello" }', { filePath: "b2c.tw" });
+    expect(out.html).toContain("<p>hello</p>");
+  });
+
+ test("SSR layout composition never nests a second document", async () => {
+    const fs = await import("node:fs");
+    const os = await import("node:os");
+    const path = await import("node:path");
+    const dir = fs.mkdtempSync(path.join(os.tmpdir(), "tw-reg-"));
+    fs.mkdirSync(path.join(dir, "home"), { recursive: true });
+    fs.writeFileSync(path.join(dir, "home", "layout.tw"), [
+      "html {",
+      "  head {",
+      '    meta charset "utf-8"',
+      "  }",
+      "  body {",
+      '    header.sitenav {',
+      '      a.brand { href "/" "MyApp" }',
+      "    }",
+      '    main.site { slot { } }',
+      "  }",
+      "}",
+    ].join("\n"));
+    fs.writeFileSync(path.join(dir, "home", "page.tw"), [
+      "page { title \"Home\" render ssr }",
+      "",
+      'div.hero { h1 "Hello" }',
+    ].join("\n"));
+    try {
+      const { RenderPipeline } = await import("../packages/server/tw/routing/render-pipeline.ts");
+      const p = new (RenderPipeline as any)({ rootDir: dir, homeDir: path.join(dir, "home"), enableCache: false, dev: false });
+      const r = (p as any).render("/");
+      const html: string = r.html;
+      expect((html.match(/<!DOCTYPE/g) || []).length).toBe(1);
+      expect((html.match(/<html/g) || []).length).toBe(1);
+      expect(html).toContain("<header");
+      expect(html).toContain("<main");
+      expect(html).toContain("Hello");
+      // head ELEMENT content must not contain body markup or nested docs
+      const headStart = html.indexOf("<head");
+      const headEnd = html.indexOf("</head>");
+      const headPart = html.slice(headStart, headEnd);
+      expect(headPart).not.toContain("<main");
+      expect(headPart).not.toContain("<header");
+      expect(headPart).not.toContain("<!DOCTYPE");
+    } finally {
+      fs.rmSync(dir, { recursive: true, force: true });
+    }
+  });
+});
+
+describe("derivedSignal renders computed value", () => {
+  test("span shows 300.5, not the expression string (all paths)", async () => {
+    const { compileSync } = await import("../packages/compiler/tw/index.ts");
+    const src = [
+      'page { title "d" render ssr }',
+      'state { price = 150.25 qty = 2 total = derivedSignal("price * qty") }',
+      'p "Total: {total}"',
+    ].join("\n");
+    const r = compileSync(src, { filePath: "ds.tw" });
+    expect(r.html).toContain(">300.5</span>");
+    expect(r.html).not.toContain(">price * qty<");
+    expect((r as any).stateSeed.total).toBe(300.5);
+  });
+});

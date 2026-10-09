@@ -38,19 +38,23 @@ function deepClone<T>(obj: T): T {
 
 // --- Transform: Scoped Styles ---------------------------------------------------
 
+/**
+ * Tag every element with `data-tw-scope="<id>"` so a page's `scoped` style
+ * block actually applies to it. The selector rewrite itself is done by the
+ * codegen (which reads `ctx.scopeId`), so this pass only adds the attribute.
+ *
+ * A program with no `scoped` style block is returned UNCHANGED -- a page that
+ * never uses scoped styles produces byte-identical output.
+ */
 export function transformScopedStyles(program: Program, scopeId: string): Program {
+  if (!programHasScopedStyleBlock(program)) return program;
+
   const result = deepClone(program) as Program;
 
   function visit(node: any): void {
     if (!node || typeof node !== "object") return;
 
-    if (node.type === "StyleBlock") {
-      const scoped = addScopeToSelector(node.content, scopeId);
-      node.content = scoped;
-    }
-
     if (node.type === "Element") {
-      // Add data attribute for scoping
       if (!node.attrs) node.attrs = [];
       const hasScope = node.attrs.some((a: any) => a.name === "data-tw-scope");
       if (!hasScope) {
@@ -82,8 +86,18 @@ export function transformScopedStyles(program: Program, scopeId: string): Progra
   return result;
 }
 
-function addScopeToSelector(css: string, scopeId: string): string {
-  return css.replace(/([.#]?[\w-]+)\s*\{/g, `$1[data-tw-scope="${scopeId}"] {`);
+/** True when the program contains at least one `scoped` style block. */
+export function programHasScopedStyleBlock(program: any): boolean {
+  let found = false;
+  function walk(n: any): void {
+    if (found || !n || typeof n !== "object") return;
+    if (n.type === "StyleBlock" && n.scoped) { found = true; return; }
+    for (const key of ["body", "children", "elseBody", "directives", "props"]) {
+      if (Array.isArray(n[key])) for (const c of n[key]) walk(c);
+    }
+  }
+  for (const n of program?.body ?? []) walk(n);
+  return found;
 }
 
 // --- Transform: SSR Attribute Extraction ----------------------------------------
@@ -195,13 +209,20 @@ export function transformInlineComponents(program: Program, componentRegistry: M
   function visit(node: any): any {
     if (!node || typeof node !== "object") return node;
 
-    if (node.type === "Component" && componentRegistry.has(node.name)) {
-      const compAST = componentRegistry.get(node.name)!;
+    // A component is either a `Component` node or a capitalized Element --
+    // `Card { }` markup parses as the latter (html.ts resolves the same way).
+    const compName =
+      node.type === "Component" ? node.name
+      : (node.type === "Element" && typeof node.tag === "string" && /^[A-Z]/.test(node.tag)) ? node.tag
+      : null;
+
+    if (compName && componentRegistry.has(compName)) {
+      const compAST = componentRegistry.get(compName)!;
       const compBody = deepClone(compAST.body);
 
-      // Map props to state vars
+      // Map props to state vars (Component uses `props`, an Element uses `attrs`)
       const propVars: Record<string, string> = {};
-      for (const prop of node.props || []) {
+      for (const prop of (node.props || node.attrs || [])) {
         if (typeof prop.value === "string") {
           propVars[prop.name] = prop.value;
         }
@@ -278,7 +299,8 @@ function substituteProps(node: any, propVars: Record<string, string>): void {
 function replaceSlots(node: any, slotChildren: ASTNode[]): void {
   if (!node || typeof node !== "object") return;
 
-  if (node.type === "Element" && node.tag === "slot") {
+  // The parser emits a `Slot` node; older code expected `Element:slot`.
+  if (node.type === "Slot" || (node.type === "Element" && node.tag === "slot")) {
     node.type = "Fragment";
     node.children = deepClone(slotChildren);
     return;

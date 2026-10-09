@@ -4,7 +4,7 @@ import { type Diagnostic } from "./types";
 import { type Program } from "../ast/nodes";
 import { forEachNode } from "../ast/visitors";
 import { isElement, isText, isScriptBlock, isStyleBlock } from "../ast/nodes/types";
-import { collectImports, collectStateDecls, getAllComponentNames } from "../ast/walkers";
+import { collectImports, collectStateDecls } from "../ast/walkers";
 import { createDiagnostic } from "./reporter";
 
 
@@ -457,11 +457,9 @@ export function checkBestPractices(program: Program, filePath: string, diags: Di
 }
 
 export function checkSemanticErrors(program: Program, filePath: string, diags: Diagnostic[]): void {
-  // Check for circular component references
-  const componentNames = getAllComponentNames(program);
-  for (const name of componentNames) {
-    // Simplified check -- a full implementation would use the component registry
-  }
+  // Circular component references need the component registry; the old code
+  // computed `getAllComponentNames(program)` here and then threw it away in an
+  // empty loop -- a whole extra tree walk per compile for nothing.
 
   // Check for empty bindings
   forEachNode(program, (node) => {
@@ -514,7 +512,7 @@ export function checkUnusedDeclarations(program: Program, filePath: string, diag
 
 
 
-// --- v1.0.8 round 3: silent-garbage guards ----------------------------------
+// --- silent-garbage guards ----------------------------------
 
 /** JS-eval a literal the same way generate() does, without throwing. */
 function literalIsBroken(value: string): boolean {
@@ -523,7 +521,7 @@ function literalIsBroken(value: string): boolean {
   try { new Function("return (" + v + ")"); return false; } catch { return true; }
 }
 
-/** BUG 6: space-separated arrays / colon-less objects silently compiled into
+/** space-separated arrays / colon-less objects silently compiled into
  *  mangled strings. They must be build ERRORS, not silent garbage. */
 export function checkStateLiterals(program: Program, filePath: string, diags: Diagnostic[]): void {
   for (const decl of collectStateDecls(program)) {
@@ -539,7 +537,7 @@ export function checkStateLiterals(program: Program, filePath: string, diags: Di
   }
 }
 
-/** BUG 7: invalid for-loop syntax (`for x in ["a" "b"]` -- missing braces,
+/** invalid for-loop syntax (`for x in ["a" "b"]` -- missing braces,
  *  bare array literal) produced mangled output. Must be an error. */
 export function checkLoopIterables(program: Program, filePath: string, diags: Diagnostic[]): void {
   forEachNode(program, (node: any) => {
@@ -564,25 +562,30 @@ export function checkLoopIterables(program: Program, filePath: string, diags: Di
   });
 }
 
-/** BUG 20: {ghost_variable} renders empty with zero feedback. Warn when an
+/** {ghost_variable} renders empty with zero feedback. Warn when an
  *  interpolation references a name that is neither state, a loop variable,
  *  nor a common builtin. (Route params cannot be known statically, so this
  *  stays a WARNING, never an error.) */
 export function checkUnknownStateVars(program: Program, filePath: string, diags: Diagnostic[]): void {
   const known = new Set<string>();
   for (const decl of collectStateDecls(program)) known.add(decl.name);
+  // One walk collects both the `for` bindings and the text nodes. The old code
+  // walked the whole tree twice (once for bindings, once for text).
+  const texts: any[] = [];
   forEachNode(program, (node: any) => {
-    if (node && node.type === "For" && node.varName) known.add(node.varName);
-    if (node && node.type === "For" && node.indexName) known.add(node.indexName);
+    if (node && node.type === "For") {
+      if (node.varName) known.add(node.varName);
+      if (node.indexName) known.add(node.indexName);
+    }
+    if (isText(node)) texts.push(node);
   });
   const BUILTINS = new Set([
     "params", "props", "Math", "Date", "JSON", "String", "Number", "Boolean",
     "Array", "Object", "window", "true", "false", "null", "undefined",
   ]);
-  forEachNode(program, (node: any) => {
-    if (!isText(node)) return;
+  for (const node of texts) {
     const text = String(node.value ?? "");
-    if (!text.includes("{")) return;
+    if (!text.includes("{")) continue;
     for (const m of text.matchAll(/\{\s*([A-Za-z_][\w]*)\s*\}/g)) {
       const name = m[1];
       if (known.has(name) || BUILTINS.has(name)) continue;
@@ -590,11 +593,11 @@ export function checkUnknownStateVars(program: Program, filePath: string, diags:
         `{${name}}`,
         [`Declare it in the state block, or check the spelling`]));
     }
-  });
+  }
 }
 
 
-/** BUG 34: `while n < 3` renders the body exactly once under static SSR
+/** `while n < 3` renders the body exactly once under static SSR
  *  semantics (state cannot mutate during codegen). Warn so nobody expects
  *  a loop. */
 export function checkWhileComparisons(program: Program, filePath: string, diags: Diagnostic[]): void {

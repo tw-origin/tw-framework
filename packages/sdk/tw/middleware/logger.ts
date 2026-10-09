@@ -3,6 +3,8 @@
  * @module sdk/middleware
  */
 
+import { ipAddress } from "@tw/shared";
+
 export interface LoggerOptions {
   format?: "combined" | "common" | "dev" | "short" | "tiny" | "json";
   skip?: (req: Request, res: Response) => boolean;
@@ -38,7 +40,7 @@ export function requestLogger(options: LoggerOptions = {}): (req: Request, res: 
     const startTime = performance.now();
     const requestId = req.headers.get(requestIdHeader) ?? generateRequestId();
     const timestamp = new Date().toISOString();
-    const ip = req.headers.get("x-forwarded-for") ?? req.headers.get("x-real-ip") ?? "unknown";
+    const ip = ipAddress(req) ?? "unknown";
     const userAgent = req.headers.get("user-agent");
 
     if (immediate) {
@@ -209,7 +211,7 @@ export function slowRequestLogger(threshold: number = 1000): (req: Request, res:
     const startTime = performance.now();
     const requestId = req.headers.get("x-request-id") ?? generateRequestId();
     const timestamp = new Date().toISOString();
-    const ip = req.headers.get("x-forwarded-for") ?? "unknown";
+    const ip = ipAddress(req) ?? "unknown";
     const userAgent = req.headers.get("user-agent");
 
     logs.push({ req, res, requestId, timestamp, ip, userAgent, startTime });
@@ -251,10 +253,7 @@ export function requestIdMiddleware(headerName: string = "x-request-id"): (req: 
 
 export function ipExtractor(): (req: Request, res: Response, next: () => void) => void {
   return (req: Request, res: Response, next: () => void) => {
-    const forwarded = req.headers.get("x-forwarded-for");
-    const real = req.headers.get("x-real-ip");
-    const remote = req.headers.get("remote-addr");
-    const ip = forwarded?.split(",")[0].trim() ?? real ?? remote ?? "unknown";
+    const ip = ipAddress(req) ?? req.headers.get("remote-addr") ?? "unknown";
     res.headers.set("x-client-ip", ip);
     next();
   };

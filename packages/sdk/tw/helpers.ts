@@ -7,6 +7,8 @@
 
 import { join as pathJoin } from "node:path";
 
+import { ipAddress } from "@tw/shared";
+
 import type {
   PageDefinition,
   LayoutDefinition,
@@ -276,7 +278,7 @@ export function rateLimitMiddlewareFactory(opts: {
   const windows = new Map<string, { count: number; resetAt: number }>();
 
   return async (ctx, next) => {
-    const ip = ctx.headers["x-forwarded-for"]?.split(",")[0]?.trim() ?? ctx.headers["host"] ?? "unknown";
+    const ip = ipAddress(ctx.headers) ?? ctx.headers["host"] ?? "unknown";
     const now = Date.now();
 
     let window = windows.get(ip);

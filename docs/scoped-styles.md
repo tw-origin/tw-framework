@@ -196,6 +196,41 @@ button.btn "Save" { }
 button.btn-ghost "Cancel" { }
 ```
 
+## The other mechanism — `<style scoped>`
+
+A `.module.tss` scopes by **hashing class names**. A `<style scoped>` block
+scopes by **attribute** instead: its rules are rewritten to
+`selector[data-tw-scope="<id>"]` and every element on the page is tagged with the
+matching `data-tw-scope`, so the block applies only to that page.
+
+```tw
+<style scoped>
+.box { color: red }
+</style>
+
+div.box { span "hi" }
+```
+
+```html
+<div class="box" data-tw-scope="syknspa">
+```
+```css
+.box[data-tw-scope="syknspa"]{color:red}
+```
+
+The id comes from the file, so it is stable across builds.
+
+---
+
+## Turning scoping off
+
+`compiler.scopedStyles: false` in `tw.config.ts` disables **both** mechanisms:
+`.module.tss` classes stay global and `<style scoped>` blocks are not scoped.
+Omitted, it is on. A page that uses neither mechanism compiles byte-identically
+either way.
+
+---
+
 ## Related
 
 - [TSS Syntax](./tss-syntax.md)

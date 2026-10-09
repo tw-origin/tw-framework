@@ -9,7 +9,7 @@ semantics, the quirks, the hard rules, and the decision log.
 
 ```sh
 bun install    # setup (~2s)
-bun test       # 2702 tests, ~11s -- all must pass before ANY change
+bun test       # 3250 tests, ~11s -- all must pass before ANY change
 bun run verify # the master gate before claiming anything works
 ```
 
@@ -44,6 +44,6 @@ bun run verify # the master gate before claiming anything works
 
 ## Proof tiers (cite the tier, not a feeling)
 
-tests (2702) -> evals (322) -> bench gate (6 metrics) -> fresh-verified
+tests (3250) -> evals (322) -> bench gate (6 metrics) -> fresh-verified
 artifact. Which tier a claim needs depends on the claim; "it ships" is
 always the top tier.

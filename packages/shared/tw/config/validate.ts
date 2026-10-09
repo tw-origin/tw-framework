@@ -3,10 +3,37 @@
 import { type TwConfig } from "./schema";
 import { getLogger } from "../logger";
 import { ValidationError } from "./loader";
+import { validateStrategies, resolveStrategies } from "./strategies";
+import { compatErrors } from "./compat";
 
 export function validateConfig(config: TwConfig): ValidationError[] {
   const errors: ValidationError[] = [];
   const logger = getLogger().child("config:validate");
+
+  // Strategy layer: a wrong option is a hard error naming the allowed values
+  // (and the closest match), so every command fails early instead of silently
+  // ignoring `strategies: { css: { engine: "taiwind" } }`.
+  const strategyIssues = validateStrategies((config as any)?.strategies);
+  for (const issue of strategyIssues) {
+    errors.push({
+      path: issue.path,
+      message: issue.message + " -- " + issue.allowed.join(" | "),
+      value: issue.value as any,
+    });
+  }
+
+  // Cross-field compatibility: only check combinations once every field is
+  // individually valid (otherwise the noise hides the real typo).
+  if (strategyIssues.length === 0) {
+    const resolved = resolveStrategies((config as any)?.strategies);
+    for (const c of compatErrors(resolved)) {
+      errors.push({
+        path: "strategies",
+        message: `unsupported combination: ${c.message} -- fix: ${c.fix}`,
+        value: c.id as any,
+      });
+    }
+  }
 
   if (config.dev.port < 0 || config.dev.port > 65535) {
     errors.push({ path: "dev.port", message: "Port must be between 0 and 65535", value: config.dev.port });

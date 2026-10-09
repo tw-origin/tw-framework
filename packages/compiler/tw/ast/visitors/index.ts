@@ -51,8 +51,18 @@ export interface AsyncVisitorOptions {
 
 // --- Sync Visitor -------------------------------------------------------------
 
+/**
+ * Keys the traversal never descends into (source locations, raw text,
+ * comments). Hoisted to module scope: `walk` runs once per rule per compile,
+ * so allocating this Set on every call was pure overhead on small traversals.
+ */
+const DEFAULT_SKIP_PROPERTIES = new Set([
+  "sourceLoc", "leadingComments", "trailingComments", "raw", "source", "comments",
+  "errors", "filePath", "line", "col", "endLine", "endCol", "type",
+]);
+
 export function walk(node: ASTNode, options: VisitorOptions): void {
-  const skipProperties = new Set(options.skipProperties ?? ["sourceLoc", "leadingComments", "trailingComments", "raw", "source", "comments", "errors", "filePath", "line", "col", "endLine", "endCol", "type"]);
+  const skipProperties = options.skipProperties ? new Set(options.skipProperties) : DEFAULT_SKIP_PROPERTIES;
   const maxDepth = options.maxDepth ?? Infinity;
 
   function visitNode(
@@ -107,26 +117,34 @@ export function walk(node: ASTNode, options: VisitorOptions): void {
       }
     }
 
-    // Visit children
-    const childKeys = getChildKeys(current);
-    for (const key of childKeys) {
+    // Visit children. The child-key list is built inline (rather than by a
+    // helper that allocated two arrays per node) -- same rules: a child is an
+    // object with a string `.type`, or a non-empty array whose first element
+    // is one. `skipProperties` is checked here for user-supplied keys.
+    const obj = current as any;
+    const keys = Object.keys(obj);
+    for (let ki = 0; ki < keys.length; ki++) {
+      const key = keys[ki];
       if (skipProperties.has(key)) continue;
-      const childVal = (current as any)[key];
+      const childVal = obj[key];
 
       if (Array.isArray(childVal)) {
+        if (childVal.length === 0) continue;
+        const first = childVal[0];
+        if (!(first && typeof first === "object" && typeof first.type === "string")) continue;
         for (let i = 0; i < childVal.length; i++) {
           const child = childVal[i];
           if (child && typeof child === "object" && typeof child.type === "string") {
-            const action = visitNode(child, current, key, childVal, i, depth + 1, `${path}.${key}[${i}]`);
+            const action = visitNode(child, current, key, childVal, i, depth + 1, path + "." + key + "[" + i + "]");
             if (action === "stop") return "stop";
           }
         }
         // Clean up removed nodes
         if (options.allowMutations) {
-          (current as any)[key] = childVal.filter((n: any) => n && n.type !== "REMOVED");
+          obj[key] = childVal.filter((n: any) => n && n.type !== "REMOVED");
         }
       } else if (childVal && typeof childVal === "object" && typeof childVal.type === "string") {
-        const action = visitNode(childVal, current, key, null, -1, depth + 1, `${path}.${key}`);
+        const action = visitNode(childVal, current, key, null, -1, depth + 1, path + "." + key);
         if (action === "stop") return "stop";
       }
     }
@@ -146,7 +164,7 @@ export function walk(node: ASTNode, options: VisitorOptions): void {
 // --- Async Visitor ------------------------------------------------------------
 
 export async function walkAsync(node: ASTNode, options: AsyncVisitorOptions): Promise<void> {
-  const skipProperties = new Set(options.skipProperties ?? ["sourceLoc", "leadingComments", "trailingComments", "raw", "source", "comments", "errors", "filePath", "line", "col", "endLine", "endCol", "type"]);
+  const skipProperties = options.skipProperties ? new Set(options.skipProperties) : DEFAULT_SKIP_PROPERTIES;
   const maxDepth = options.maxDepth ?? Infinity;
 
   async function visitNode(
@@ -173,21 +191,26 @@ export async function walkAsync(node: ASTNode, options: AsyncVisitorOptions): Pr
       }
     }
 
-    const childKeys = getChildKeys(current);
-    for (const key of childKeys) {
+    const obj = current as any;
+    const keys = Object.keys(obj);
+    for (let ki = 0; ki < keys.length; ki++) {
+      const key = keys[ki];
       if (skipProperties.has(key)) continue;
-      const childVal = (current as any)[key];
+      const childVal = obj[key];
 
       if (Array.isArray(childVal)) {
+        if (childVal.length === 0) continue;
+        const first = childVal[0];
+        if (!(first && typeof first === "object" && typeof first.type === "string")) continue;
         for (let i = 0; i < childVal.length; i++) {
           const child = childVal[i];
           if (child && typeof child === "object" && typeof child.type === "string") {
-            const action = await visitNode(child, current, key, childVal, i, depth + 1, `${path}.${key}[${i}]`);
+            const action = await visitNode(child, current, key, childVal, i, depth + 1, path + "." + key + "[" + i + "]");
             if (action === "stop") return "stop";
           }
         }
       } else if (childVal && typeof childVal === "object" && typeof childVal.type === "string") {
-        const action = await visitNode(childVal, current, key, null, -1, depth + 1, `${path}.${key}`);
+        const action = await visitNode(childVal, current, key, null, -1, depth + 1, path + "." + key);
         if (action === "stop") return "stop";
       }
     }
@@ -204,29 +227,6 @@ export async function walkAsync(node: ASTNode, options: AsyncVisitorOptions): Pr
 }
 
 // --- Traversal Helpers ---------------------------------------------------------
-
-function getChildKeys(node: ASTNode): string[] {
-  const keys: string[] = [];
-  const obj = node as any;
-
-  for (const key of Object.keys(obj)) {
-    if (key === "type" || key === "line" || key === "col" || key === "endLine" || key === "endCol" ||
-        key === "sourceLoc" || key === "leadingComments" || key === "trailingComments" ||
-        key === "raw" || key === "source" || key === "comments" || key === "errors" ||
-        key === "filePath") {
-      continue;
-    }
-
-    const val = obj[key];
-    if (Array.isArray(val) && val.length > 0 && typeof val[0] === "object" && val[0]?.type) {
-      keys.push(key);
-    } else if (val && typeof val === "object" && typeof val.type === "string") {
-      keys.push(key);
-    }
-  }
-
-  return keys;
-}
 
 // --- Node Visitor Class -------------------------------------------------------
 

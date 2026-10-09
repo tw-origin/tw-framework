@@ -158,10 +158,25 @@ export function collectParallelPages(
 }
 
 /**
+ * Per-file render-mode memo. `resolveLayoutChain` runs on every render, and
+ * this helper re-read the page file (and re-`require`d `@tw/shared`) each
+ * time. Cleared by `clearRenderModeCache()` -- RenderPipeline.rebuild() calls
+ * it -- so a dev-server rebuild still sees edits.
+ */
+const renderModeCache = new Map<string, RenderMode>();
+
+export function clearRenderModeCache(): void {
+  renderModeCache.clear();
+}
+
+/**
  * Extract render mode from a page file's source.
  * Looks for: render static | render ssr | render island | render edge
  */
 function extractRenderMode(page: RouteFile): RenderMode {
+  const cached = renderModeCache.get(page.absolutePath);
+  if (cached !== undefined) return cached;
+  let mode: RenderMode = "ssr";
   try {
     const fs = require("node:fs");
     const source = fs.readFileSync(page.absolutePath, "utf-8");
@@ -169,10 +184,11 @@ function extractRenderMode(page: RouteFile): RenderMode {
     const { maskSourceStringsAndComments } = require("@tw/shared");
     const m = maskSourceStringsAndComments(source).match(/render\s+(static|ssr|island|edge)/);
     if (m) {
-      return m[1] as RenderMode;
+      mode = m[1] as RenderMode;
     }
   } catch {
     // If we can't read the file, default to ssr
   }
-  return "ssr";
+  renderModeCache.set(page.absolutePath, mode);
+  return mode;
 }

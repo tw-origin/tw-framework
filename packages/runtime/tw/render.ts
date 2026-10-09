@@ -242,6 +242,12 @@ export function vnodeToString(node: VNodeChild): string {
 
   const { tag, props, children } = node;
 
+  // Text VNode (createVNode normalises a bare string into { type: 'text' }).
+  // Without this the text renders as nothing -- e.g. `h('p', null, 'hi')`.
+  if ((node as { type?: string }).type === 'text') {
+    return escapeText((node as { text?: unknown }).text ?? '');
+  }
+
   // Fragment / symbol tag.
   if (typeof tag === 'symbol' || tag === 'fragment' || tag === null) {
     let out = '';

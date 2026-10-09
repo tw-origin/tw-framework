@@ -59,16 +59,19 @@ export function applyRewrites(rewrites: Array<{ from: string; to: string }>, pat
 }
 
 
+import { cacheControlFor, ipAddress, resolveI18nOptions, setTrustProxy } from "@tw/shared";
 import { createImageHandler } from "@tw/optImage";
+import { configureI18n } from "./i18n";
 import { WebSocketManager } from "./websocket-manager";
 import { getSignalHub } from "./routing";
 import { join } from "node:path";
 import { existsSync, readFileSync } from "node:fs";
 import { parseRules } from "./routing/twm-rules";
 import { RouteRegistry, type RouteContext } from "./router";
-import { MiddlewarePipeline, corsMiddleware, loggingMiddleware, rateLimitMiddleware, securityHeadersMiddleware, bodyParserMiddleware, compressionMiddleware, type Middleware } from "./middleware";
+import { MiddlewarePipeline, corsMiddleware, loggingMiddleware, rateLimitMiddleware, securityHeadersMiddleware, bodyParserMiddleware, compressionMiddleware, requestTimeoutMiddleware, requestConcurrencyMiddleware, type Middleware } from "./middleware";
 import { compress, isLargeEnough, negotiateEncoding } from "./compression";
 import { createSignalStream, writeSignalFromClient } from "./routing/signal-stream";
+import { attachSignalSocket, createSignalLongPoll, detachSignalSocket } from "./routing/signal-transports";
 import { StaticHandler } from "./static";
 import { createSecurityHeaders, strictSecurityHeaders, devSecurityHeaders } from "@tw/security";
 import { SSRRenderer } from "./ssr";
@@ -88,12 +91,31 @@ export interface TWServerOptions {
   /** Parsed tw.config.ts (redirects, headers, ...) */
   config?: any;
   pagesDir?: string;
-  cors?: boolean;
+  cors?: boolean | {
+    enabled?: boolean;
+    origin?: string | string[];
+    methods?: string[];
+    allowedHeaders?: string[];
+    exposedHeaders?: string[];
+    credentials?: boolean;
+    maxAge?: number;
+  };
   rateLimit?: { windowMs: number; max: number };
-  compression?: boolean | "gzip" | "brotli" | "none";
+  compression?: boolean | "gzip" | "brotli" | "none" | "auto";
   securityHeaders?: boolean;
-  ssl?: { cert: string; key: string };
+  ssl?: { cert: string; key: string; ca?: string };
   workers?: number;
+  cluster?: boolean;
+  /** Max request body size in bytes (Bun maxRequestBodySize). 0 = no limit. */
+  bodyLimit?: number;
+  /** Per-request timeout in ms; a slow handler answers 408. 0 = off. */
+  timeout?: number;
+  keepAlive?: boolean;
+  keepAliveTimeout?: number;
+  maxConnections?: number;
+  /** Trust X-Forwarded-For / Forwarded for the client IP. */
+  trustProxy?: boolean;
+  gracefulShutdown?: boolean;
   /** Plugin manager from @tw/plugins -- enables onRequest/onResponse/onError
    *  hooks, plugin routes and plugin middleware. Optional. */
   plugins?: any;
@@ -133,12 +155,25 @@ export class TWServer {
     };
   }
 
+  /** strategies.cache.mode -- governs the Cache-Control on every response. */
+  private cacheMode(): "isr" | "swr" | "none" | "cdn" {
+    const m = (this.options as any).config?.strategies?.cache?.mode;
+    return m === "swr" || m === "none" || m === "cdn" ? m : "isr";
+  }
+
+  /** The Cache-Control value for a route, per the configured cache mode. */
+  private cacheControlForRoute(revalidateSeconds: number): string {
+    return cacheControlFor(this.cacheMode(), revalidateSeconds > 0 ? revalidateSeconds : 60);
+  }
+
   private cspEnabled(): boolean {
     return !!(this.options.security as any)?.csp;
   }
   private ssr: SSRRenderer | null = null;
   private server: any = null;
   private compressionMode: "off" | "gzip" | "brotli" = "off";
+  /** server.cors (full block): applied to every response. */
+  private corsConfig: any = null;
   private isRunning = false;
   private pluginManager: any = null;
   private imageHandler: { handle(request: Request): Promise<Response | null> } | null = null;
@@ -162,7 +197,7 @@ export class TWServer {
         cfgIn.redirects = entries.map(([from, to]) =>
           typeof to === "string" ? { from, to } : { from, ...to });
       }
-      // v1.0.8 round 4 (BUG 35): mistyped redirect fields were silently
+      // mistyped redirect fields were silently
       // ignored -- a Next.js-style entry (source/destination/permanent)
       // built fine and then 404'd at runtime. Map the known aliases AND
       // warn about anything still unrecognized.
@@ -221,7 +256,27 @@ export class TWServer {
     }
     this.pluginManager = this.options.plugins ?? null;
 
-    // BUG 7 (v1.0.8): `compression` was accepted but never wired --
+    // i18n.* -- configure the i18n runtime from tw.config.ts. Unset fields
+    // keep the built-in defaults, so a project without i18n is unaffected.
+    try {
+      const cfgIn2: any = (this.options as any).config;
+      if (cfgIn2?.i18n || cfgIn2?.router?.locales?.length) {
+        const i = resolveI18nOptions(cfgIn2);
+        configureI18n({
+          locales: i.locales,
+          defaultLocale: i.defaultLocale,
+          strategy: i.strategy,
+          fallback: i.fallback,
+          loading: i.loading,
+        });
+      }
+    } catch { /* i18n stays at defaults */ }
+
+    // server.trustProxy -- when false, forwarded headers are ignored and the
+    // connection's own address is used.
+    setTrustProxy(this.options.trustProxy !== false);
+
+    // `compression` was accepted but never wired --
     // compressionMiddleware() was a deliberate no-op and no response path
     // compressed anything. Resolve the mode ONCE here.
     {
@@ -247,7 +302,24 @@ export class TWServer {
       this.pipeline.use("security", securityHeadersMiddleware());
     }
     if (this.options.cors) {
-      this.pipeline.use("cors", corsMiddleware({ origin: "*", credentials: true }));
+      const co: any = this.options.cors;
+      if (co === true) {
+        // Legacy default: keep the pipeline middleware (today's behaviour).
+        this.pipeline.use("cors", corsMiddleware({ origin: "*", credentials: true }));
+      } else if (co.enabled !== false) {
+        // Full server.cors block from tw.config.ts. The pipeline writes to
+        // ctx.headers (request headers), which never reach the response -- so
+        // the block is applied to EVERY response in applyCors() instead.
+        this.corsConfig = co;
+      }
+    }
+    // server.timeout: answer a slow handler with 408 instead of hanging.
+    if (typeof this.options.timeout === "number" && this.options.timeout > 0) {
+      this.pipeline.use("timeout", requestTimeoutMiddleware(this.options.timeout));
+    }
+    // server.maxConnections: cap in-flight requests.
+    if (typeof this.options.maxConnections === "number" && this.options.maxConnections > 0) {
+      this.pipeline.use("concurrency", requestConcurrencyMiddleware(this.options.maxConnections));
     }
     this.pipeline.use("bodyParser", bodyParserMiddleware());
     if (this.options.rateLimit) {
@@ -362,7 +434,7 @@ export class TWServer {
     if (existsSync(middlewarePath)) {
       this.middlewarePath = middlewarePath;
       console.log("  Middleware: middleware.twm loaded");
-      // v1.0.8 round 5 (BUG 29): print what each rule will do. A rule with
+      // print what each rule will do. A rule with
       // only `match` + `response` (no condition blocks) applies to EVERY
       // matching request -- a fail-closed guard that is easy to misread as
       // "inert". Naming it at startup removes the guesswork.
@@ -395,7 +467,23 @@ export class TWServer {
     const host = this.options.host ?? "0.0.0.0";
     const wanted = this.options.port ?? 8000;
 
-    // BUG 10 (v1.0.8): the "running" banner printed BEFORE binding and a
+    // server.ssl -> Bun tls; server.bodyLimit -> maxRequestBodySize;
+    // server.keepAlive/keepAliveTimeout -> idleTimeout (seconds);
+    // server.cluster / workers>1 -> reusePort so several processes can share.
+    const ssl = this.options.ssl;
+    const tlsOpt = ssl?.cert && ssl?.key
+      ? { tls: { cert: ssl.cert, key: ssl.key, ...(ssl.ca ? { ca: ssl.ca } : {}) } }
+      : {};
+    const limitOpt = typeof this.options.bodyLimit === "number" && this.options.bodyLimit > 0
+      ? { maxRequestBodySize: this.options.bodyLimit } : {};
+    const idleOpt = this.options.keepAlive === false
+      ? { idleTimeout: 0 }
+      : (typeof this.options.keepAliveTimeout === "number" && this.options.keepAliveTimeout > 0
+        ? { idleTimeout: Math.max(1, Math.round(this.options.keepAliveTimeout / 1000)) }
+        : {});
+    const clusterOpt = (this.options.cluster || (this.options.workers ?? 1) > 1) ? { reusePort: true } : {};
+
+    // the "running" banner printed BEFORE binding and a
     // busy port crashed with a raw EADDRINUSE stack trace (the user was
     // told the server was up when it was dead). Bind FIRST -- trying
     // wanted, wanted+1 ... wanted+9 as the docs promise -- then announce.
@@ -407,13 +495,55 @@ export class TWServer {
         bound = (typeof Bun !== "undefined" ? Bun : null as any)?.serve({
           port: p,
           hostname: host,
+          ...tlsOpt,
+          ...limitOpt,
+          ...idleOpt,
+          ...clusterOpt,
           fetch: async (request: Request) => {
+            // /_tw/ws — WebSocket signal transport. Upgraded before routing so
+            // the socket speaks the same frame protocol as SSE (strategy
+            // signals.transport="ws").
+            try {
+              const u = new URL(request.url);
+              if (u.pathname === "/_tw/ws") {
+                // Try the upgrade directly: Bun does not always surface the
+                // `Upgrade` header on the Request, so gating on it is
+                // unreliable. upgrade() returns false for a plain GET.
+                const server: any = this.server ?? bound;
+                if (server?.upgrade?.(request, { url: request.url })) return undefined as any;
+                return new Response("WebSocket upgrade required", { status: 426 });
+              }
+            } catch { /* fall through to normal routing */ }
+
             const res = await this.handleRequest(request);
             let withHeaders = res;
             if (this.securityHeaders) {
               try { withHeaders = this.securityHeaders.apply(res); } catch { withHeaders = res; }
             }
             return this.compressResponse(withHeaders, request);
+          },
+          websocket: {
+            // one hub client per socket; data carries the connection URL
+            open: (ws: any) => {
+              try {
+                const u = new URL(ws.data?.url ?? "http://localhost/_tw/ws");
+                ws.data.signalClient = attachSignalSocket(ws, u);
+              } catch { /* leave the socket unregistered */ }
+            },
+            message: (ws: any, raw: any) => {
+              // Client -> server signal writes ride the same gated path as
+              // POST /_tw/signal (public-only, config-gated).
+              try {
+                const text = typeof raw === "string" ? raw : new TextDecoder().decode(raw);
+                const parsed = JSON.parse(text);
+                if (parsed && typeof parsed.name === "string") {
+                  this.handleSocketSignalWrite(parsed).then((out) => {
+                    try { ws.send(JSON.stringify(out)); } catch { /* closed */ }
+                  }).catch(() => { /* ignored */ });
+                }
+              } catch { /* ignore malformed frames */ }
+            },
+            close: (ws: any) => { detachSignalSocket(ws.data?.signalClient ?? null); },
           },
           error: (err: Error) => {
             console.error("Server error:", err);
@@ -437,7 +567,23 @@ export class TWServer {
     this.server = bound;
     this.options.port = port;
     this.isRunning = true;
-    console.log(`\n  TW Server running at http://${host}:${port}\n`);
+
+    // Strategy check: WebSocket signal transport is served by Bun's native
+    // WebSocket support. On Node (no Bun), say so once instead of leaving the
+    // client to reconnect forever -- long-poll/SSE work everywhere.
+    try {
+      const { setApiRuntime } = await import("./routing/twm-loader");
+      const rt = (this.options as any).config?.strategies?.api?.runtime;
+      setApiRuntime(rt === "edge" ? "edge" : "node");
+      const t = (this.options as any).config?.strategies?.signals?.transport;
+      if (t === "ws" && typeof (globalThis as any).Bun === "undefined") {
+        console.warn("  ! signals.transport=ws needs Bun's WebSocket server (or the `ws` package).");
+        console.warn("    On Node, use --signals=sse or --signals=long-poll.");
+      }
+    } catch { /* no config */ }
+    console.log(`\n  TW Server running at ${tlsOpt ? "https" : "http"}://${host}:${port}\n`);
+    // Lifecycle hook: the server is accepting traffic.
+    try { await (this.pluginManager as any)?.runHook?.("server:start", { host, port, rootDir: this.options.rootDir }); } catch { /* isolated */ }
     console.log(`  Routes: ${this.router.size()}`);
     console.log(`  Static: ${this.staticHandler ? "enabled" : "disabled"}`);
     console.log(`  SSR: ${this.ssr ? "enabled" : "disabled"}\n`);
@@ -446,6 +592,11 @@ export class TWServer {
   // Graceful shutdown -- stops accepting new connections,
   // finishes ongoing requests, then closes
   async gracefulShutdown(timeout: number = 5000): Promise<void> {
+    // Lifecycle hook: give plugins a chance to flush before connections drain.
+    // Fired once -- a second signal must not run a plugin's teardown twice.
+    if (this.isRunning) {
+      try { await (this.pluginManager as any)?.runHook?.("server:stop", { rootDir: this.options.rootDir }); } catch { /* isolated */ }
+    }
     this.isRunning = false;
     // v2: close every signal-stream client so SSE sockets free immediately
     try { getSignalHub().closeAll(); } catch { /* no hub */ }
@@ -479,7 +630,7 @@ export class TWServer {
    *   - return { headers: {...} }  -> headers merged into the final response
    *   - return null/undefined      -> continue
    */
-  /** BUG 7 (v1.0.8): real response compression. `compression` in
+ /** real response compression. `compression` in
    * tw.config.ts was silently ignored -- the middleware was a no-op and
    * nothing on the response path ever set Content-Encoding. */
   private async compressResponse(res: Response, request: Request): Promise<Response> {
@@ -509,7 +660,7 @@ export class TWServer {
     }
   }
 
-  /** v1.0.8 round 5 (BUG 39): public now -- serverless adapters (Vercel
+ /** public now -- serverless adapters (Vercel
    *  functions, edge runtimes) drive the server through this entry. */
   async handleRequest(request: Request): Promise<Response> {
     // Normalize the request URL once, up front: collapse duplicate slashes
@@ -661,7 +812,7 @@ export class TWServer {
     // config.rateLimit: simple in-memory fixed-window limiter
     const rl: any = (this.options as any).rateLimit;
     if (rl?.windowMs && rl?.max) {
-      const ip = request.headers.get("x-forwarded-for")?.split(",")[0]?.trim() || request.headers.get("x-real-ip") || "local";
+      const ip = this.clientIpFor(request);
       const now = Date.now();
       const entry = this.rateLimitStore.get(ip);
       if (!entry || now > entry.reset) {
@@ -701,6 +852,53 @@ export class TWServer {
         try { if (!response.headers.has(key)) response.headers.set(key, mwHeaders[key]); } catch { /* skip */ }
       }
     }
+    return this.applyCors(request, response);
+  }
+
+  /**
+   * The client IP for rate limiting. With `server.trustProxy: false` the
+   * connection's own address is used, so a spoofed X-Forwarded-For cannot
+   * rotate the bucket; otherwise the forwarded headers are honoured.
+   */
+  private clientIpFor(request: Request): string {
+    if (this.options.trustProxy === false) {
+      try {
+        const info = (this.server as any)?.requestIP?.(request);
+        if (info?.address) return String(info.address);
+      } catch { /* fall through */ }
+    }
+    return ipAddress(request) || "local";
+  }
+
+  /**
+   * Apply the tw.config.ts `server.cors` block to a response. The pipeline
+   * CORS middleware wrote to ctx.headers (request headers), so the block never
+   * reached the response; this applies it to EVERY response -- static, SSR and
+   * API alike.
+   */
+  private applyCors(request: Request, response: Response): Response {
+    const c = this.corsConfig;
+    if (!c) return response;
+    const reqOrigin = request.headers.get("origin") || "";
+    let allow = "*";
+    if (typeof c.origin === "string") allow = c.origin;
+    else if (Array.isArray(c.origin)) allow = c.origin.includes(reqOrigin) ? reqOrigin : "*";
+    const out: Record<string, string> = {
+      "access-control-allow-origin": allow,
+      "access-control-allow-methods": (c.methods ?? ["GET", "POST", "PUT", "PATCH", "DELETE", "OPTIONS"]).join(", "),
+      "access-control-allow-headers": (c.allowedHeaders ?? ["Content-Type", "Authorization"]).join(", "),
+      "access-control-max-age": String(c.maxAge ?? 86400),
+    };
+    if (Array.isArray(c.exposedHeaders) && c.exposedHeaders.length > 0) out["access-control-expose-headers"] = c.exposedHeaders.join(", ");
+    if (c.credentials) out["access-control-allow-credentials"] = "true";
+
+    // A CORS preflight for an unmatched path is answered directly.
+    if (request.method === "OPTIONS" && response.status === 404) {
+      return new Response(null, { status: 204, headers: out });
+    }
+    for (const k of Object.keys(out)) {
+      try { if (!response.headers.has(k)) response.headers.set(k, out[k]); } catch { /* skip */ }
+    }
     return response;
   }
 
@@ -717,6 +915,28 @@ export class TWServer {
   private async handleClientSignalWrite(request: Request): Promise<Response> {
     const cfg = (this.options as any).config?.signalStream;
     return writeSignalFromClient(request, { clientWrites: cfg?.clientWrites });
+  }
+
+  /**
+   * WebSocket client->server signal write. Same gating as the POST route:
+   * disabled unless `signalStream.clientWrites` is on, public signals only.
+   * Returns a plain object so the socket can echo it as one JSON frame.
+   */
+  private async handleSocketSignalWrite(body: any): Promise<Record<string, unknown>> {
+    const cfg = (this.options as any).config?.signalStream;
+    if (!cfg?.clientWrites) return { ok: false, error: "client signal writes are disabled" };
+    const name = body?.name;
+    if (typeof name !== "string" || !("value" in (body ?? {}))) {
+      return { ok: false, error: "body must be { name, value }" };
+    }
+    const hub = getSignalHub();
+    const kind = (hub.getStats().signals ?? {})[name];
+    if (kind && kind !== "public") {
+      return { ok: false, error: "only public signals are client-writable" };
+    }
+    const res = hub.setSignal(name, body.value);
+    if (!res.queued) return { ok: false, error: res.error ?? "rejected" };
+    return { ok: true, kind: res.kind };
   }
 
   /**
@@ -738,7 +958,7 @@ export class TWServer {
         this.renderPipeline = createRenderPipeline({
           rootDir: this.options.rootDir,
           homeDir,
-          enableCache: true,
+          enableCache: true, hydrationMode: (this.options as any).config?.strategies?.hydration?.mode,
           dev: false,
         });
         const { setActivePipeline } = await import("./routing");
@@ -804,7 +1024,7 @@ export class TWServer {
   private async handleRequestInner(request: Request): Promise<Response> {
     const url = new URL(request.url);
     const method = request.method;
-    // v1.0.8 round 3 (BUG 13): URL canonicalization. //about, /about/ and
+    // URL canonicalization. //about, /about/ and
     // the percent-encoded /%2f%2fabout all used to serve the same content
     // as /about with a 200 (SEO duplicate content). Answer 308 (method and
     // body preserved) to the canonical form instead.
@@ -841,6 +1061,13 @@ export class TWServer {
     // signals (private delivery filter), ?since=N resumes after a drop.
     if (pathname === "/_tw/stream") {
       return this.handleSignalStream(request, url);
+    }
+
+    // /_tw/poll — long-poll signal transport (strategy signals.transport=
+    // "long-poll"). Answers with {"v":1,"frames":[...]} straight away when
+    // frames are pending, otherwise holds the request open briefly.
+    if (pathname === "/_tw/poll") {
+      return createSignalLongPoll(request, url);
     }
 
     // /_tw/signal — v2 client->server push (config-gated, public-only)
@@ -944,12 +1171,15 @@ export class TWServer {
               this.renderPipeline = createRenderPipeline({
                 rootDir: this.options.rootDir,
                 homeDir,
-                enableCache: true,
+                enableCache: true, hydrationMode: (this.options as any).config?.strategies?.hydration?.mode,
                 dev: false,
               });
               setActivePipeline(this.renderPipeline);
             }
             const renderPipeline = this.renderPipeline;
+            // cache.mode=none: no server-side cache at all -- every request
+            // renders fresh (the header above already tells clients no-store).
+            if (this.cacheMode() === "none") (renderPipeline as any).cacheTTL = 0;
             // SPA navigation signal (client runtime link fetch): lets the
             // render pipeline serve `(.)page.tw` interceptors (modals).
             (renderPipeline as any).navRequest = request.headers.get("x-tw-navigate") === "1";
@@ -961,6 +1191,21 @@ export class TWServer {
               }
               let outHtml = result.html;
               const outHeaders: Record<string, string> = result.headers ?? { "Content-Type": "text/html; charset=utf-8" };
+              // strategies.cache.mode decides what the browser and any CDN in
+              // front see. A page's own cache block still wins for `isr`; the
+              // other modes are explicit policy and override it.
+              {
+                const mode = this.cacheMode();
+                // The route's own revalidate window (routes.json / cache block)
+                // sets max-age; the mode decides the rest of the policy.
+                const rv = this.isrRoutes.get(pathname);
+                const rvSecs = typeof rv === "number" ? rv
+                  : (rv && typeof rv === "object" ? Number((rv as any).revalidate) || 0 : 0);
+                const window = rvSecs || Number(result.revalidate) || 0;
+                if (mode !== "isr" || !outHeaders["Cache-Control"]) {
+                  outHeaders["Cache-Control"] = this.cacheControlForRoute(window);
+                }
+              }
               if (this.cspEnabled()) {
                 try {
                   const cspRes = this.applyCspNonce(outHtml);
@@ -1057,7 +1302,7 @@ export { createCloudflareWorker, createDenoHandler, createEdgeHandler } from "./
 export type { EdgeConfig, EdgeRequest, EdgeResponse } from "./edge";
 export { generateFontCSS, generateFontPreload, optimizeFont } from "./font";
 export type { FontConfig, FontFile, FontMetrics, OptimizedFont } from "./font";
-export { DEFAULT_I18N_CONFIG, formatCurrency, formatDate, formatNumber, formatRelative, getHtmlDir, getHtmlLang, getLocale, getTextDirection, isRTL, loadTranslations, localizePath, parseLocalePath, setLocale, t } from "./i18n";
+export { DEFAULT_I18N_CONFIG, configureI18n, formatCurrency, formatDate, formatNumber, formatRelative, getHtmlDir, getHtmlLang, getI18nConfig, getLocale, getTextDirection, isRTL, loadTranslations, localizePath, normalizeI18nStrategy, parseLocalePath, setLocale, t } from "./i18n";
 export type { I18nConfig, LocaleRouteResult } from "./i18n";
 export { DEFAULT_IMAGE_CONFIG, imgTag, optimizeImage, processImage } from "./image";
 export type { ImageOptimizerConfig, OptimizedImage } from "./image";
@@ -1067,7 +1312,7 @@ export { buildCSPHeader, buildHSTSHeader, buildPermissionsPolicyHeader, createDe
 export type { SecurityHeadersOptions } from "./security-headers";
 export { RouteRegistry } from "./router";
 export type { Route, RouteContext, RouteHandler, RouteMatch } from "./router";
-export { RenderPipeline, clearTWMCache, collectParallelDefaults, collectParallelPages, createRenderPipeline, executeMiddleware, executeRouteHandler, findGlobalError, findRootNotFound, flattenRoutes, loadTWMModule, matchFlatRoute as matchRoute, matchRoute as matchRouteTree, parseSlots, printRouteTree, renderParallel, resolveLayoutChain, scanRouteTree, scanRouteTree as scanRoutes, shouldMatchMiddleware } from "./routing";
+export { RenderPipeline, clearTWMCache, collectParallelDefaults, collectParallelPages, createRenderPipeline, executeMiddleware, executeRouteHandler, findGlobalError, findRootNotFound, flattenRoutes, loadTWMModule, matchFlatRoute as matchRoute, matchRoute as matchRouteTree, parseSlots, printRouteTree, renderParallel, resolveLayoutChain, scanRouteTree, scanRouteTree as scanRoutes, shouldMatchMiddleware, revalidatePath, revalidateTag } from "./routing";
 export type { FlatRouteDefinition, FlatRouteMatch, ScannerOptions, TWMModule } from "./routing";
 export { SSRRenderer, generatePreloadHints, getCachedSSR, invalidateSSRCache, setCachedSSR } from "./ssr";
 export type { SSROptions, SSRResult } from "./ssr";
@@ -1076,3 +1321,39 @@ export type { StaticOptions } from "./static";
 
 export { WebSocketManager };
 export type { WebSocketConnection, ConnectionMeta } from "./websocket-manager";
+
+export { createI18n, parseAcceptLanguage } from "./i18n-runtime";
+export type { I18nRuntimeConfig, I18nInstance } from "./i18n-runtime";
+export { createPluginHost } from "./plugin-host";
+export type { Plugin, PluginHost, PluginContext, HookName } from "./plugin-host";
+export { createDb, createSqlAdapter, createKvAdapter, createVectorAdapter } from "./db-runtime";
+export type { Db, DbConfig, DbAdapter, DbAdapterName, SqlAdapter, KvAdapter, VectorAdapter, VectorRecord, VectorMatch } from "./db-runtime";
+export { createImageLoader, buildImageUrl, buildSrcSet, preloadLink, isAllowedSource } from "./image-loader";
+export type { ImageLoader, ImageLoaderConfig, ImageLoaderName, ImageRequest } from "./image-loader";
+export { createEdgeAdapter, EDGE_BLOCKED_GLOBALS } from "./edge-runtime";
+export type { EdgeAdapter, EdgeLimits, EdgeResult } from "./edge-runtime";
+export { createGraphQL, parseGraphQL, createTrpcRouter } from "./data-runtime";
+export type { GraphQLSchema, GraphQLResult, GraphQLExecutor, TrpcRouter, ProcedureDef } from "./data-runtime";
+export { createAuth } from "./auth-runtime";
+
+// Request-context helpers (docs/request-context.md). Re-exported here so the
+// user-facing `"tw"` specifier resolves them -- `import { clientIp } from "tw"`.
+// A project has only `tw-framework` installed, so `@tw/sdk/*` is not a path a
+// user can import; `"tw"` is.
+export {
+  after, background, clearDynamicReasons, clearMetrics, clientIp, collectedMetrics,
+  connection, counter, deadline, defer, dynamic, dynamicReasons, env, gauge, geolocation,
+  getDeadline, getEnv, histogram, inCidr, ipAddress, isPrivateIp, metric, normalizeIp,
+  parseDuration, pendingTasks, setMetricSink, setWaitUntilHook, staticRoute, timer,
+  trustProxy, userAgent, waitUntil,
+} from "@tw/shared";
+export type {
+  ClientIp, Deadline, DeferredTask, Duration, EnvSchemaResult, EnvType, EnvValues,
+  Geo, MetricPoint, UserAgentInfo,
+} from "@tw/shared";
+export {
+  badRequest, forbidden, jsonResponse, notFound as notFoundResponse, permanentRedirect,
+  redirect, unauthorized,
+} from "@tw/shared";
+export { cache, cached, draftMode, getCache, resetCache, setDraftSecret, verifyDraftCookie } from "@tw/shared";
+export { CookieJar, TWRequest, TWResponse, twRequest } from "@tw/shared";

@@ -1,6 +1,6 @@
 # TW Framework — Guide: Plugins End-to-End
 
-This guide covers one thing completely: using the plugin system in practice — writing your first plugin, enabling it with the terminal and without one, complete copy-paste examples, the security rules, and fixing what breaks. The hook-by-hook API reference lives in [Plugins](./plugins.md).
+This guide covers one thing completely: using the plugin system in practice — writing your first plugin, enabling it with the terminal and without one, complete copy-paste examples, the security rules, and fixing what breaks. The hook-by-hook API reference — including exactly which hooks each command fires — lives in [Plugins](./plugins.md).
 
 ---
 
@@ -30,7 +30,7 @@ let hits = 0;                          // plugin state lives in the module
 
 const hitCounter: TWPlugin = {
   name: "hit-counter",                 // unique name — required
-  version: "1.0.0",                    // required
+  version: "2.0.0",                    // required
   description: "Counts requests, serves /__stats",
 
   setup(api) {
@@ -161,7 +161,7 @@ import type { TWPlugin } from "@tw/plugins";
 
 const maintenance: TWPlugin = {
   name: "maintenance",
-  version: "1.0.0",
+  version: "2.0.0",
 
   setup(api) {
     api.on("onRequest", (ctx) => {
@@ -189,7 +189,7 @@ import type { TWPlugin } from "@tw/plugins";
 
 const siteInfo: TWPlugin = {
   name: "site-info",
-  version: "1.0.0",
+  version: "2.0.0",
   setup(api) {
     api.on("onResponse", (ctx) => {
       ctx.response.headers.set("X-Site", "my-store");
@@ -212,7 +212,7 @@ const counts = new Map<string, number>();
 
 const simpleAnalytics: TWPlugin = {
   name: "simple-analytics",
-  version: "1.0.0",
+  version: "2.0.0",
   setup(api) {
     api.on("onRequest", (ctx) => {
       const p = ctx.url.pathname;
@@ -245,7 +245,7 @@ import type { TWPlugin } from "@tw/plugins";
 
 const rateShield: TWPlugin = {
   name: "rate-shield",
-  version: "1.0.0",
+  version: "2.0.0",
   setup(api) {
     api.on("onRequest", (ctx) => {
       // options come from tw.config.ts (see below)
@@ -337,7 +337,10 @@ Checklist before shipping a site with plugins:
 File:      plugins/<name>.ts          (TypeScript, default export)
 Switch:    tw.config.ts -> plugins: ["<name>"]
 CLI:       tw plugin create / add / remove / list
-Hooks:     onRequest (interceptable) · onResponse · onError
+Hooks:     25 total · 14 fire from the CLI · see docs/plugins.md for the full table
+Serve:     onRequest (interceptable) · onResponse · onError · server:start · server:stop
+Build:     config:resolve · pages:discover · before:build · after:build
+Content:   transform:html · transform:css · transform:js · optimize:asset
 Routes:    api.registerRoute("GET", "/path", () => ({ status, json }))
 Options:   { name: "x", options: {...} } in the plugins array
 Order:     priority (lower = earlier, default 50)

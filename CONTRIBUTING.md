@@ -37,7 +37,7 @@ with every command you will need along the way.
 git clone <your-fork>
 cd tw-framework
 bun install          # ~2s, workspace links
-bun test             # 2702 tests, ~11s -- ALL must pass before you start
+bun test             # 3250 tests, ~11s -- ALL must pass before you start
 bun run lint         # 0 errors across 11 packages
 ```
 
@@ -72,7 +72,7 @@ Claims in this repo are graded. Know the tiers:
 | 0 | "It should work" | - | a defect |
 | 1 | "It compiles" | `tw build` in an app | weak |
 | 2 | "It passes its tests" | `bun test tests/<suite>.test.ts` | normal |
-| 3 | "The suite is green" | `bun test` (2702) | good |
+| 3 | "The suite is green" | `bun test` (3250) | good |
 | 4 | "Evals at 100%" | `bun evals/run.ts` (322: outcome/scale/invariant/fuzz) | strong |
 | 5 | "No perf regression" | `bun bench/run.ts --check` (6 metrics) | strong |
 | 6 | "The artifact passes" | fresh-unzip -> install -> test on THE ZIP | shipping grade |
@@ -89,7 +89,7 @@ tw-framework/
 │                      security, lsp, plugins, sdk, adapters, image, ...)
 ├── apps/              cli (the `tw` command), create-tw-framework
 ├── examples/          30 runnable apps -- CI builds every one
-├── tests/             48 suites, 2702 tests (unit + isolated e2e)
+├── tests/             83 suites, 3250 tests (unit + isolated e2e)
 ├── evals/             322-case harness (outcome/scale/invariant/fuzz)
 ├── bench/             6-metric benchmark + regression gate
 ├── docs/              185 canonical topic pages
@@ -194,7 +194,7 @@ Reviewers run ALL of this; so should you, before opening:
 
 ```sh
 bun run lint            # 0 errors
-bun test                # 2702 green
+bun test                # 3250 green
 bun evals/run.ts        # 322 at 100%
 bun bench/run.ts --check # no regressions (if you touched a hot path)
 cd examples/* && build   # if you touched examples

@@ -1,7 +1,7 @@
 ---
 name: add-diagnostic
 description: Add a new TW0xx compiler diagnostic with registry, docs, and tests
-version: 1.0.6
+version: 2.0.0
 ---
 
 # Skill: add-diagnostic
@@ -66,7 +66,7 @@ too (cache.json encodes the TW090-TW093 semantics).
 
 ## Historical note
 
-The v1.0.6 ARIA bugfix added four missing attributes and the missing
+A past ARIA bugfix added four missing attributes and the missing
 `table` role BECAUSE the test matrix demanded them -- tables and tests
 grow together here. Expect your diagnostic to find bugs you did not know
 existed; that is it working.

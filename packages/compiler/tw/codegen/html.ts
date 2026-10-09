@@ -1,6 +1,7 @@
 import { createContext } from "./types";
 import { TW_GENERATOR_META } from "./version.js";
 import { collectBuiltinImports, generateBuiltinTag, generateImageTag, resolveBuiltin } from "./builtin-components";
+import { resolveForeignComponent, islandWrapper } from "./foreign-components";
 import { evaluate, isTruthy as evalTruthy } from "../eval";
 import { compileTSS, validatePlainCss as _validatePlainCss } from "./tss";
 import { compileSCSS } from "./scss";
@@ -218,7 +219,7 @@ export function collectTssImports(programs: Program[], ctx: CodegenContext): voi
           // `@./` is a PROJECT-ROOT alias (style/ and components/ live at the
           // root, while the importing .tw may be nested deep in home/).
           // Walk up the ancestors of the importing file to find the first match.
-          const abs = resolveTssPath(_dirname(base), rel);
+          const abs = resolveTssPath(_dirname(base), rel, (ctx as any).cssImportPaths ?? []);
           if (!abs) {
             throw new Error(
               "TW302: imported stylesheet not found: '" + dir.source + "'\n" +
@@ -231,10 +232,10 @@ export function collectTssImports(programs: Program[], ctx: CodegenContext): voi
             const src = readFileSync(abs, "utf-8");
             let css = /\.scss$/.test(abs) ? compileSCSS(src)
               : (/\.tss$/.test(abs) ? compileTSS(src) : _validatePlainCss(src, abs));
-            if (css && /\.module\.(tss|css)$/.test(abs)) {
+            if (css && /\.module\.(tss|css)$/.test(abs) && ctx.scopedStyles !== false) {
               const scopeMap: Record<string, string> = ((ctx as any).scopedClasses ??= {});
               css = css.replace(/\.(-?[A-Za-z_][\w-]*)/g, (_m: string, name: string) => {
-                const scopedName = "tw-" + name + "-" + twShortHash(abs + ":" + name);
+                const scopedName = ((ctx as any).cssPrefix ?? "tw-") + name + "-" + twShortHash(abs + ":" + name);
                 if (!(name in scopeMap)) scopeMap[name] = scopedName;
                 return "." + scopedName;
               });
@@ -261,8 +262,12 @@ export function collectTssImports(programs: Program[], ctx: CodegenContext): voi
  * directory toward the filesystem root, returning the first existing match
  * (project-root style/ and components/ are found this way).
  */
-function resolveTssPath(fromDir: string, rel: string): string | null {
+function resolveTssPath(fromDir: string, rel: string, extra: string[] = []): string | null {
   try {
+    // css.importPaths -- extra roots tried before the walk-up.
+    for (const dir of extra) {
+      try { const c = _resolve(dir, rel); if (existsSync(c)) return c; } catch { /* skip */ }
+    }
     let cur = fromDir;
     for (let i = 0; i < 12; i++) {
       const cand = _resolve(cur, rel);
@@ -600,14 +605,15 @@ function generateElement(el: ElementNode, ctx: CodegenContext): string {
   const tag = el.tag;
   const voidTag = VOID_TAGS.has(tag.toLowerCase());
 
-  // v1.0.8 round 4 (BUG 32): an UNIMPORTED capitalized tag (e.g. `Nope`)
+  // an UNIMPORTED capitalized tag (e.g. `Nope`)
   // used to compile to raw invalid HTML with zero feedback. Capitalized
   // tags are component syntax -- fail LOUDLY instead of garbage markup.
   if (
     tag.length > 0 && tag[0] === tag[0].toUpperCase() &&
     !["Link", "Suspense"].includes(tag) &&
     !componentRegistry.has(tag) &&
-    !resolveBuiltin(tag, activeBuiltinImports)
+    !resolveBuiltin(tag, activeBuiltinImports) &&
+    !resolveForeignComponent(tag)
   ) {
     console.warn("[tw] unknown component <" + tag + "> (" + el.line + ":" + el.col + ") -- no import resolves it; nothing was rendered");
     return "<!-- TW: unknown component '" + tag + "' -- check the import -->";
@@ -647,6 +653,44 @@ function generateElement(el: ElementNode, ctx: CodegenContext): string {
       }
       const out = generateBuiltinTag(builtinSpec, props, text.trim());
       if (out !== null) return out;
+    }
+  }
+
+  // Foreign component (a React/Preact .tsx/.jsx the build registered):
+  // render it to HTML once and wrap the output in an island the client can
+  // hydrate. Props come from the same places a builtin's do -- attributes,
+  // `prop "value"` children, and bare words; anything else is slot content.
+  {
+    const foreign = resolveForeignComponent(tag);
+    if (foreign) {
+      const props: Record<string, string> = {};
+      let childHtml = "";
+      for (const attr of el.attrs ?? []) {
+        props[attr.name] = attr.value === true ? "true" : interpolate(String(attr.value), ctx.stateVars);
+      }
+      for (const c of el.children ?? []) {
+        const ch: any = c;
+        if (ch.type === "Element") {
+          if ((ch.children?.length ?? 0) === 1 && ch.children[0].type === "Text") {
+            props[ch.tag] = interpolate(String(ch.children[0].value ?? ""), ctx.stateVars);
+          } else if ((ch.children?.length ?? 0) === 0) {
+            props[ch.tag] = "true";
+          } else {
+            childHtml += generateNode(c, ctx);
+          }
+        } else if (ch.type === "Text" && typeof ch.value === "string") {
+          const word = ch.value.trim();
+          if (word && !/\s/.test(word) && props[word] === undefined) props[word] = "true";
+          else childHtml += ch.value;
+        }
+      }
+      let rendered = "";
+      try {
+        rendered = foreign.render(props, childHtml.trim());
+      } catch (err: any) {
+        return `<!-- TW: ${tag} failed to render (${foreign.engine}): ${String(err?.message ?? err)} -->`;
+      }
+      return islandWrapper(tag, JSON.stringify(props), rendered, foreign.chunkUrl);
     }
   }
 
@@ -890,6 +934,11 @@ export function clearComponentRegistry(): void {
   componentRegistry.clear();
 }
 
+/** The component templates registered this build (name -> AST). */
+export function getComponentRegistry(): Map<string, Program> {
+  return componentRegistry;
+}
+
 function generateComponent(comp: ComponentNode, ctx: CodegenContext): string {
   if (ctx.componentStack.includes(comp.name)) {
     return `<!-- Circular component: ${comp.name} -->`;
@@ -962,7 +1011,7 @@ function generateComponent(comp: ComponentNode, ctx: CodegenContext): string {
     (ctx as any).slotContent = savedSlot;
     ctx.inHead = compSavedInHead;
   } else {
-    // v1.0.8 round 4 (BUG 32): an unresolvable component used to render as
+    // an unresolvable component used to render as
     // RAW invalid HTML with no build error and no tw check flag. Fail
     // LOUDLY instead: a comment in the page source + a console warning.
     const known = ["Link", "Suspense"];

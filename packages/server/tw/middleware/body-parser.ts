@@ -3,6 +3,8 @@
  * @module server/middleware
  */
 
+import { ipAddress } from "@tw/shared";
+
 export interface BodyParserOptions {
   json?: { limit?: number; strict?: boolean; type?: string };
   urlencoded?: { limit?: number; extended?: boolean };
@@ -813,7 +815,7 @@ export function ipFilter(allowlist: string[] = [], denylist: string[] = []): (re
   const allowSet = new Set(allowlist);
   const denySet = new Set(denylist);
   return (req: Request, res: Response, next: () => void) => {
-    const ip = req.headers.get("x-forwarded-for")?.split(",")[0].trim() ?? "unknown";
+    const ip = ipAddress(req) ?? "unknown";
     if (denySet.has(ip)) {
       (res as any).status = 403;
       res.headers.set("content-type", "application/json");

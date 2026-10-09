@@ -8,6 +8,7 @@ import { testCommand } from "./test";
 import { checkCommand } from "./check";
 import { pluginCommand } from "./plugin";
 import { lspCommand } from "./lsp";
+import { doctorCommand } from "./doctor";
 import { helpText } from "../help";
 import { parseArgs, colors } from "../args";
 import { readFileSync } from "node:fs";
@@ -36,6 +37,7 @@ const commands: Record<string, () => Promise<void>> = {
   test: testCommand,
   plugin: pluginCommand,
   lsp: lspCommand,
+  doctor: doctorCommand,
 };
 
 export async function run(): Promise<void> {

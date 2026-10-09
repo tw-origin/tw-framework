@@ -61,6 +61,19 @@ export const ADAPTERS: Record<string, AdapterInfo> = {
       "node server.mjs          # PORT=8000 HOST=0.0.0.0 by default",
     ],
   },
+  deno: {
+    name: "deno",
+    description: "Deno Deploy entry (Deno.serve) for the .tw/ build output",
+    files: [
+      { from: "deno/server.ts", to: "server.ts" },
+      { from: "deno/deno.json", to: "deno.json" },
+    ],
+    nextSteps: [
+      "tw build",
+      "deno run -A server.ts            # local",
+      "deployctl deploy --prod server.ts   # Deno Deploy",
+    ],
+  },
   bun: {
     name: "bun",
     description: "Full production TWServer (pages, .twm APIs, middleware) on Bun",

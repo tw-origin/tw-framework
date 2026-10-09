@@ -1,7 +1,7 @@
 ---
 name: write-docs
 description: Write a canonical TW Framework documentation page -- one thing, completely
-version: 1.0.6
+version: 2.0.0
 ---
 
 # Skill: write-docs

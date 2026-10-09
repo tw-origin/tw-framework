@@ -1,0 +1,13 @@
+{
+  "name": "@tw/og",
+  "version": "2.0.0",
+  "description": "TW Framework social card images",
+  "exports": {
+    ".": "./tw/index.ts"
+  },
+  "main": "./tw/index.ts",
+  "types": "./tw/index.ts",
+  "files": [
+    "tw"
+  ]
+}

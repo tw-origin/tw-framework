@@ -42,6 +42,39 @@ export const DEFAULT_I18N_CONFIG: I18nConfig = {
   loading: "lazy",
 };
 
+/**
+ * The active config. tw.config.ts `i18n` (resolved by resolveI18nOptions)
+ * feeds this once per process, so `strategy`, `fallback`, `loading`,
+ * `locales` and `defaultLocale` all mean what they say instead of living as
+ * unread fields on the config object.
+ */
+let activeConfig: I18nConfig = { ...DEFAULT_I18N_CONFIG };
+
+/** The i18n group uses "prefix"; the runtime calls that strategy "subpath". */
+export function normalizeI18nStrategy(s: string | undefined): I18nConfig["strategy"] {
+  if (s === "prefix") return "subpath";
+  if (s === "subpath" || s === "domain" || s === "cookie" || s === "header") return s;
+  return DEFAULT_I18N_CONFIG.strategy;
+}
+
+/** Configure i18n from tw.config.ts. Unset fields keep their defaults. */
+export function configureI18n(cfg: Partial<Omit<I18nConfig, "strategy">> & { strategy?: string }): I18nConfig {
+  activeConfig = {
+    ...DEFAULT_I18N_CONFIG,
+    ...cfg,
+    strategy: normalizeI18nStrategy(cfg.strategy as any),
+    interpolation: { ...DEFAULT_I18N_CONFIG.interpolation, ...((cfg as any).interpolation ?? {}) },
+  };
+  if (activeConfig.locales.length > 0 && !activeConfig.locales.includes(currentLocale)) {
+    currentLocale = activeConfig.defaultLocale ?? activeConfig.locales[0];
+  }
+  return activeConfig;
+}
+
+export function getI18nConfig(): I18nConfig {
+  return activeConfig;
+}
+
 // --- Translation Store -----------------------------------------------
 
 const translationCache = new Map<string, Record<string, string>>();

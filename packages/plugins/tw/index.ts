@@ -3,6 +3,7 @@
 import { existsSync, readdirSync } from "node:fs";
 import { join, extname } from "node:path";
 import { pathToFileURL } from "node:url";
+import { resolvePlugin, PLUGIN_KEYWORD } from "./resolve";
 
 // --- Hook Types --------------------------------------------------------------
 
@@ -228,6 +229,32 @@ export class PluginManager {
     return results[results.length - 1];
   }
 
+  // Value-chaining hook: each plugin receives the previous plugin's return
+  // value and may return a new one. The transform:* and optimize:asset hooks
+  // use this to rewrite content (docs/plugins.md). A hook that returns
+  // undefined leaves the value unchanged, so a plugin can inspect without
+  // modifying. Same failure isolation as runHooks.
+  async runHookChain<T>(name: HookName, value: T, ...args: any[]): Promise<T> {
+    const entries = this.hooks.get(name);
+    if (!entries || entries.length === 0) return value;
+
+    const sorted = [...entries].sort((a, b) => a.priority - b.priority);
+    let current = value;
+
+    for (const entry of sorted) {
+      if (this.failedPlugins.has(entry.pluginName)) continue;
+      try {
+        const result = await entry.handler(current, ...args);
+        if (result !== undefined) current = result as T;
+      } catch (err: any) {
+        this.failedPlugins.add(entry.pluginName);
+        this.logger.error?.(`  Plugin disabled after error [${entry.pluginName}.${name}]: ${err?.message ?? err}`);
+      }
+    }
+
+    return current;
+  }
+
   // Load plugins from a directory
   async loadFromDir(pluginsDir: string): Promise<void> {
     if (!existsSync(pluginsDir)) return;
@@ -399,15 +426,22 @@ export async function loadPlugins(rootDir: string, config?: any, logger?: any): 
   }
 
   for (const spec of specs) {
-    const file = spec.startsWith(".") || spec.startsWith("/") || spec.includes("/")
-      ? join(rootDir, spec)
-      : join(pluginsDir, spec + ".ts");
-    if (!existsSync(file)) {
+    // A spec is a local file (plugins/<spec>.ts), an explicit path, or an npm
+    // package (tw-plugin-*, @scope/tw-plugin-*, @tw/plugin-*). The resolver
+    // tries them in that order so every existing project keeps working.
+    const resolved = resolvePlugin(spec, rootDir);
+    if (resolved.error || !resolved.file) {
       (logger ?? console).warn?.(`  Plugin not found, skipped: ${spec}`);
       continue;
     }
+    if (resolved.kind === "package" && resolved.missingKeyword) {
+      (logger ?? console).warn?.(
+        `  Plugin package "${spec}" has no "${PLUGIN_KEYWORD}" keyword in package.json — ` +
+        `it loads, but it will not appear in plugin search. Add the keyword to publish it.`,
+      );
+    }
     try {
-      const mod: any = await import(pathToFileURL(file).href);
+      const mod: any = await import(pathToFileURL(resolved.file).href);
       const plugin: TWPlugin | undefined = mod.default ?? mod.plugin;
       if (!plugin || typeof plugin.name !== "string") {
         (logger ?? console).warn?.(`  Plugin skipped (no name export): ${spec}`);
@@ -423,3 +457,38 @@ export async function loadPlugins(rootDir: string, config?: any, logger?: any): 
 
   return manager;
 }
+
+// --- Distribution ------------------------------------------------------------
+// Resolve a plugin specifier (local file, path, or npm package) and the
+// conventions that make a plugin discoverable on npm.
+export {
+  resolvePlugin,
+  classifySpec,
+  resolvePackageFile,
+  readPackageManifest,
+  hasPluginKeyword,
+  isExplicitPath,
+  PLUGIN_KEYWORD,
+  COMMUNITY_PREFIX,
+  OFFICIAL_SCOPE,
+} from "./resolve";
+export type { ResolvedPlugin, PluginSpecKind } from "./resolve";
+
+// --- Upgrade -----------------------------------------------------------------
+// Keep the plugins a project depends on current. Official plugins track the
+// framework, so they are the default target.
+export {
+  planUpgrade,
+  outdated,
+  readPluginSpecs,
+  extractPluginsArray,
+  pluginsArrayRange,
+  splitTopLevel,
+  entryName,
+  installedVersion,
+  fetchLatest,
+  fetchLatestVersion,
+  compareVersions,
+  looksLikeSpec,
+} from "./upgrade";
+export type { UpgradePlan, PlanOptions, PluginTier, LatestResult } from "./upgrade";

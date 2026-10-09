@@ -609,7 +609,7 @@ function consumeSignalDeclaration(
 function consumeStateValue(cursor: TokenCursor): string {
   const t = cursor.peek();
   if (!t) return "";
-  // v1.0.8 round 4 (BUG 30): a unary minus is its own token -- `neg = -42`
+  // a unary minus is its own token -- `neg = -42`
   // used to return only "-" (the 42 was dropped) and the page rendered a
   // bare dash. Consume sign + number together.
   if ((t.value === "-" || t.value === "+")) {

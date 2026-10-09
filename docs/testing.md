@@ -16,7 +16,7 @@ The rest of `tests/*.test.ts` are feature suites (lexer, parser, cache, security
 ## Running
 
 ```sh
-bun test                       # everything (2692 tests, ~11s)
+bun test                       # everything (3250 tests, ~11s)
 bun test tests/unit-css-matrix.test.ts   # one file
 bun test -t "cache"            # by name pattern
 bun run lint                   # per-package tsc typecheck

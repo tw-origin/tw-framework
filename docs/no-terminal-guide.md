@@ -2,6 +2,13 @@
 
 Not everyone has terminal access. Maybe you are on a shared hosting plan, a cPanel environment, or you simply prefer working with files directly. This guide explains how to use TW Framework without running a single terminal command.
 
+**Everything added in TW 2.1 works this way too.** The new components
+(`Head`, `Script`, `Form`) need no install at all — the compiler replaces the
+tag, so you import the specifier and it just works. The new server APIs
+(`clientIp`, `geolocation`, `cache`, `redirect`, …) come from the `"tw"`
+specifier, which the framework resolves for you. There is nothing extra to
+download and no command to run.
+
 ---
 
 ## Who Is This For?
@@ -61,7 +68,7 @@ my-app/
     "ship": "tw ship"
   },
   "dependencies": {
-    "tw-framework": "^1.0.0"
+    "tw-framework": "^2.0.0"
   },
   "devDependencies": {
     "typescript": "^5.4.0",
@@ -72,7 +79,7 @@ my-app/
 
 **`tw.config.ts`:**
 ```typescript
-import type { TwConfig } from "tw-framework";
+import type { TwConfigInput } from "tw-framework";
 
 export default {
   name: "my-app",
@@ -81,14 +88,8 @@ export default {
   build: { target: "browser", minify: true, sourcemap: true, splitting: true },
   server: { port: 8000, host: "0.0.0.0", compression: "brotli" },
   css: { engine: "tss", autoprefixer: true },
-  router: {
-    mode: "filesystem",
-    baseDir: "home",
-    pageExtensions: [".tw", ".twm"],
-    renderModes: ["static", "ssr", "island", "edge"]
-  },
   redirects: [], rewrites: [], headers: [], middleware: [], plugins: []
-} satisfies TwConfig;
+} satisfies TwConfigInput;
 ```
 
 **`.gitignore`:**
@@ -368,6 +369,34 @@ div.not-found {
 }
 ```
 
+### Add social meta tags
+Create `home/pricing/page.tw` and add a `Head` block (Step 5b):
+```tw
+import Head from "@tw/Head"
+
+page { title "Pricing" render static }
+
+Head { title "Pricing" description "Simple plans" ogImage "/pricing-og.png" }
+```
+
+### Add a form
+Add a `Form` block (Step 5b). It submits correctly without JavaScript, and the
+runtime upgrades it when JavaScript is available:
+```tw
+import Form from "@tw/Form"
+
+Form { action "/subscribe" method "post" }
+  div { input { name "email" type "email" required "true" } }
+  div { button "Subscribe" }
+```
+
+### Add a third-party script
+```tw
+import Script from "@tw/Script"
+
+Script { src "/chat-widget.js" strategy "lazyOnload" }
+```
+
 ### Add an error page
 Create `home/error.tw`:
 ```tw
@@ -375,6 +404,156 @@ div.error {
   h1 "Oops!"
   p "Something went wrong."
   a "Try again" { href "/" }
+}
+```
+
+---
+
+## Step 5b: The TW 2.1 APIs, Without a Terminal
+
+Everything below is created the same way as any other file: add it in the
+GitHub editor (or upload it over FTP) and push. No install, no command.
+
+### The three components need zero setup
+
+Create a page and import the specifier. The compiler turns the tag into plain
+HTML at build time — there is no package to add to `package.json` and nothing
+lands in `node_modules`.
+
+**`home/contact/page.tw`:**
+```tw
+import Head from "@tw/Head"
+import Script from "@tw/Script"
+import Form from "@tw/Form"
+
+page { title "Contact" render static }
+
+Head {
+  title "Contact us"
+  description "Get in touch"
+  ogImage "/og.png"
+  twitterCard "summary_large_image"
+  canonical "https://example.com/contact"
+}
+
+Script { src "/analytics.js" strategy "lazyOnload" }
+
+Form { action "/subscribe" method "post" }
+  div { p "Your email" }
+  div { input { name "email" type "email" required "true" } }
+  div { button "Send" }
+```
+
+That is the whole file. It builds to a page with the meta tags, the script and
+a real `<form>` that works even with JavaScript turned off.
+
+**Script strategies you can write:** `beforeInteractive`, `afterInteractive`,
+`lazyOnload`, `worker`, `idle`. Add `sri "sha384-..."` for subresource
+integrity, or `nonce "..."` for a Content-Security-Policy.
+
+### Server APIs come from `"tw"`
+
+In an API route (`route.twm`), import what you need from `"tw"`. The framework
+resolves it — there is no path to get wrong.
+
+**`home/api/whoami/route.twm`:**
+```tw
+import { clientIp, geolocation, userAgent, cache } from "tw"
+
+fn get(request) {
+  const ip = clientIp(request)
+  const geo = geolocation(request)
+  const ua = userAgent(request)
+
+  return {
+    status: 200,
+    json: {
+      ip: ip.ip,
+      source: ip.source,
+      city: geo.city,
+      country: geo.country,
+      flag: geo.flag,
+      mobile: ua.isMobile,
+    },
+  }
+}
+```
+
+What you can pull from `"tw"`:
+
+| Import | What it gives you |
+|---|---|
+| `clientIp(request)` | the visitor's address **with provenance** — `ip`, `version`, `trusted`, `source`, `isPrivate` |
+| `geolocation(request)` | `city`, `country`, `flag`, `timezone`, `isEU`, `distanceTo()` |
+| `userAgent(request)` | parsed — `browser`, `os`, `device`, `isMobile`, `isBot` |
+| `env` | typed environment access — `env.require()`, `env.int()`, `env.bool()`, `env.schema({...})` |
+| `deadline()` | the request time budget, with an `abortSignal` |
+| `cache(name)` | a scoped cache with tags — `get`/`set`/`invalidateTag` |
+| `cached(fn)` | memoize a function, with stale-while-revalidate |
+| `draftMode(request)` | preview mode |
+| `redirect(to, opts)` | a 307/308 redirect, `preserveQuery` included |
+| `forbidden()`, `unauthorized()` | a 403 / a 401 with the right challenge header |
+| `TWRequest`, `TWResponse` | wrappers — `req.ip()`, `TWResponse.json()` |
+
+> `clientIp` understands **seven** proxy header families — `cf-connecting-ip`,
+> `true-client-ip`, `fly-client-ip`, `x-vercel-forwarded-for`, `x-real-ip`,
+> `x-forwarded-for` and RFC 7239 `Forwarded`. On shared hosting behind
+> Cloudflare or cPanel, the address is read correctly without configuration.
+
+### Reading and changing the URL
+
+In a page, the navigation hooks come from `"@tw/runtime"`:
+
+```tw
+import { usePathname, useSearchParams, useParams } from "@tw/runtime"
+
+page { title "Blog" render ssr }
+
+div {
+  p "You are on: " + usePathname()
+  p "Post: " + useParams().slug
+}
+```
+
+`useSearchParams()` can **change** the URL, not only read it:
+
+```ts
+const params = useSearchParams()
+params.update({ page: 2, sort: "latest" })
+await params.commit()      // one navigation, not two
+```
+
+### Caching an expensive page
+
+`cache(name)` is scoped, so one page's entries never collide with another's:
+
+```ts
+import { cache } from "tw"
+
+const posts = cache("posts")
+let list = await posts.get("all")
+if (!list) {
+  list = await loadPosts()
+  await posts.set("all", list, { tags: ["posts"], revalidate: "5m" })
+}
+```
+
+To drop it later from anywhere: `await posts.invalidateTag("posts")`.
+
+### A social card image, with no image library
+
+`@tw/og` renders an SVG — nothing to install, works on any host:
+
+**`home/api/og/route.twm`:**
+```tw
+import { imageResponse } from "@tw/og"
+
+fn get(request) {
+  return imageResponse({
+    title: "TW Framework",
+    eyebrow: "tw framework",
+    badge: "v2.1",
+  })
 }
 ```
 
@@ -403,6 +582,8 @@ This works for ALL file types — `.tw`, `.tss`, `.twm`, `.ts`.
 | Run dev server | Requires `tw dev` | Use Replit / Codespaces for browser-based dev |
 | Type check | Requires `tw check` | Hosting platform runs check during build |
 | Local testing | Requires running server | Use preview deployments on Vercel/Netlify |
+| Using the 2.1 components | **Nothing** — they need no install | Import the specifier and push |
+| Using the 2.1 server APIs | **Nothing** — they resolve from `"tw"` | Import from `"tw"` in a `route.twm` |
 
 ---
 
@@ -436,3 +617,9 @@ Because the generated adapter files are committed to the repo, one developer (or
 - [Setup Guide](./setup-guide.md) — the same app, with the CLI
 - [Deployment Adapters](./deployment-adapters.md) — what the generated files do
 - [Project Structure](./project-tree.md)
+- [Builtin Components](./builtin-components.md) — Head, Script, Form in full
+- [Request Context](./request-context.md) — clientIp, geolocation, userAgent
+- [Response Helpers](./response-helpers.md) — redirect, forbidden, unauthorized
+- [Cache](./cache.md) — cache(), cached(), draftMode
+- [Navigation Hooks](./navigation-hooks.md) — usePathname, useSearchParams
+- [Client Bundles](./client-bundles.md) — what actually reaches the browser

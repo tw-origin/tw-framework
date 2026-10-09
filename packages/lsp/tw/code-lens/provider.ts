@@ -5,7 +5,7 @@
 import type { CodeLens, LSPDocument, Range, Command } from "../types";
 import { DocumentSyncManager } from "../document-sync/manager";
 
-// Round 4: strip comments before counting references -- mentions inside
+// strip comments before counting references -- mentions inside
 // comments used to inflate the code-lens counts.
 function stripLineComments(src: string): string {
   return src.split("\n").map(function (l) { return l.replace(/(^|\s)\/\/.*$/, ""); }).join("\n");

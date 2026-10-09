@@ -16,7 +16,7 @@ import type { CodegenMetadata } from "./types";
  * page's body children (rendered with the page's own state), and the page's
  * <title> wins over the layout's.
  */
-// v1.0.8 round 4 (BUG 31): stateVars held the RAW declaration text, so
+// stateVars held the RAW declaration text, so
 // JS-only literal forms (1_000_000, 1e3) rendered their source while the
 // hydration seed held the real number. Evaluate for RENDER purposes.
 function stateLiteralForRender(raw: string): string {
@@ -333,7 +333,7 @@ function escapeHTML(str: string): string {
     .replace(/'/g, "&#x27;");
 }
 
-// URL-attribute sanitizer (v1.0.7 round 4): `javascript:`/`data:text/html`
+// URL-attribute sanitizer (): `javascript:`/`data:text/html`
 // hrefs must be neutralized on EVERY render path, not just the html.ts
 // emitter -- this file previously emitted them unsanitized.
 function sanitizeUrlAttr(name: string, value: string): string {
@@ -354,10 +354,16 @@ function escapeAttr(str: string): string {
 }
 
 
-export function generate(program: Program, stateVars?: Record<string, string>): CodegenResult {
+export function generate(program: Program, stateVars?: Record<string, string>, genOpts?: { scopedStyles?: boolean; scopeId?: string; cssPrefix?: string; cssImportPaths?: string[] }): CodegenResult {
   const startTime = performance.now();
   const ctx = createContext("ssr");
   if (stateVars) ctx.stateVars = stateVars;
+  // compiler.scopedStyles: false keeps `.module.tss` classes global.
+  if (genOpts && genOpts.scopedStyles === false) ctx.scopedStyles = false;
+  if (genOpts?.scopeId) ctx.scopeId = genOpts.scopeId;
+  // css.prefix / css.importPaths
+  if (genOpts?.cssPrefix) ctx.cssPrefix = genOpts.cssPrefix;
+  if (genOpts?.cssImportPaths?.length) ctx.cssImportPaths = genOpts.cssImportPaths;
 
   // Process directives
   processDirectives(program, ctx);
@@ -390,7 +396,7 @@ export function generate(program: Program, stateVars?: Record<string, string>): 
         // over state-block defaults: only seed vars not already provided
         // by the caller. The old unconditional write clobbered a
         // setSignal() update before interpolation, so a fresh visitor's
-        // SSR render showed the stale default (BUG 5, v1.0.8).
+        // SSR render showed the stale default.
         if (!(decl.name in ctx.stateVars)) {
           ctx.stateVars[decl.name] = stateLiteralForRender(decl.value);
         }

@@ -1,7 +1,7 @@
 ---
 name: add-example
 description: Create a new runnable example app in examples/ that builds clean and teaches one thing
-version: 1.0.6
+version: 2.0.0
 ---
 
 # Skill: add-example

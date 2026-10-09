@@ -27,6 +27,8 @@ export interface ParseOptions {
   tokenizer?: TokenizerOptions;
   recoverFromErrors?: boolean;
   maxErrors?: number;
+  /** compiler.incremental -- false bypasses the parse cache. Default: on. */
+  cache?: boolean;
 }
 
 export interface ParseResult {
@@ -49,7 +51,29 @@ interface CacheEntry {
 }
 
 const parseCache = new Map<string, CacheEntry>();
-const MAX_CACHE = 128;
+let maxCache = 128;
+
+/**
+ * compiler.cacheSize -- resize the parse cache. 0 disables it (and clears).
+ * Evicts oldest-first when shrinking.
+ */
+export function setParseCacheSize(n: number): void {
+  maxCache = Math.max(0, Math.trunc(Number.isFinite(n) ? n : 128));
+  if (maxCache === 0) { parseCache.clear(); return; }
+  while (parseCache.size > maxCache) {
+    let oldestKey: string | null = null;
+    let oldestTime = Infinity;
+    for (const [key, entry] of parseCache) {
+      if (entry.timestamp < oldestTime) { oldestTime = entry.timestamp; oldestKey = key; }
+    }
+    if (oldestKey) parseCache.delete(oldestKey); else break;
+  }
+}
+
+/** The current parse-cache capacity (compiler.cacheSize). */
+export function getParseCacheSize(): number {
+  return maxCache;
+}
 
 // --- Main Parse Function -----------------------------------------------------
 
@@ -62,9 +86,9 @@ export function parseWithDetails(source: string, opts?: ParseOptions): ParseResu
   const filePath = opts?.filePath ?? "<anonymous>";
   const startTime = performance.now();
 
-  // Check cache
+  // Check cache (compiler.incremental: opts.cache === false bypasses it)
   const hash = sha256(source);
-  const cached = parseCache.get(filePath);
+  const cached = opts?.cache === false ? undefined : parseCache.get(filePath);
   if (cached && cached.hash === hash) {
     return {
       program: cached.program,
@@ -191,26 +215,28 @@ export function parseWithDetails(source: string, opts?: ParseOptions): ParseResu
   const parseTime = performance.now() - startTime;
 
   // Cache result
-  if (parseCache.size >= MAX_CACHE) {
-    // Evict oldest entry
-    let oldestKey: string | null = null;
-    let oldestTime = Infinity;
-    for (const [key, entry] of parseCache) {
-      if (entry.timestamp < oldestTime) {
-        oldestTime = entry.timestamp;
-        oldestKey = key;
+  if (opts?.cache !== false) {
+    if (parseCache.size >= maxCache) {
+      // Evict oldest entry
+      let oldestKey: string | null = null;
+      let oldestTime = Infinity;
+      for (const [key, entry] of parseCache) {
+        if (entry.timestamp < oldestTime) {
+          oldestTime = entry.timestamp;
+          oldestKey = key;
+        }
       }
+      if (oldestKey) parseCache.delete(oldestKey);
     }
-    if (oldestKey) parseCache.delete(oldestKey);
-  }
 
-  parseCache.set(filePath, {
-    hash,
-    program: deepClone(program),
-    errors: errors.getErrors(),
-    warnings: errors.getWarnings(),
-    timestamp: Date.now(),
-  });
+    parseCache.set(filePath, {
+      hash,
+      program: deepClone(program),
+      errors: errors.getErrors(),
+      warnings: errors.getWarnings(),
+      timestamp: Date.now(),
+    });
+  }
 
   return {
     program,

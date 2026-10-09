@@ -679,6 +679,53 @@ per-request freshness.
 
 ---
 
+## State & Loop Errors (TW094–TW097)
+
+### TW094 — Invalid State Literal
+
+```
+Error TW094: Invalid state literal -- array/object elements must be comma-separated (and objects need colons)
+```
+
+A `state` declaration holds a malformed literal — array elements without
+commas, or object entries without `:`. **Fix:** separate array elements with
+commas and give every object key a colon: `items = ["a", "b"]`,
+`user = { name: "Ada", age: 36 }`.
+
+### TW095 — Invalid For-Loop Iterable
+
+```
+Error TW095: Invalid for-loop iterable -- use {varName} or a valid comma-separated literal
+```
+
+`for x in <expr>` got something that is neither a state variable
+(`{items}`) nor a comma-separated literal. **Fix:** iterate a state variable
+— `for item in {items}` — or a literal list — `for n in 1, 2, 3`.
+
+### TW096 — Unknown State Variable in Interpolation (warning)
+
+```
+Warning TW096: Unknown state variable in interpolation (renders empty)
+```
+
+`{name}` refers to a state variable that was never declared. The build
+succeeds and the slot renders empty, so this is a warning rather than an
+error. **Fix:** declare it in the page's `state { }` block, or correct the
+spelling.
+
+### TW097 — `while` With a Comparison Renders Once (warning)
+
+```
+Warning TW097: while with a comparison renders its body ONCE at build time (state cannot mutate during SSR) -- use for loops for repetition
+```
+
+Server-side rendering evaluates state once; a `while` condition that reads
+state can never change during that pass, so the body is emitted a single
+time. **Fix:** use a `for` loop for repetition, or move the logic into a
+client-side handler where state can actually mutate.
+
+---
+
 ## Error Recovery
 
 The TW compiler has built-in error recovery:

@@ -419,27 +419,32 @@ export async function devCommand(): Promise<void> {
   const args = process.argv.slice(3);
   let port: number | null = null;
   let host = "localhost";
+  let hostSet = false;
 
   for (let i = 0; i < args.length; i++) {
     if (args[i] === "--port" && args[i + 1]) port = parseInt(args[i + 1], 10);
-    else if (args[i] === "--host" && args[i + 1]) host = args[i + 1];
+    else if (args[i] === "--host" && args[i + 1]) { host = args[i + 1]; hostSet = true; }
   }
 
   const rootDir = process.cwd();
 
-  // Config port (tw.config.ts) -- CLI --port flag overrides
-  if (port === null) {
-    try {
-      const cfgPath = join(rootDir, "tw.config.ts");
-      if (existsSync(cfgPath)) {
-        const { twImportTs: _twImportTs } = await import("@tw/shared/tw/node-import");
-    const cfgMod: any = await _twImportTs(cfgPath);
-        const cfg = cfgMod.default ?? cfgMod;
-        const cfgPort = cfg?.dev?.port ?? cfg?.port;
-        if (typeof cfgPort === "number") port = cfgPort;
-      }
-    } catch { /* ignore */ }
-  }
+  // dev.* -- the fine-grained dev group. resolveDevOptions fills every field
+  // with the framework default, so an unset field keeps today's behaviour.
+  // `--port` / `--host` on the command line still win over the config.
+  let devOpts: any = null;
+  try {
+    const cfgPath = join(rootDir, "tw.config.ts");
+    let rawCfg: any = null;
+    if (existsSync(cfgPath)) {
+      const { twImportTs } = await import("@tw/shared/tw/node-import");
+      const cfgMod: any = await twImportTs(cfgPath);
+      rawCfg = cfgMod.default ?? cfgMod;
+    }
+    const { resolveDevOptions } = await import("@tw/shared");
+    devOpts = resolveDevOptions(rawCfg ?? {});
+  } catch { /* bare defaults */ }
+  if (port === null && devOpts) port = devOpts.port;
+  if (!hostSet && devOpts?.host) host = devOpts.host;
   if (port === null) port = 3000;
 
   // Image optimization: compiler transform config + dev /_tw/img handler
@@ -655,7 +660,7 @@ async function ensureDevClientBundle(rootDir: string, pageSource: string, layout
 
   async function devFetchInner(req: Request): Promise<Response> {
       const url = new URL(req.url);
-      // BUG 13 parity: canonical 308 (same as `tw serve`)
+      // canonical 308 (same as `tw serve`)
       try {
         let rawPath = url.pathname;
         const decoded = decodeURIComponent(rawPath);
@@ -938,6 +943,16 @@ async function ensureDevClientBundle(rootDir: string, pageSource: string, layout
             const _clockSrc = existsSync(resolved.file) ? readFileSync(resolved.file, "utf-8") : "";
             devClientTag = await ensureDevClientBundle(rootDir, _clockSrc, chain);
           } catch { /* ignore */ }
+          // dev.hmr: subscribe to the live-reload channel and refresh on change.
+          // dev.fastRefresh: a soft body swap by default; a full reload when off.
+          if (devOpts?.hmr) {
+            const hHost = devOpts.hmrHost || host;
+            const hPort = devOpts.hmrPort || port;
+            const soft = devOpts.fastRefresh !== false
+              ? `fetch(location.href,{headers:{"x-tw-hmr":"1"}}).then(function(r){return r.text()}).then(function(t){var d=new DOMParser().parseFromString(t,"text/html");document.title=d.title;var b=d.body;Array.prototype.forEach.call(b.querySelectorAll("script"),function(o){var s=document.createElement("script");if(o.src)s.src=o.src;else s.textContent=o.textContent;b.appendChild(s)});document.body.replaceWith(b)}).catch(function(){location.reload()})`
+              : `location.reload()`;
+            devClientTag += `<script>(function(){try{var es=new EventSource("//${hHost}:${hPort}/__tw_hmr");es.onmessage=function(){${soft}};}catch(e){}})();</script>\n`;
+          }
           if (/<\/body>/.test(html)) {
             html = html.replace("</body>", devClientTag + "  <script src=\"/__tw_runtime.js\"></script>\n</body>");
           }
@@ -975,6 +990,11 @@ async function ensureDevClientBundle(rootDir: string, pageSource: string, layout
           });
         } catch (e: any) {
           console.log("    -> 500 Error: " + e.message);
+          // dev.overlay: a full-page HTML overlay by default; plain text when off.
+          if (devOpts?.overlay === false) {
+            return new Response("500 - Compile Error\n\n" + e.message,
+              { status: 500, headers: { "Content-Type": "text/plain; charset=utf-8" } });
+          }
           return new Response("<!DOCTYPE html><html><body><h1>500 - Compile Error</h1><pre>" + e.message + "</pre></body></html>",
             { status: 500, headers: { "Content-Type": "text/html" } });
         }
@@ -1004,12 +1024,44 @@ async function ensureDevClientBundle(rootDir: string, pageSource: string, layout
       });
   }
 
-  // BUG 8 (v1.0.8): `tw dev` was Bun-only -- under Node it died at
+  // `tw dev` was Bun-only -- under Node it died at
   // Bun.serve (or, through global-fetch paths, crashed with an undici
   // WebAssembly.instantiate OOM on the first watched-file edit). The
   // SAME handler now serves through node:http when Bun is unavailable,
   // so the Node dev flow works instead of crashing.
+  // Live reload channel (dev.hmr). File changes are broadcast to every page
+  // that subscribed over SSE; the injected client reloads on receipt.
+  const hmrClients = new Set<any>();
+  function broadcastReload(file: string) {
+    const enc = new TextEncoder();
+    const frame = enc.encode(`data: ${JSON.stringify({ file })}\n\n`);
+    for (const c of [...hmrClients]) {
+      try { c.enqueue(frame); } catch { hmrClients.delete(c); }
+    }
+  }
+
   async function devHandle(req: Request): Promise<Response> {
+    // Live reload endpoint (dev.hmr). SSE so it works over plain HTTP.
+    {
+      const u = new URL(req.url);
+      if (u.pathname === "/__tw_hmr") {
+        if (!devOpts?.hmr) return new Response("HMR disabled", { status: 404 });
+        const stream = new ReadableStream({
+          start(controller) {
+            controller.enqueue(new TextEncoder().encode(": connected\n\n"));
+            hmrClients.add(controller);
+          },
+          cancel() { /* client left -- pruned on next broadcast */ },
+        });
+        return new Response(stream, {
+          headers: {
+            "Content-Type": "text/event-stream",
+            "Cache-Control": "no-cache",
+            "Connection": "keep-alive",
+          },
+        });
+      }
+    }
     // Signal Streaming (v2): `tw dev` had NO /_tw/stream endpoint at all,
     // so `render signalStream` pages were dead in development. Wire the
     // SAME shared handler `tw serve` uses, plus the client-writes POST.
@@ -1066,8 +1118,44 @@ async function ensureDevClientBundle(rootDir: string, pageSource: string, layout
     return response;
   }
 
+  // Plugins (docs/plugins.md): load from plugins/ per tw.config.ts and fire the
+  // dev lifecycle hooks. A broken plugin never breaks the dev server.
+  let devPlugins: any = null;
+  const runDevHook = async (name: string, ctx: any = {}): Promise<void> => {
+    if (!devPlugins) return;
+    try { await devPlugins.runHook?.(name, ctx); } catch { /* isolated */ }
+  };
+  try {
+    const { loadPlugins } = await import("@tw/plugins");
+    const cfgPath = join(rootDir, "tw.config.ts");
+    let cfg: any = undefined;
+    if (existsSync(cfgPath)) {
+      const { twImportTs } = await import("@tw/shared/tw/node-import");
+      const cfgMod: any = await twImportTs(cfgPath);
+      cfg = cfgMod.default ?? cfgMod;
+    }
+    devPlugins = await loadPlugins(rootDir, cfg);
+  } catch { /* plugins are optional */ }
+
   if (typeof Bun !== "undefined" && typeof (Bun as any).serve === "function") {
-    Bun.serve({ port, hostname: host, fetch: devHandle });
+    // dev.https: serve over TLS when enabled and both files resolve.
+    let devTls: any = {};
+    if (devOpts?.https && devOpts.httpsCert && devOpts.httpsKey) {
+      try {
+        devTls = { tls: { cert: readFileSync(devOpts.httpsCert, "utf-8"), key: readFileSync(devOpts.httpsKey, "utf-8") } };
+      } catch (e: any) { console.log("  [tw] dev.https: could not read cert/key -- " + (e?.message ?? e)); }
+    }
+    Bun.serve({ port, hostname: host, fetch: devHandle, ...devTls });
+    // dev.hmrHost / dev.hmrPort: a dedicated live-reload channel on its own
+    // address when configured away from the main dev server.
+    const hHost = devOpts?.hmrHost || host;
+    const hPort = devOpts?.hmrPort || port;
+    if (devOpts?.hmr && (hHost !== host || hPort !== port)) {
+      try {
+        Bun.serve({ port: hPort, hostname: hHost, fetch: (req: Request) => devHandle(req) });
+        console.log(`  HMR channel: http://${hHost}:${hPort}/__tw_hmr`);
+      } catch { /* fall back to the main dev server */ }
+    }
   } else {
     const { createServer } = await import("node:http");
     const srv = createServer(async (nreq: any, nres: any) => {
@@ -1096,23 +1184,54 @@ async function ensureDevClientBundle(rootDir: string, pageSource: string, layout
     console.log("  [tw] runtime: node (Bun not found — using node:http)");
   }
 
-  // Watcher feedback (BUG 8, v1.0.8): `tw dev` recompiles fresh on every
+  // Watcher feedback `tw dev` recompiles fresh on every
   // request, but the developer got NO signal that a change was picked up
   // (and no watcher existed at all). Best-effort log line on file changes.
   try {
     const { watch } = await import("node:fs");
     const seen = new Set<string>();
+    // dev.watchIgnore replaces the built-in ignore list; dev.watchPaths
+    // restricts the watcher to those prefixes when set.
+    const ignoreList: string[] = devOpts?.watchIgnore ?? ["node_modules", ".tw", "dist", ".git"];
+    const watchGlobs: string[] = devOpts?.watchPaths ?? [];
+    const prefixes = watchGlobs
+      .map((g) => g.replace(/\/\*\*.*$/, "").replace(/\/\*$/, "").replace(/\*.*$/, ""))
+      .filter(Boolean);
     watch(rootDir, { recursive: true }, (_t: any, f: any) => {
       const name = String(f);
-      if (name.includes("node_modules") || name.includes(".git") || name.split("/").includes(".tw")) return;
+      const parts = name.split("/");
+      if (ignoreList.some((ig) => parts.includes(ig))) return;
+      if (prefixes.length > 0 && !prefixes.some((p) => name === p || name.startsWith(p + "/"))) return;
       if (seen.has(name)) return;
       seen.add(name);
       const t: any = setTimeout(() => seen.delete(name), 400);
       if (typeof t?.unref === "function") t.unref();
-      console.log(`  [tw] ${name} changed -- reload the browser`);
+      if (devOpts?.hmr) {
+        broadcastReload(name);
+        console.log(`  [tw] ${name} changed -- reloading`);
+      } else {
+        console.log(`  [tw] ${name} changed -- reload the browser`);
+      }
+      void runDevHook("hmr:update", { file: name, rootDir });
     });
   } catch { /* watching is best-effort feedback only */ }
 
+  await runDevHook("server:start", { port, host, rootDir });
+  const stop = () => { void runDevHook("server:stop", { port, host, rootDir }).then(() => process.exit(0)); };
+  process.on("SIGINT", stop);
+  process.on("SIGTERM", stop);
+
   console.log("  Server running! Open http://" + host + ":" + port + " in your browser.");
   console.log("  Press Ctrl+C to stop.\n");
+
+  // dev.openBrowser: open the default browser once the server is up.
+  if (devOpts?.openBrowser) {
+    try {
+      const url = `${devOpts?.https ? "https" : "http"}://${host}:${port}`;
+      const { spawn } = await import("node:child_process");
+      const cmd = process.platform === "darwin" ? "open" : process.platform === "win32" ? "cmd" : "xdg-open";
+      const argv = process.platform === "win32" ? ["/c", "start", "", url] : [url];
+      spawn(cmd, argv, { stdio: "ignore", detached: true }).unref();
+    } catch { /* best effort */ }
+  }
 }

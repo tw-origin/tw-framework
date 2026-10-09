@@ -1,8 +1,8 @@
 /**
  * Signal Streaming (Phase 1, docs/signal-streaming.md):
- *   Batch 1 — compiler: signal declarations, data-tw-s bindings,
+ *   compiler: signal declarations, data-tw-s bindings,
  *             manifest exposure, serverOnly never leaks
- *   Batch 2 — server hub: batching, snapshot, resume, private filtering,
+ *   server hub: batching, snapshot, resume, private filtering,
  *             setSignal injection into .twm route modules
  */
 import { describe, test, expect, afterAll } from "bun:test";
@@ -24,9 +24,9 @@ afterAll(() => {
   rmSync(tmp, { recursive: true, force: true });
 });
 
-// --- Batch 1: compiler ------------------------------------------------------
+// ---: compiler ------------------------------------------------------
 
-describe("batch 1: compiler signal declarations", () => {
+describe("compiler signal declarations", () => {
   test("publicSignal/privateSignal compile to data-tw-s bindings", async () => {
     const compileSync = await compile();
     const out = compileSync(
@@ -91,9 +91,9 @@ describe("batch 1: compiler signal declarations", () => {
   });
 });
 
-// --- Batch 2: server hub -----------------------------------------------------
+// ---: server hub -----------------------------------------------------
 
-describe("batch 2: signal hub", () => {
+describe("signal hub", () => {
   test("updates batch into one frame with a sequence number", async () => {
     const hub = new SignalHub();
     const received: string[] = [];
@@ -177,9 +177,9 @@ describe("batch 2: signal hub", () => {
   });
 });
 
-// --- Phase 2: list/object initial values + session-scoped private signals --
+// --- list/object initial values + session-scoped private signals ---
 
-describe("phase 2: signal declarations", () => {
+describe("signal declarations: list and object initial values", () => {
   test("array and object initial values seed correctly", async () => {
     const compileSync = await compile();
     const out = compileSync(
@@ -201,7 +201,7 @@ describe("phase 2: signal declarations", () => {
   });
 });
 
-describe("phase 2: session-scoped private signals", () => {
+describe("session-scoped private signals", () => {
   test("session-scoped update reaches only that session's client", async () => {
     const hub = new SignalHub();
     const aliceGot: string[] = [];
@@ -254,7 +254,7 @@ describe("phase 2: session-scoped private signals", () => {
   });
 });
 
-describe("phase 2: derivedSignal", () => {
+describe("derivedSignal: build-time evaluation", () => {
   test("derived evaluates at build time and carries its expression", async () => {
     const compileSync = await compile();
     const out = compileSync(

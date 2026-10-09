@@ -107,6 +107,8 @@ export function minifyHTML(html: string, options?: MinifyHTMLOptions): string {
  * Remove HTML comments, keeping conditional comments.
  */
 function removeComments(html: string): string {
+  // Cheap guard: a full-string regex scan is pointless when there is no comment.
+  if (html.indexOf("<!--") === -1) return html;
   // Keep <!--[if ...]> ... <![endif]-->
   return html.replace(/<!--(?!\[if\s)[\s\S]*?-->/g, "");
 }
@@ -114,21 +116,25 @@ function removeComments(html: string): string {
 /**
  * Collapse whitespace between tags.
  * Multiple spaces/newlines -> single space (or empty for block elements).
+ *
+ * The preserved-tag test is *anchored* (sticky `y`) and the closing-tag search
+ * resumes from `lastIndex` -- the previous version ran
+ * `html.substring(pos).match(re)` on every loop iteration, which allocated the
+ * whole remaining string and scanned it, making this O(n^2).
  */
-function collapseWhitespace(html: string): string {
-  // Tags whose content should not be whitespace-collapsed
-  const preserveTags = /<(pre|textarea|code|script|style)\b/gi;
-  const preserveEnd = /<\/(pre|textarea|code|script|style)\s*>/gi;
+const PRESERVE_OPEN_RE = /<(pre|textarea|code|script|style)\b/iy;
+const PRESERVE_CLOSE_RE = /<\/(pre|textarea|code|script|style)\s*>/gi;
 
+function collapseWhitespace(html: string): string {
   const result: string[] = [];
   let pos = 0;
   let inPreserved = false;
 
   while (pos < html.length) {
     if (!inPreserved) {
-      // Check if entering a preserved tag
-      const match = html.substring(pos).match(preserveTags);
-      if (match && match.index !== undefined && match.index === 0) {
+      // Entering a preserved tag? Anchored test at `pos` -- no substring alloc.
+      PRESERVE_OPEN_RE.lastIndex = pos;
+      if (PRESERVE_OPEN_RE.test(html)) {
         inPreserved = true;
         // Find the end of the opening tag
         const gt = html.indexOf(">", pos);
@@ -167,10 +173,13 @@ function collapseWhitespace(html: string): string {
         pos = gt + 1;
       }
     } else {
-      // In preserved tag -- copy as-is until closing tag
-      const endMatch = html.substring(pos).match(preserveEnd);
-      if (endMatch && endMatch.index !== undefined) {
-        const endPos = pos + endMatch.index + endMatch[0].length;
+      // In preserved tag -- copy as-is until closing tag. Global regex `exec`
+      // searches forward from `lastIndex`, matching the old `substring().match()`
+      // without building the substring.
+      PRESERVE_CLOSE_RE.lastIndex = pos;
+      const endMatch = PRESERVE_CLOSE_RE.exec(html);
+      if (endMatch) {
+        const endPos = endMatch.index + endMatch[0].length;
         result.push(html.substring(pos, endPos));
         pos = endPos;
         inPreserved = false;
@@ -204,19 +213,28 @@ function collapseText(text: string): string {
  * - method="get" on <form>
  */
 function removeRedundantAttrs(html: string): string {
-  return html
-    // script type="text/javascript"
-    .replace(/<script([^>]*)\stype=["']text\/javascript["']([^>]*)>/gi, "<script$1$2>")
+  // Each pass is guarded by a cheap substring test -- scanning the whole
+  // document with a regex costs far more than an `indexOf` that usually fails.
+  if (html.indexOf("type=") !== -1) {
+    html = html
+      // script type="text/javascript"
+      .replace(/<script([^>]*)\stype=["']text\/javascript["']([^>]*)>/gi, "<script$1$2>")
+      // style type="text/css"
+      .replace(/<style([^>]*)\stype=["']text\/css["']([^>]*)>/gi, "<style$1$2>")
+      // input type="text"
+      .replace(/<input([^>]*)\stype=["']text["']([^>]*)>/gi, "<input$1$2>")
+      // link rel="stylesheet" type="text/css"
+      .replace(/<link([^>]*)\stype=["']text\/css["']([^>]*)>/gi, "<link$1$2>");
+  }
+  if (html.indexOf("language=") !== -1) {
     // script language="javascript"
-    .replace(/<script([^>]*)\slanguage=["']javascript["']([^>]*)>/gi, "<script$1$2>")
-    // style type="text/css"
-    .replace(/<style([^>]*)\stype=["']text\/css["']([^>]*)>/gi, "<style$1$2>")
-    // input type="text"
-    .replace(/<input([^>]*)\stype=["']text["']([^>]*)>/gi, "<input$1$2>")
+    html = html.replace(/<script([^>]*)\slanguage=["']javascript["']([^>]*)>/gi, "<script$1$2>");
+  }
+  if (html.indexOf("method=") !== -1) {
     // form method="get"
-    .replace(/<form([^>]*)\smethod=["']get["']([^>]*)>/gi, "<form$1$2>")
-    // link rel="stylesheet" type="text/css"
-    .replace(/<link([^>]*)\stype=["']text\/css["']([^>]*)>/gi, "<link$1$2>");
+    html = html.replace(/<form([^>]*)\smethod=["']get["']([^>]*)>/gi, "<form$1$2>");
+  }
+  return html;
 }
 
 /**
@@ -225,22 +243,23 @@ function removeRedundantAttrs(html: string): string {
  * checked="checked" -> checked
  * readonly="readonly" -> readonly
  */
-function collapseBooleanAttrs(html: string): string {
-  const boolAttrs = ["disabled", "checked", "readonly", "selected", "multiple", "async", "defer", "autofocus", "autoplay", "controls", "hidden", "loop", "muted", "open", "required", "reversed", "scoped"];
+const BOOL_ATTRS = ["disabled", "checked", "readonly", "selected", "multiple", "async", "defer", "autofocus", "autoplay", "controls", "hidden", "loop", "muted", "open", "required", "reversed", "scoped"];
+// Precompiled once -- the old version built 34 RegExp objects on every call.
+const BOOL_ATTR_SAME_RE = BOOL_ATTRS.map((a) => new RegExp(`\\s${a}=["']${a}["']`, "gi"));
+const BOOL_ATTR_EMPTY_RE = BOOL_ATTRS.map((a) => new RegExp(`\\s${a}=["']["']`, "gi"));
 
-  for (const attr of boolAttrs) {
-    // Escape attr for regex -- all bool attrs are alphanumeric so this is safe,
-    // but escapeRegex is best practice to prevent regex injection
-    const escaped = attr.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
-    const regex = new RegExp(`\\s${escaped}=["']${escaped}["']`, "gi");
-    html = html.replace(regex, ` ${attr}`);
+function collapseBooleanAttrs(html: string): string {
+  for (let i = 0; i < BOOL_ATTRS.length; i++) {
+    // Cheap guard: skip the regex scan entirely when the attribute is absent
+    // (the common case -- most documents use none of these).
+    if (html.indexOf(BOOL_ATTRS[i]) === -1) continue;
+    html = html.replace(BOOL_ATTR_SAME_RE[i], " " + BOOL_ATTRS[i]);
   }
 
   // Also handle disabled="" -> disabled
-  for (const attr of boolAttrs) {
-    const escaped = attr.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
-    const regex = new RegExp(`\\s${escaped}=["']["']`, "gi");
-    html = html.replace(regex, ` ${attr}`);
+  for (let i = 0; i < BOOL_ATTRS.length; i++) {
+    if (html.indexOf(BOOL_ATTRS[i]) === -1) continue;
+    html = html.replace(BOOL_ATTR_EMPTY_RE[i], " " + BOOL_ATTRS[i]);
   }
 
   return html;

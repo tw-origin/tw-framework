@@ -2,7 +2,7 @@
 
 // Original (simple) implementations -- kept for backward compatibility
 
-// Deep implementations (Batch 5)
+// Deep implementations ()
 
 export { check } from "./checker";
 export type { CheckResult, SemanticError } from "./checker";

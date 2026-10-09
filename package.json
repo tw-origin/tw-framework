@@ -1,6 +1,6 @@
 {
   "name": "tw-framework",
-  "version": "1.0.0",
+  "version": "2.0.0",
   "description": "TW Framework \u2014 full-stack web framework with its own template language, styling language, compiler and VDOM",
   "private": true,
   "type": "module",

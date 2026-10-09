@@ -56,7 +56,7 @@ export function diagnose(program: Program, filePath: string): Diagnostic[] {
   checkDirectives(program, filePath, diagnostics);
   // Rule: check unused imports/state
   checkUnusedDeclarations(program, filePath, diagnostics);
-  // v1.0.8 round 3: silent-garbage guards
+  // silent-garbage guards
   checkStateLiterals(program, filePath, diagnostics);
   checkLoopIterables(program, filePath, diagnostics);
   checkUnknownStateVars(program, filePath, diagnostics);

@@ -360,6 +360,203 @@ export function useRoute(): RouteLocation {
 }
 
 // ---------------------------------------------------------------------------
+// Navigation hooks (docs/navigation-hooks.md)
+//
+// Next.js gives you usePathname / useSearchParams / useParams /
+// useSelectedLayoutSegment as four read-only imports. These do the same job
+// with the parsing built in, and useSearchParams can *write*.
+// ---------------------------------------------------------------------------
+
+export interface PathnameMatch {
+  matches: boolean;
+  /** The [param] values the pattern bound, when it matched. */
+  params: Record<string, string>;
+  /** 0-1: how specific the match was (more literal segments scores higher). */
+  score: number;
+}
+
+/** The current path, or a pattern match against it. */
+export function usePathname(opts?: { pattern: string }): string | PathnameMatch {
+  const path = useRouter().currentRoute.path;
+  if (!opts) return path;
+  return matchPathPattern(path, opts.pattern);
+}
+
+/** Match `/blog/[slug]` (or `/blog/:slug`) against a concrete path. */
+export function matchPathPattern(path: string, pattern: string): PathnameMatch {
+  const pSeg = path.split("/").filter(Boolean);
+  const tSeg = pattern.split("/").filter(Boolean);
+  if (pSeg.length !== tSeg.length) return { matches: false, params: {}, score: 0 };
+
+  const params: Record<string, string> = {};
+  let literal = 0;
+  for (let i = 0; i < tSeg.length; i++) {
+    const t = tSeg[i];
+    const isParam = (t.startsWith("[") && t.endsWith("]")) || t.startsWith(":");
+    if (isParam) {
+      const name = t.startsWith("[") ? t.slice(1, -1).replace(/\.\.\.$/, "") : t.slice(1);
+      params[name] = decodeURIComponent(pSeg[i]);
+    } else if (t !== pSeg[i]) {
+      return { matches: false, params: {}, score: 0 };
+    } else {
+      literal++;
+    }
+  }
+  return { matches: true, params, score: tSeg.length === 0 ? 1 : literal / tSeg.length };
+}
+
+export type ParamParse = "string" | "int" | "float" | "bool" | "json" | "date";
+
+function coerce(value: string | undefined, parse: ParamParse): unknown {
+  if (value === undefined) return undefined;
+  switch (parse) {
+    case "int": { const n = Number.parseInt(value, 10); return Number.isNaN(n) ? undefined : n; }
+    case "float": { const n = Number.parseFloat(value); return Number.isNaN(n) ? undefined : n; }
+    case "bool": return value === "1" || value.toLowerCase() === "true";
+    case "json": { try { return JSON.parse(value); } catch { return undefined; } }
+    case "date": { const d = new Date(value); return Number.isNaN(d.getTime()) ? undefined : d; }
+    default: return value;
+  }
+}
+
+/** Route params. `useParams()` for all, `useParam()` for one, with coercion. */
+export function useParams(): Record<string, string> {
+  return { ...(useRouter().currentRoute.params as Record<string, string>) };
+}
+
+export function useParam<T = string>(key: string, opts?: { parse?: ParamParse }): T | undefined {
+  const raw = (useRouter().currentRoute.params as Record<string, string>)[key];
+  return coerce(raw, opts?.parse ?? "string") as T | undefined;
+}
+
+export function useParamInt(key: string): number | undefined { return useParam<number>(key, { parse: "int" }); }
+export function useParamBool(key: string): boolean | undefined { return useParam<boolean>(key, { parse: "bool" }); }
+export function useParamList(key: string): string[] {
+  const raw = (useRouter().currentRoute.params as Record<string, string>)[key];
+  return raw ? raw.split(",").map((s) => s.trim()).filter(Boolean) : [];
+}
+
+export interface SearchParamsHandle {
+  get(name: string): string | null;
+  getAll(name: string): string[];
+  has(name: string): boolean;
+  keys(): string[];
+  entries(): Array<[string, string]>;
+  toString(): string;
+  /** Replace a value and update the URL. */
+  set(name: string, value: string): void;
+  append(name: string, value: string): void;
+  delete(name: string): void;
+  toggle(name: string, value?: string): void;
+  /** Stage several values at once -- cleaner than a run of set() calls. */
+  update(values: Record<string, string | number | boolean | null | undefined | Array<string | number>>): void;
+  /** Push all pending changes to the router. */
+  commit(): Promise<void>;
+}
+
+/** The query string, readable *and writable*. */
+export function useSearchParams(): SearchParamsHandle {
+  const router = useRouter();
+  const current = () => (router.currentRoute.query ?? {}) as Record<string, string | string[]>;
+  const flat = (): Array<[string, string]> => {
+    const out: Array<[string, string]> = [];
+    for (const [k, v] of Object.entries(current())) {
+      if (Array.isArray(v)) for (const item of v) out.push([k, item]);
+      else if (v !== undefined) out.push([k, String(v)]);
+    }
+    return out;
+  };
+  const pending = new Map<string, string[]>();
+
+  const build = (): string => {
+    const base = new Map<string, string[]>();
+    for (const [k, v] of flat()) {
+      const list = base.get(k) ?? []; list.push(v); base.set(k, list);
+    }
+    for (const [k, v] of pending) base.set(k, v);
+    const qs = new URLSearchParams();
+    for (const [k, list] of base) for (const v of list) qs.append(k, v);
+    return qs.toString();
+  };
+
+  return {
+    get: (n) => (pending.has(n) ? pending.get(n)![0] ?? null : (() => { const v = current()[n]; return v === undefined ? null : Array.isArray(v) ? v[0] ?? null : String(v); })()),
+    getAll: (n) => (pending.has(n) ? [...pending.get(n)!] : (() => { const v = current()[n]; return v === undefined ? [] : Array.isArray(v) ? [...v] : [String(v)]; })()),
+    has: (n) => pending.has(n) ? pending.get(n)!.length > 0 : current()[n] !== undefined,
+    keys: () => [...new Set([...flat().map(([k]) => k), ...pending.keys()])],
+    entries: () => { const qs = new URLSearchParams(build()); return [...qs.entries()]; },
+    toString: () => build(),
+    set: (n, v) => { pending.set(n, [v]); },
+    append: (n, v) => { pending.set(n, [...(pending.get(n) ?? []), v]); },
+    delete: (n) => { pending.set(n, []); },
+    toggle: (n, v = "1") => { const cur = pending.get(n) ?? (current()[n] !== undefined ? [String(current()[n])] : []); pending.set(n, cur.includes(v) ? [] : [v]); },
+    update: (values) => {
+      for (const [k, v] of Object.entries(values)) {
+        if (v === null || v === undefined) { pending.set(k, []); continue; }
+        pending.set(k, Array.isArray(v) ? v.map(String) : [String(v)]);
+      }
+    },
+    commit: async () => {
+      const qs = build();
+      const { path, hash } = router.currentRoute;
+      await router.push(qs ? `${path}?${qs}${hash || ""}` : `${path}${hash || ""}`);
+      pending.clear();
+    },
+  };
+}
+
+export interface RouteSegment {
+  value: string;
+  index: number;
+  isDynamic: boolean;
+  /** The param name this segment binds to, when dynamic. */
+  param?: string;
+  type: "static" | "dynamic" | "group" | "catch-all";
+}
+
+export interface RouteSegmentsInfo {
+  path: string;
+  segments: RouteSegment[];
+  /** Route groups -- `(marketing)` style -- which do not appear in the URL. */
+  groups: string[];
+  /** True when `href` is the current route or an ancestor of it. */
+  isActive(href: string, opts?: { exact?: boolean }): boolean;
+}
+
+/** The segment tree, with types and an `isActive` helper. */
+export function useRouteSegments(): RouteSegmentsInfo {
+  const router = useRouter();
+  const path = router.currentRoute.path;
+  const raw = path.split("/").filter(Boolean);
+
+  const segments: RouteSegment[] = raw.map((value, index) => {
+    if (value.startsWith("(") && value.endsWith(")")) {
+      return { value, index, isDynamic: false, type: "group" as const };
+    }
+    const catchAll = /^\[\.\.\.(.+)\]$/.exec(value) ?? /^\*(.+)$/.exec(value);
+    if (catchAll) return { value, index, isDynamic: true, param: catchAll[1], type: "catch-all" as const };
+    const dyn = /^\[(.+)\]$/.exec(value) ?? /^:(.+)$/.exec(value);
+    if (dyn) return { value, index, isDynamic: true, param: dyn[1], type: "dynamic" as const };
+    return { value, index, isDynamic: false, type: "static" as const };
+  });
+
+  const groups = segments.filter((s) => s.type === "group").map((s) => s.value.slice(1, -1));
+
+  return {
+    path,
+    segments: segments.filter((s) => s.type !== "group"),
+    groups,
+    isActive(href: string, opts?: { exact?: boolean }) {
+      const target = href.split("?")[0].replace(/\/$/, "") || "/";
+      const here = path.replace(/\/$/, "") || "/";
+      if (opts?.exact) return here === target;
+      if (target === "/") return here === "/";
+      return here === target || here.startsWith(target + "/");
+    },
+  };
+}
+
+// ---------------------------------------------------------------------------
 // routerLink -- a function returning a VNode
 // ---------------------------------------------------------------------------
 

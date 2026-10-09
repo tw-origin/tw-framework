@@ -9,5 +9,5 @@ export type { ScannerOptions } from "./scanner";
 export { matchFlatRoute, parseSlots, renderParallel } from "./parallel-slots";
 export type { FlatRouteDefinition, FlatRouteMatch } from "./parallel-slots";
 export { clearTWMCache, executeMiddleware, executeRouteHandler, loadTWMModule, revalidateRoute, shouldMatchMiddleware } from "./twm-loader";
-export { getActivePipeline, revalidatePath, setActivePipeline } from "./revalidate";
+export { getActivePipeline, revalidatePath, revalidateTag, setActivePipeline } from "./revalidate";
 export type { TWMModule } from "./twm-loader";

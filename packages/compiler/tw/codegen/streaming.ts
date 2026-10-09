@@ -560,7 +560,7 @@ function escapeHTML(str: string): string {
     .replace(/'/g, "&#x27;");
 }
 
-// URL-attribute sanitizer (v1.0.7 round 4): `javascript:`/`data:text/html`
+// URL-attribute sanitizer (): `javascript:`/`data:text/html`
 // hrefs must be neutralized on EVERY render path, not just the html.ts
 // emitter -- this file previously emitted them unsanitized.
 function sanitizeUrlAttr(name: string, value: string): string {

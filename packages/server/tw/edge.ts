@@ -136,7 +136,7 @@ async function renderEdge(
   // 1. Load pre-compiled component (compiled at build time)
   // 2. Execute server component
   // 3. Generate HTML string
-  // Return a basic edge handler -- full edge runtime support is Phase 3
+  // Return a basic edge handler -- full edge runtime support is 
   return `<!DOCTYPE html><html><body><h1>Edge: ${route.file}</h1></body></html>`;
 }
 

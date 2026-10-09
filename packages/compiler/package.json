@@ -1,7 +1,7 @@
 {
   "name": "@tw/compiler",
   "private": true,
-  "version": "1.0.0",
+  "version": "2.0.0",
   "description": "TW Framework compiler \u2014 lexer, parser, AST, codegen, optimizer, transforms, eval, diagnostics, semantic, cache, grammar",
   "type": "module",
   "main": "./tw/index.ts",
@@ -24,7 +24,10 @@
   "dependencies": {
     "@tw/shared": "workspace:*",
     "@tw/RouterLink": "workspace:*",
-    "@tw/optImage": "workspace:*"
+    "@tw/optImage": "workspace:*",
+    "@tw/Head": "workspace:*",
+    "@tw/Script": "workspace:*",
+    "@tw/Form": "workspace:*"
   },
   "license": "MIT"
 }

@@ -45,7 +45,7 @@ export async function checkCommand(): Promise<void> {
         const warnings = diagnostics.filter((d: any) => d.severity === "warning");
         const info = diagnostics.filter((d: any) => d.severity === "info");
 
-        // v1.0.8 round 5 (BUG 41): undefined components passed "no issues".
+        // undefined components passed "no issues".
         // A capitalized tag that no import resolves and no components/<X>.tw
         // file backs is almost certainly a typo -- flag it.
         const checkSource = readFileSync(filePath, "utf-8");
@@ -111,7 +111,7 @@ export async function checkCommand(): Promise<void> {
       const relativePath = filePath.replace(rootDir + "/", "");
       const source = readFileSync(filePath, "utf-8");
 
-      // Basic checks: balanced braces, unclosed tags. Round 4: count on
+      // Basic checks: balanced braces, unclosed tags. count on
       // the MASKED source -- braces inside strings/comments used to make
       // valid pages report "unbalanced braces".
       const maskedSource = maskSourceStringsAndComments(source);
@@ -129,7 +129,7 @@ export async function checkCommand(): Promise<void> {
 
   console.log(`\n  Summary: ${totalErrors} errors, ${totalWarnings} warnings, ${totalInfo} info`);
 
-  // v1.0.8 round 5 (BUG 41): warnings never failed `tw check`, so it could
+  // warnings never failed `tw check`, so it could
   // not gate CI. --max-warnings=N (or --strict for 0) exits 1 over the cap.
   const argv = process.argv.slice(2);
   let maxWarnings: number | null = null;
@@ -153,7 +153,7 @@ export async function checkCommand(): Promise<void> {
   }
 }
 
-/** Walk up from dir looking for components/<name>.tw (v1.0.8 round 5). */
+/** Walk up from dir looking for components/<name>.tw (). */
 function findComponentUp(dir: string, name: string): boolean {
   let cur = dir;
   for (let i = 0; i < 12 && cur && cur !== "/"; i++) {

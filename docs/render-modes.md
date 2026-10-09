@@ -221,3 +221,30 @@ Route modules push updates with `import { setSignal } from "tw"`; connected brow
 ## Error boundary on SSR/stream pages
 
 Every `render ssr` / `render stream` response is wrapped in an empty `<div data-error-boundary>` marker. It is a ~25-byte placeholder: on a runtime render failure the server replaces it with your `error.tw` markup. Static pages never ship it. The loading skeleton (`loading.tw`) is only inlined into responses whose body actually carries Suspense/PPR boundaries -- plain pages do not carry it.
+
+---
+
+## Render modes vs the runtime target
+
+There are **seven** render modes:
+
+`static` · `ssr` · `island` · `csr` · `stream` · `ppr` · `signalStream`
+
+**`edge` is not one of them.** How a page renders and where the code runs are
+different questions -- a page can be `ssr` on the edge, or `static` on the edge.
+Where it runs is the **runtime target**, configured at
+`strategies.runtime.server` (`auto | bun | node | deno | edge`).
+
+`render edge` is still accepted and means "`ssr`, edge target", so no existing
+project breaks. It is reported as an alias, not a mode.
+
+### Aliases
+
+| You may write | Canonical mode |
+|---|---|
+| `ssg` | `static` |
+| `server` | `ssr` |
+| `client` | `csr` |
+| `interactive` | `island` |
+| `edge` | `ssr` (edge target) |
+

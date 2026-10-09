@@ -219,7 +219,7 @@ async function renderIslandContent(
 }
 
 function countServerComponents(source: string): number {
-  // Count @render mode: 'server' directives. Comment-aware (round 4):
+ // Count @render mode: 'server'directives. Comment-aware 
   // a commented-out directive used to count as a live one.
   let cleaned = source;
   try {

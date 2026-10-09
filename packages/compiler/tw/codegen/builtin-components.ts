@@ -18,11 +18,16 @@ import {
   type ImageTagOptions,
 } from "@tw/optImage";
 import { linkAttributesFor, type LinkTagOptions } from "@tw/RouterLink";
+import { renderHead, type HeadOptions } from "@tw/Head";
+import { renderScript, type ScriptOptions } from "@tw/Script";
+import { renderForm, type FormOptions } from "@tw/Form";
 import type { Program } from "../ast/nodes";
 import type { ImportDirective } from "../ast/nodes/directives";
 
 /** Specifiers recognized as builtin components (never bundled client-side). */
-export const BUILTIN_COMPONENT_SPECIFIERS: string[] = ["@tw/optImage", "@tw/RouterLink"];
+export const BUILTIN_COMPONENT_SPECIFIERS: string[] = [
+  "@tw/optImage", "@tw/RouterLink", "@tw/Head", "@tw/Script", "@tw/Form",
+];
 
 // --- Image transform config (set from tw.config.ts `images`) ------------------
 
@@ -52,12 +57,15 @@ export function getBuiltinImageConfig(): ImageConfig {
  * Map of localName -> specifier for every builtin imported by a page.
  * `import optImage from "@tw/optImage"` -> { "optImage": "@tw/optImage" }.
  */
-// v1.0.8 round 4 (BUG 32): `import { RouterLink } from "tw"` is a plausible
+// `import { RouterLink } from "tw"` is a plausible
 // spelling users write -- resolve named imports from the "tw" / "@tw/server"
 // specifier to the matching builtin component.
 const TW_NAMED_BUILTINS: Record<string, string> = {
   RouterLink: "@tw/RouterLink",
   optImage: "@tw/optImage",
+  Head: "@tw/Head",
+  Script: "@tw/Script",
+  Form: "@tw/Form",
   Image: "@tw/optImage",
 };
 
@@ -168,6 +176,9 @@ export function resolveBuiltin(tag: string, builtins: Map<string, string>): stri
   if (tag === "RouterLink" && specs.includes("@tw/RouterLink")) {
     return "@tw/RouterLink";
   }
+  if (tag === "Head" && specs.includes("@tw/Head")) return "@tw/Head";
+  if (tag === "Script" && specs.includes("@tw/Script")) return "@tw/Script";
+  if (tag === "Form" && specs.includes("@tw/Form")) return "@tw/Form";
   return null;
 }
 
@@ -190,7 +201,7 @@ function normalizePrefetchProp(props: Record<string, string>): any {
  * links get safe defaults (new tab + noopener) unless overridden.
  */
 export function generateRouterLinkTag(props: Record<string, string>, textContent: string): string {
-  // v1.0.8 round 4: accept Next-style `to` as an href alias
+  // accept Next-style `to` as an href alias
   const href = (props.href ?? props.to ?? "").trim();
   if (!href) return `<!-- @tw/RouterLink: missing href -->`;
 
@@ -224,5 +235,84 @@ export function generateBuiltinTag(
 ): string | null {
   if (specifier === "@tw/optImage") return generateImageTag(props);
   if (specifier === "@tw/RouterLink") return generateRouterLinkTag(props, textContent);
+  if (specifier === "@tw/Head") return generateHeadTag(props);
+  if (specifier === "@tw/Script") return generateScriptTag(props);
+  if (specifier === "@tw/Form") return generateFormTag(props, textContent);
   return null;
+}
+
+
+// --- @tw/Head ------------------------------------------------------------------
+
+/**
+ * `<Head title="..." description="..." ogImage="..." />` compiles to the meta
+ * set a browser wants. Props are strings in a template, so the camelCase names
+ * map straight onto HeadOptions.
+ */
+export function generateHeadTag(props: Record<string, string>): string {
+  const o: HeadOptions = {};
+  const pick = (prop: string, key: keyof HeadOptions) => {
+    const v = props[prop] ?? props[prop.toLowerCase()];
+    if (v !== undefined && v !== "") (o as Record<string, unknown>)[key] = v;
+  };
+  for (const k of [
+    "title", "description", "canonical", "lang", "robots", "viewport", "themeColor", "charset",
+    "ogTitle", "ogDescription", "ogImage", "ogUrl", "ogType", "ogSiteName", "ogLocale",
+    "twitterCard", "twitterSite", "twitterCreator", "twitterTitle", "twitterDescription", "twitterImage",
+    "jsonLd", "extra",
+  ]) pick(k, k as keyof HeadOptions);
+
+  // a bare `title` attribute on <Head> is the common case
+  if (!o.title && props.title) o.title = props.title;
+  return renderHead(o);
+}
+
+// --- @tw/Script ----------------------------------------------------------------
+
+/**
+ * `<Script src="..." strategy="lazyOnload" sri="sha384-..." nonce="..." />`
+ * compiles to a real <script> tag with the right attributes.
+ */
+export function generateScriptTag(props: Record<string, string>): string {
+  const inline = (props.children ?? "").trim() || undefined;
+  const o: ScriptOptions = {
+    src: (props.src ?? props.srcset ?? "").trim() || undefined,
+    inline,
+    strategy: (props.strategy ?? props.strategy) as ScriptOptions["strategy"],
+    sri: props.sri || undefined,
+    nonce: props.nonce || undefined,
+    type: props.type || undefined,
+    id: props.id || undefined,
+    crossOrigin: props.crossorigin || props.crossOrigin || undefined,
+    referrerPolicy: props.referrerpolicy || props.referrerPolicy || undefined,
+    async: props.async === "true" || props.async === "",
+    defer: props.defer === "true" || props.defer === "",
+    once: props.once === "true" || props.once === "",
+  };
+  if (!o.src && !o.inline) return "<!-- @tw/Script: needs src or inline body -->";
+  return renderScript(o);
+}
+
+
+// --- @tw/Form ------------------------------------------------------------------
+
+/**
+ * `<Form action="/subscribe" method="post">` compiles to a real <form> that
+ * submits with JS off; `data-tw-form` lets the runtime upgrade it.
+ */
+export function generateFormTag(props: Record<string, string>, children = ""): string {
+  const o: FormOptions = {
+    action: (props.action ?? "").trim() || undefined,
+    method: (props.method as FormOptions["method"]) || undefined,
+    id: props.id || undefined,
+    class: props.class || undefined,
+    name: props.name || undefined,
+    enctype: props.enctype || undefined,
+    target: props.target || undefined,
+    autoComplete: props.autocomplete || props.autoComplete || undefined,
+    native: props.native === "true" || props.native === "",
+    noValidate: props.novalidate === "true" || props.novalidate === "",
+    submitName: props.submitName || props.submitname || undefined,
+  };
+  return renderForm(o, children);
 }

@@ -246,6 +246,74 @@ export function extractSlotName(name: string): string | null {
 
 // --- Render Modes ---------------------------------------------------
 
-export type RenderMode = "static" | "ssr" | "island" | "edge" | "csr" | "stream" | "ppr" | "signalStream";
+/**
+ * How a page renders.
+ *
+ * `edge` is deliberately **not** here. Where the code runs is a different
+ * question from how the page renders, so it is `RuntimeTarget` -- a page can be
+ * `ssr` on the edge, or `static` on the edge, and neither is a render mode.
+ *
+ * `render edge` is still accepted: it resolves to `ssr` with the `edge` target,
+ * and the configured target lives at `strategies.runtime.server` (the field the
+ * compat checks already read). There is no second "runtime" setting.
+ */
+export type RenderMode = "static" | "ssr" | "island" | "csr" | "stream" | "ppr" | "signalStream";
 
-export const VALID_RENDER_MODES = new Set<RenderMode>(["static", "ssr", "island", "edge", "csr", "stream", "ppr", "signalStream"]);
+export const VALID_RENDER_MODES = new Set<RenderMode>([
+  "static", "ssr", "island", "csr", "stream", "ppr", "signalStream",
+]);
+
+/** Where the code runs. A separate axis from how the page renders. */
+export type RuntimeTarget = "node" | "bun" | "edge" | "worker" | "deno";
+
+export const VALID_RUNTIME_TARGETS = new Set<RuntimeTarget>([
+  "node", "bun", "edge", "worker", "deno",
+]);
+
+/**
+ * Every spelling a page may write, mapped onto a canonical mode.
+ * Single source of truth -- the parser, the validator and the docs all read
+ * this, so a new mode cannot be accepted in one place and rejected in another.
+ */
+export const RENDER_MODE_ALIASES: Record<string, RenderMode> = {
+  static: "static",
+  ssg: "static",
+  ssr: "ssr",
+  server: "ssr",
+  island: "island",
+  interactive: "island",
+  csr: "csr",
+  client: "csr",
+  stream: "stream",
+  ppr: "ppr",
+  signalstream: "signalStream",
+  // Legacy: `render edge` was a render mode. It means "ssr on the edge".
+  edge: "ssr",
+};
+
+/** The canonical mode plus a target, when the spelling implied one. */
+export interface ResolvedRenderMode {
+  mode: RenderMode;
+  /** Set when the spelling was `edge` (or an explicit target was given). */
+  target?: RuntimeTarget;
+  /** The canonical mode differs from what was written. */
+  aliased: boolean;
+}
+
+/** Resolve a written render mode. Returns null when it is not a mode at all. */
+export function resolveRenderMode(raw: string): ResolvedRenderMode | null {
+  const key = String(raw ?? "").trim().replace(/['"]/g, "").toLowerCase();
+  if (!key) return null;
+  const mode = RENDER_MODE_ALIASES[key];
+  if (!mode) return null;
+  return {
+    mode,
+    target: key === "edge" ? "edge" : undefined,
+    aliased: key !== mode.toLowerCase(),
+  };
+}
+
+/** The list a user should see, in the order the docs present it. */
+export const RENDER_MODE_NAMES: RenderMode[] = [
+  "static", "ssr", "island", "csr", "stream", "ppr", "signalStream",
+];

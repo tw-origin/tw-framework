@@ -461,6 +461,10 @@ tw plugin list           # plugins/ files + enabled state
 tw plugin create <name>  # scaffold plugins/<name>.ts + enable it
 tw plugin add <name>     # enable a plugin in tw.config.ts
 tw plugin remove <name>  # disable a plugin in tw.config.ts
+tw plugin init <name>    # scaffold a publishable tw-plugin-<name> package
+tw plugin search [term]  # find plugins on npm by the tw-plugin keyword
+tw plugin install <pkg>  # install a plugin package and enable it
+tw plugin upgrade        # upgrade official plugins (--all, --dry-run)
 ```
 
 ### What it does
@@ -583,3 +587,58 @@ tw lsp
 | hover | symbol information where the cursor rests |
 
 The diagnostics use the same TW error codes as `tw build` — what the editor shows is what the build enforces. See [LSP](./lsp.md) for the full protocol behaviour.
+
+---
+
+## 10. `tw doctor` — Report Strategies and Availability
+
+### Basic usage
+
+```bash
+tw doctor
+```
+
+Read-only: it never writes and never builds.
+
+### What it prints
+
+| Section | What you get |
+|---------|--------------|
+| Active strategies | every subsystem, its current option, and a note — changed-from-default lines are highlighted |
+| Availability | whether the selected option exists here (`tailwindcss` installed? `react`? Bun for WebSocket?) with a `fix:` when it does not |
+| Conflicts | every incompatible combination, its tier, and the fix |
+| Changed from default | the fields you changed, and what each option means |
+
+### Flags
+
+| Flag | What it does |
+|------|--------------|
+| `--json` | print the whole report as one JSON object (strategies, changed, invalid, conflicts, availability) |
+| strategy flags | check a combination without editing the config — `tw doctor --signals=ws --runtime=node` |
+
+### Exit codes
+
+| Code | Meaning |
+|------|---------|
+| 0 | everything fine |
+| 1 | an invalid value (typo / unknown option) |
+| 2 | an unsupported combination |
+| 3 | a selected option is unavailable here |
+
+The codes make it usable as a CI gate:
+
+```bash
+tw doctor --json || exit 1
+```
+
+### Examples
+
+```bash
+tw doctor
+tw doctor --css=tailwind --signals=ws
+tw doctor --signals=ws --runtime=node   # exit 2, with the fix
+tw doctor --json > doctor.json
+```
+
+See [Strategies](./strategies.md) for the full option list and the
+compatibility matrix.

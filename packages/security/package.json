@@ -1,7 +1,7 @@
 {
   "name": "@tw/security",
   "private": true,
-  "version": "1.0.0",
+  "version": "2.0.0",
   "description": "TW Framework security \u2014 CSP builder, HTML sanitizer, CSRF, rate limiter, input validation",
   "type": "module",
   "main": "./tw/index.ts",

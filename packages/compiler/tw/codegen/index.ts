@@ -19,7 +19,7 @@
 export { resetSuspenseCounter } from "./html";
 export { CSSExtractor, extractCSS, mergeCSS, minifyCSS } from "./css-extract";
 export type { CSSExtractionResult, CSSRule } from "./css-extract";
-export { generateHTML, registerComponentTemplate, clearComponentRegistry, beginCssRouteCapture, endCssRouteCapture, isCssCaptureActive, recordCssChunk, getCapturedCssRoutes, getCssChunks, clearCssCapture, hashCss } from "./html";
+export { generateHTML, registerComponentTemplate, clearComponentRegistry, getComponentRegistry, beginCssRouteCapture, endCssRouteCapture, isCssCaptureActive, recordCssChunk, getCapturedCssRoutes, getCssChunks, clearCssCapture, hashCss } from "./html";
 export { JSBundleBuilder, generateBootstrapCode, generateBundle, generateRuntimeCode } from "./js-bundle";
 export type { BundleOptions, JSBundle, JSBundleMetadata } from "./js-bundle";
 export { minifyHTML, minifyHTMLWithStats } from "./minify";
@@ -42,3 +42,7 @@ export { compileTSS, TSS_SHORTHANDS } from "./tss";
 export { computeCssAssets, routeToCssName } from "./css-assets";
 
 export { compileSCSS } from "./scss";
+export { detectTailwind, runTailwind } from "./tailwind";
+export { registerForeignComponent, resolveForeignComponent, hasForeignComponents, clearForeignComponents, foreignComponentNames, islandWrapper } from "./foreign-components";
+export type { ForeignComponent } from "./foreign-components";
+export type { TailwindInfo, RunTailwindOptions } from "./tailwind";

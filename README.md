@@ -14,7 +14,7 @@
 
 <p align="center">
   <a href="https://github.com/tw-origin/tw-framework/actions/workflows/ci.yml"><img src="https://github.com/tw-origin/tw-framework/actions/workflows/ci.yml/badge.svg" alt="CI" /></a>
-  <img src="https://img.shields.io/badge/version-1.0.8-22c55e" alt="version 1.0.8" />
+  <img src="https://img.shields.io/badge/version-2.0.0-22c55e" alt="version 2.0.0" />
   <img src="https://img.shields.io/badge/runtime-Bun%20%7C%20Node-22c55e" alt="Bun and Node runtimes" />
   <img src="https://img.shields.io/badge/language-TypeScript-3178c6" alt="TypeScript" />
   <img src="https://img.shields.io/badge/tests-2790%20passing-22c55e" alt="tests" />
@@ -57,10 +57,11 @@ browser — state, conditionals, lists, two-way inputs and client-side navigatio
 - **File-system routing** — `home/page.tw` becomes `/`, dynamic routes, catch-alls, parallel slots
 - **API routes** — `.twm` handlers with middleware, params, pagination and JSON responses
 - **Render modes** — static, SSR, island, edge, client-side rendering, streaming, partial prerendering and signal streaming per page
-- **Signal streaming** — server-pushed live updates: `render signalStream` + `publicSignal()`/`privateSignal()`, batched delivery, resume after disconnect
+- **Signal streaming** — server-pushed live updates: `render signalStream` + `publicSignal()`/`privateSignal()`, batched delivery, resume after disconnect. Three transports, one frame protocol: SSE (default), WebSocket, and long-poll — picked with `strategies.signals.transport` or `--signals=ws`
 - **Security built in** — CSP, sanitization, auth middleware, rate limiting
 - **Production server** — gzip, ETag/304 caching, redirects, custom headers, structured logging
-- **Full toolchain** — `tw create`, `tw dev`, `tw build`, `tw serve`, `tw test`, `tw check`, `tw adapter`, `tw plugin`, `tw lsp`, `tw ship`
+- **Strategies — every subsystem exposes all of its options** — signals transport, CSS engine (TSS / Tailwind / CSS / SCSS), render engine, server runtime, API runtime, state model, auth model, data layer, cache mode, database adapter (SQL / KV / vector), package manager, hydration mode. Pick per project in `tw.config.ts` or per command with a flag (`tw build --css=tailwind`); omitted fields keep the default, a wrong value is a build-time error with a "did you mean", and cross-field conflicts are caught before the build. [Status per subsystem](./docs/strategies.md)
+- **Full toolchain** — `tw create`, `tw dev`, `tw build`, `tw serve`, `tw test`, `tw check`, `tw doctor`, `tw adapter`, `tw plugin`, `tw lsp`, `tw ship`
 - **TW LSP** — editor support for `.tw` files
 
 ## The Render System
@@ -151,6 +152,7 @@ my-app/
 | `tw serve` | Production server (gzip, caching, rate limiting) |
 | `tw test` | Run the project test suite |
 | `tw check` | Validate project structure and config |
+| `tw doctor` | Report the active strategy in every subsystem, its availability, and any conflicting combination (`--json` for CI) |
 | `tw adapter` | Generate deployment adapter files (node, bun, docker, vercel) |
 | `tw plugin` | Manage project plugins (list, add, remove, create) |
 | `tw lsp` | Language server for editors (completion, hover, diagnostics) |
@@ -193,6 +195,8 @@ Full documentation lives in [`docs/`](./docs):
   [Client runtime](./docs/client-runtime.md)
 - [Security](./docs/security.md) · [Testing](./docs/testing.md) ·
   [Configuration](./docs/configuration.md)
+- [Strategies](./docs/strategies.md) — every option of every subsystem, and the compatibility matrix
+- [Signal streaming](./docs/signal-streaming.md) — the frame protocol and its three transports
 - [Core system](./docs/core-system.md) · [Error reference](./docs/error-reference.md)
 - [Commands reference](./docs/commands-reference.md) ·
   [Deployment adapters](./docs/deployment-adapters.md) ·
@@ -274,8 +278,17 @@ and security APIs — [password hashing](./docs/password-hashing.md),
 [path traversal](./docs/path-traversal-api.md), [SSRF](./docs/ssrf-protector-api.md),
 and [CSRF](./docs/csrf-api.md).
 
-The complete index of all 182 documents lives in the
+The complete index of all 194 documents lives in the
 [framework overview](./docs/framework-overview.md).
+
+Release history is in **[CHANGELOG.md](CHANGELOG.md)**, and the step-by-step
+migration guide is in **[UPGRADING.md](UPGRADING.md)**.
+
+Plugins are npm packages: install one with `tw plugin install <pkg>`, find one with
+`tw plugin search`, and keep the official ones current with `tw plugin upgrade`.
+The first official plugins ship in this repo — **[@tw/plugin-sitemap](packages/plugin-sitemap)**
+(`/sitemap.xml` + `/robots.txt`) and **[@tw/plugin-health](packages/plugin-health)**
+(`/health` + `/readyz`). See [docs/plugin-distribution.md](docs/plugin-distribution.md).
 
 ## The Team
 
@@ -284,7 +297,7 @@ The complete index of all 182 documents lives in the
 Developers: Aslam Alam · Rohit Kumar · Badal Kumar · TW Mlkraj
 
 TW Framework has been in development for 8–12 months, from the first line of the parser to the
-current 1.0.8 release — compiler, VDOM, styling engine, server and toolchain all built in-house.
+current 2.0.0 release — compiler, VDOM, styling engine, server and toolchain all built in-house.
 
 Debugging support during development: Indus (Sarvam AI), Claude Max, ChatGPT Terra 4, DeepSeek v4 Coder.
 

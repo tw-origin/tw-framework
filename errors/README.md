@@ -150,7 +150,7 @@ Extracted live at generation time. Severity `error` fails the build;
   attributes, table membership)
 - **TW050-TW069** -- semantic rules (state, events, interpolation types)
 - **TW070-TW089** -- server/build rules (routing, middleware, handlers)
-- **TW090-TW093** -- the v1.0.6 cache layer gates:
+- **TW090-TW093** -- the cache layer gates:
   - **TW090** `cache { }` requires a revalidate window or a life profile
     (also fires for `revalidate -5` -- no valid window)
   - **TW091** `fn cached` handler is impure (cookies/headers/body/setSignal)

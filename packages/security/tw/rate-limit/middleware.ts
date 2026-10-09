@@ -161,18 +161,12 @@ export class RateLimitMiddleware {
  * Default key extractor -- uses client IP address.
  * Falls back to a hash of the User-Agent if IP is not available.
  */
+import { ipAddress } from "@tw/shared";
+
 export const defaultKeyExtractor: KeyExtractor = (req: Request): string => {
-  // Try to get the real IP from headers (when behind a proxy)
-  const forwarded = req.headers.get("x-forwarded-for");
-  if (forwarded) {
-    return forwarded.split(",")[0].trim();
-  }
-
-  const realIp = req.headers.get("x-real-ip");
-  if (realIp) return realIp;
-
-  const cfConnectingIp = req.headers.get("cf-connecting-ip");
-  if (cfConnectingIp) return cfConnectingIp;
+  // One helper knows every proxy header family (docs/request-context.md).
+  const ip = ipAddress(req);
+  if (ip) return ip;
 
   // Fallback to User-Agent hash
   const ua = req.headers.get("user-agent") ?? "unknown";

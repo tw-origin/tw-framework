@@ -300,8 +300,19 @@ tw dev
 | tips-syntax.md | Syntax tips |
 | tips-styling.md | Styling tips |
 | tips-deployment.md | Deployment tips |
+| client-bundles.md | What reaches the browser — minified vs plain |
+| cache.md | Cache — scoped cache(), cached(), draftMode |
+| wrappers.md | Request/response wrappers — TWRequest, TWResponse |
+| response-helpers.md | Response helpers — redirect, forbidden, unauthorized |
+| builtin-components.md | Builtin components — @tw/Head, @tw/Script |
+| navigation-hooks.md | Navigation hooks — usePathname, useSearchParams, useParams, useRouteSegments |
+| request-context.md | Request context — client IP, geolocation, deferred work, env, deadline |
 | plugins.md | The plugin system — API reference |
 | guide-plugins.md | Plugins end-to-end — terminal and no-terminal workflows |
+| plugin-distribution.md | Sharing plugins on npm — naming, the tw-plugin keyword, publishing, search |
+| cache-tags.md | The explicit cache layer — cache { }, cacheLife profiles, tag invalidation |
+| strategies.md | The strategy layer — every subsystem's options and their runtime behaviour |
+| render-engines.md | Render engines — tw-vdom, React and Preact islands |
 | optImage.md | The optImage component — optimization, remote images |
 | RouterLink.md | The RouterLink component — SPA navigation, active state, prefetch |
 | query-params.md | Reading query parameters (`?key=value`) on the server — in route handlers and middlewar... |

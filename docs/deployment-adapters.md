@@ -8,6 +8,7 @@ This document covers one thing completely: deploying — `tw adapter` for platfo
 
 ```bash
 tw adapter node           # zero-dependency Node server for the static build
+tw adapter deno           # Deno Deploy entry (Deno.serve) + deno.json
 tw adapter bun            # full TW server on Bun
 tw adapter docker         # Dockerfiles + compose file
 tw adapter vercel         # vercel.json

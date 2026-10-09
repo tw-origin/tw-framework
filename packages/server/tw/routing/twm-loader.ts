@@ -64,7 +64,7 @@ const libCache = new Map<string, Record<string, any>>();
  * NOT inside ' " ` string literals.
  */
 /**
- * v1.0.8 round 3 (BUG 8): compile-only syntax validation for .twm files.
+ * compile-only syntax validation for.twm files.
  * `tw build` uses this so a syntax-broken route FAILS the build with
  * file + reason, instead of copying it and returning a misleading
  * "405 Method not allowed" at runtime. Returns null when valid.
@@ -227,6 +227,14 @@ function stripImports(source: string): string {
 
 // --- loadTWMModule: parse only, NO execution, NO side effects ----------------
 
+/**
+ * strategies.api.runtime -- set by the server on start. When "edge", route
+ * handlers run with the Node-only globals removed (the runtime half of the
+ * edge contract; the build guard covers the static half).
+ */
+let apiRuntime: "node" | "edge" = "node";
+export function setApiRuntime(runtime: "node" | "edge"): void { apiRuntime = runtime; }
+
 export async function loadTWMModule(filePath: string, rootDir?: string): Promise<TWMModule> {
   const cacheKey = filePath;
   const cached = moduleCache.get(cacheKey);
@@ -388,7 +396,7 @@ export async function loadTWMModule(filePath: string, rootDir?: string): Promise
     "PUT: typeof PUT !== 'undefined' ? PUT : null, " +
     "PATCH: typeof PATCH !== 'undefined' ? PATCH : null, " +
     "DELETE: typeof DELETE !== 'undefined' ? DELETE : null, " +
-    // v1.0.8 round 4 (BUG 33): fn options(request) was compiled but never
+    // fn options(request) was compiled but never
     // exported from the module -- every OPTIONS request 405'd even though
     // the handler existed.
     "options: typeof options !== 'undefined' ? options : null, " +
@@ -414,7 +422,7 @@ export async function loadTWMModule(filePath: string, rootDir?: string): Promise
       put: H.put || H.PUT || undefined,
       delete: H.deleteFn || H.DELETE || undefined,
       patch: H.patch || H.PATCH || undefined,
-      // v1.0.8 round 4 (BUG 33): route-level OPTIONS handlers
+      // route-level OPTIONS handlers
       options: H.options || H.OPTIONS || undefined,
       middleware: H.middleware || undefined,
       generate: H.generate || undefined,
@@ -639,11 +647,11 @@ export async function executeRouteHandler(
       parsedBody = { ...fields, multipart: { fields, files } };
     } catch { parsedBody = {}; }
   } else if (typeof request?.json === "function") {
-    // Round 4: chunked bodies carry no content-length, so the header
+    // chunked bodies carry no content-length, so the header
     // guard above skipped them. Read as text WITH a hard cap so the
     // 10 MB limit holds for every encoding.
     //
-    // BUG 2 + 15 (v1.0.8 round 3): every parse failure used to become a
+    // every parse failure used to become a
     // silent {} -- the client got 2xx while the server received NOTHING.
     // Now: JSON content types parse strictly (400 on malformed bodies),
     // text/* passes through as the raw string, urlencoded parses as a
@@ -677,7 +685,7 @@ export async function executeRouteHandler(
   let query: Record<string, any> = {};
   try {
     const u = new URL(request.url);
-    // v1.0.8 round 5 (BUG 43): duplicate keys used to silently keep only
+    // duplicate keys used to silently keep only
     // the LAST value (a=1&a=2 -> {a:"2"}). Now repeated keys and PHP-style
     // `arr[]` parameters collect into arrays: { a: ["1","2"], arr: ["x","y"] }.
     for (const [rawKey, value] of u.searchParams.entries()) {
@@ -839,13 +847,18 @@ export async function executeRouteHandler(
   // Handlers may be sync or async (DB/HTTP calls) — await both.
   let result: any;
   try {
-    result = await handler(req);
+    if (apiRuntime === "edge") {
+      const { runWithEdgeGlobals } = await import("../edge-runtime");
+      result = await runWithEdgeGlobals(() => handler(req));
+    } else {
+      result = await handler(req);
+    }
   } catch (err: any) {
     // Never leak handler internals (stack, message) to the client.
     console.error("[tw] route handler error (" + filePath + "):", err?.message ?? err);
     return { status: 500, json: { ok: false, error: "Internal Server Error" } };
   }
-  // v1.0.8 round 4 (BUG 36): a bare string return used to 500 with a
+  // a bare string return used to 500 with a
   // generic "Internal Server Error" and no hint. A string is a natural
   // text response -- treat it as { status: 200, text }. Any other
   // non-object return gets a CLEAR error naming the supported shapes.

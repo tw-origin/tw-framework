@@ -15,7 +15,7 @@
     },
     "apps/cli": {
       "name": "tw-framework",
-      "version": "1.0.6",
+      "version": "2.0.0",
       "bin": {
         "tw": "./dist/tw.mjs",
       },
@@ -28,55 +28,89 @@
     },
     "apps/create-tw-framework": {
       "name": "create-tw-framework",
-      "version": "1.0.6",
+      "version": "2.0.0",
       "bin": {
         "create-tw-framework": "./dist/create.mjs",
       },
       "dependencies": {
-        "tw-framework": "^1.0.0",
+        "tw-framework": "^2.0.0",
       },
     },
     "packages/adapters": {
       "name": "@tw/adapters",
-      "version": "1.0.0",
+      "version": "2.0.0",
     },
     "packages/compiler": {
       "name": "@tw/compiler",
-      "version": "1.0.0",
+      "version": "2.0.0",
       "dependencies": {
+        "@tw/Form": "workspace:*",
+        "@tw/Head": "workspace:*",
         "@tw/RouterLink": "workspace:*",
+        "@tw/Script": "workspace:*",
         "@tw/optImage": "workspace:*",
         "@tw/shared": "workspace:*",
       },
     },
+    "packages/form": {
+      "name": "@tw/Form",
+      "version": "2.0.0",
+    },
+    "packages/head": {
+      "name": "@tw/Head",
+      "version": "2.0.0",
+    },
     "packages/image": {
       "name": "@tw/optImage",
-      "version": "1.0.0",
+      "version": "2.0.0",
     },
     "packages/link": {
       "name": "@tw/RouterLink",
-      "version": "1.0.0",
+      "version": "2.0.0",
     },
     "packages/lsp": {
       "name": "@tw/lsp",
-      "version": "1.0.0",
+      "version": "2.0.0",
       "dependencies": {
         "@tw/compiler": "workspace:*",
       },
     },
+    "packages/og": {
+      "name": "@tw/og",
+      "version": "2.0.0",
+    },
+    "packages/plugin-health": {
+      "name": "@tw/plugin-health",
+      "version": "2.0.0",
+      "peerDependencies": {
+        "tw-framework": ">=2.0.0",
+      },
+    },
+    "packages/plugin-sitemap": {
+      "name": "@tw/plugin-sitemap",
+      "version": "2.0.0",
+      "peerDependencies": {
+        "tw-framework": ">=2.0.0",
+      },
+    },
     "packages/plugins": {
       "name": "@tw/plugins",
-      "version": "1.0.0",
+      "version": "2.0.0",
     },
     "packages/runtime": {
       "name": "@tw/runtime",
-      "version": "1.0.0",
+      "version": "2.0.0",
+    },
+    "packages/script": {
+      "name": "@tw/Script",
+      "version": "2.0.0",
     },
     "packages/sdk": {
       "name": "@tw/sdk",
-      "version": "1.0.0",
+      "version": "2.0.0",
       "dependencies": {
         "@tw/compiler": "workspace:*",
+        "@tw/og": "workspace:*",
         "@tw/plugins": "workspace:*",
         "@tw/runtime": "workspace:*",
         "@tw/security": "workspace:*",
@@ -86,14 +120,14 @@
     },
     "packages/security": {
       "name": "@tw/security",
-      "version": "1.0.0",
+      "version": "2.0.0",
       "dependencies": {
         "@tw/shared": "workspace:*",
       },
     },
     "packages/server": {
       "name": "@tw/server",
-      "version": "1.0.0",
+      "version": "2.0.0",
       "dependencies": {
         "@tw/compiler": "workspace:*",
         "@tw/optImage": "workspace:*",
@@ -102,7 +136,7 @@
     },
     "packages/shared": {
       "name": "@tw/shared",
-      "version": "1.0.0",
+      "version": "2.0.0",
     },
   },
   "packages": {
@@ -154,7 +188,13 @@
 
     "@happy-dom/global-registrator": ["@happy-dom/global-registrator@15.11.7", "", { "dependencies": { "happy-dom": "^15.11.7" } }, "sha512-mfOoUlIw8VBiJYPrl5RZfMzkXC/z7gbSpi2ecycrj/gRWLq2CMV+Q+0G+JPjeOmuNFgg0skEIzkVFzVYFP6URw=="],
 
+    "@tw/Form": ["@tw/Form@workspace:packages/form"],
+
+    "@tw/Head": ["@tw/Head@workspace:packages/head"],
+
     "@tw/RouterLink": ["@tw/RouterLink@workspace:packages/link"],
+
+    "@tw/Script": ["@tw/Script@workspace:packages/script"],
 
     "@tw/adapters": ["@tw/adapters@workspace:packages/adapters"],
 
@@ -162,7 +202,13 @@
 
     "@tw/lsp": ["@tw/lsp@workspace:packages/lsp"],
 
+    "@tw/og": ["@tw/og@workspace:packages/og"],
+
     "@tw/optImage": ["@tw/optImage@workspace:packages/image"],
+
+    "@tw/plugin-health": ["@tw/plugin-health@workspace:packages/plugin-health"],
+
+    "@tw/plugin-sitemap": ["@tw/plugin-sitemap@workspace:packages/plugin-sitemap"],
 
     "@tw/plugins": ["@tw/plugins@workspace:packages/plugins"],
 

@@ -52,12 +52,14 @@ export function corsMiddleware(opts: {
   origin?: string | string[] | ((origin: string) => string | null);
   methods?: string[];
   headers?: string[];
+  exposedHeaders?: string[];
   credentials?: boolean;
   maxAge?: number;
 }): Middleware {
   const origin = opts.origin ?? "*";
   const methods = (opts.methods ?? ["GET", "POST", "PUT", "PATCH", "DELETE", "OPTIONS"]).join(", ");
   const headers = (opts.headers ?? ["Content-Type", "Authorization", "X-Requested-With"]).join(", ");
+  const exposed = (opts.exposedHeaders ?? []).join(", ");
   const credentials = opts.credentials ?? false;
   const maxAge = opts.maxAge ?? 86400;
 
@@ -76,6 +78,9 @@ export function corsMiddleware(opts: {
     ctx.headers["access-control-allow-origin"] = allowedOrigin;
     ctx.headers["access-control-allow-methods"] = methods;
     ctx.headers["access-control-allow-headers"] = headers;
+    if (exposed) {
+      ctx.headers["access-control-expose-headers"] = exposed;
+    }
     if (credentials) {
       ctx.headers["access-control-allow-credentials"] = "true";
     }
@@ -86,6 +91,54 @@ export function corsMiddleware(opts: {
     }
 
     await next();
+  };
+}
+
+/**
+ * ctx-style request timeout for the server pipeline. `timeoutMiddleware`
+ * above is the legacy (req, res, next) flavour; the pipeline is ctx-based,
+ * so this is its equivalent. A slow handler is answered with 408 rather than
+ * holding the connection open indefinitely (server.timeout).
+ */
+export function requestTimeoutMiddleware(ms: number): Middleware {
+  return async (ctx, next) => {
+    if (!(ms > 0)) { await next(); return; }
+    let settled = false;
+    const timer = setTimeout(() => {
+      if (settled) return;
+      (ctx as any).response = new Response(
+        JSON.stringify({ error: "Request timeout", timeout: ms }),
+        { status: 408, headers: { "content-type": "application/json" } },
+      );
+    }, ms);
+    await Promise.race([
+      Promise.resolve(next()).finally(() => { settled = true; }),
+      new Promise<void>((r) => setTimeout(r, ms + 1)),
+    ]);
+    clearTimeout(timer);
+  };
+}
+
+/**
+ * ctx-style concurrency cap for the server pipeline (server.maxConnections).
+ * The legacy `concurrencyLimit` is the (req, res, next) flavour; the pipeline
+ * is ctx-based, so this is its equivalent. Over the cap, a request waits for a
+ * slot instead of piling up. 0 (or negative) disables it.
+ */
+export function requestConcurrencyMiddleware(max: number): Middleware {
+  let current = 0;
+  const queue: Array<() => void> = [];
+  return async (ctx, next) => {
+    if (!(max > 0)) { await next(); return; }
+    if (current >= max) await new Promise<void>((r) => queue.push(r));
+    current++;
+    try {
+      await next();
+    } finally {
+      current--;
+      const nextInQueue = queue.shift();
+      if (nextInQueue) nextInQueue();
+    }
   };
 }
 
@@ -159,11 +212,11 @@ export function securityHeadersMiddleware(opts?: { csp?: boolean | string }): Mi
   return async (ctx, next) => {
     ctx.headers["x-content-type-options"] = "nosniff";
     ctx.headers["x-frame-options"] = "DENY";
-    // v1.0.8 round 5 (BUG 48): x-xss-protection removed -- deprecated since
+    // x-xss-protection removed -- deprecated since
     // 2019, rejected by modern browsers and can introduce bugs in old ones.
     ctx.headers["referrer-policy"] = "strict-origin-when-cross-origin";
     ctx.headers["permissions-policy"] = "camera=(), microphone=(), geolocation=()";
-    // v1.0.8 round 5 (BUG 40): baseline CSP. TW ships inline hydration
+    // baseline CSP. TW ships inline hydration
     // scripts + inline critical CSS, so the DEFAULT keeps 'unsafe-inline'
     // for script/style -- strict/nonce CSP stays available via @tw/security
     // (CSPBuilder.withNonce). Pass { csp: false } to opt out, or a string

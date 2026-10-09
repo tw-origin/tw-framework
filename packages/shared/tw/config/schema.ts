@@ -1,4 +1,5 @@
 /** TwConfig schema - all configuration type definitions. */
+import type { StrategiesConfig } from "./strategies";
 
 /**
  * tw.config loader -- finds, parses, validates, and merges configuration
@@ -38,6 +39,12 @@ export interface TwConfig {
 
   plugins: PluginConfigEntry[];
   images?: Partial<ImagesConfig>;
+  /**
+   * Strategy layer: pick which option each subsystem uses. Every field is
+   * optional; omitted fields use the default (today's behaviour), so adding
+   * this section never breaks an existing project.
+   */
+  strategies?: Partial<StrategiesConfig>;
   redirects: RedirectRule[];
   rewrites: RewriteRule[];
   headers: HeaderRule[];
@@ -164,8 +171,6 @@ export interface CSSConfig {
 }
 
 export interface RouterConfig {
-  mode: "filesystem" | "code" | "hybrid";
-  baseDir: string;
   trailingSlash: boolean;
   caseSensitive: boolean;
   locales: string[];
@@ -173,9 +178,6 @@ export interface RouterConfig {
   localePrefix: "always" | "never" | "foreign";
   routes: RouteEntry[];
   apiDir: string;
-  pageExtensions: string[];
-  /** Supported render modes for pages. */
-  renderModes: string[];
 }
 
 export interface RouteEntry {

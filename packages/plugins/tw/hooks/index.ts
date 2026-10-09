@@ -54,7 +54,7 @@ export class HookSystem {
     const entry: HookEntry = {
       name,
       handler: handler as HookHandler,
-      priority: options.priority ?? 0,
+      priority: options.priority ?? 50,
       once: options.once ?? false,
       called: false,
     };
@@ -62,7 +62,9 @@ export class HookSystem {
       map.set(name, []);
     }
     map.get(name)!.push(entry);
-    map.get(name)!.sort((a, b) => b.priority - a.priority);
+    // Lower priority runs first, default 50 -- the plugin convention
+    // (docs/plugins.md). Same priority keeps registration order.
+    map.get(name)!.sort((a, b) => a.priority - b.priority);
     this.stats.totalHandlers++;
     return () => {
       const entries = map.get(name);
@@ -447,11 +449,12 @@ export class MiddlewareSystem {
   }
 
   useBefore(name: string, handler: HookHandler<unknown>): () => void {
+    // `before` runs earlier than `after` under the lower-first convention.
     return this.system.tap(`middleware:before:${name}`, handler, { priority: 10 });
   }
 
   useAfter(name: string, handler: HookHandler<unknown>): () => void {
-    return this.system.tap(`middleware:after:${name}`, handler, { priority: -10 });
+    return this.system.tap(`middleware:after:${name}`, handler, { priority: 20 });
   }
 
   useBail(name: string, handler: HookHandler<unknown>): () => void {

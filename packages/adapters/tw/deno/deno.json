@@ -1,0 +1,18 @@
+{
+  "tasks": {
+    "start": "deno run -A server.ts",
+    "deploy": "deployctl deploy --prod server.ts"
+  },
+  "deploy": {
+    "project": "tw-app",
+    "exclude": [
+      "**/node_modules/**"
+    ],
+    "include": [
+      ".tw"
+    ]
+  },
+  "fmt": {
+    "lineWidth": 100
+  }
+}

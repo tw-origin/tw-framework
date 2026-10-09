@@ -27,7 +27,7 @@ function ensureTestingShim(rootDir: string): void {
     if (existsSync(marker)) return; // real workspace package or existing shim
     const { mkdirSync, writeFileSync } = _require("node:fs");
     mkdirSync(join(shimPkgDir, "tw"), { recursive: true });
-    writeFileSync(marker, JSON.stringify({ name: "@tw/server", version: "1.0.0", private: true }, null, 2));
+    writeFileSync(marker, JSON.stringify({ name: "@tw/server", version: "2.0.0", private: true }, null, 2));
     // Resolve the testing bundle RELATIVE TO THE RUNNING CLI FILE: bundled
     // installs ship it next to tw.mjs (dist/), source runs reach it two
     // levels up (apps/cli/dist). Works for published AND monorepo setups.
@@ -68,7 +68,7 @@ export async function testCommand(): Promise<void> {
 
   console.log("\n  tw test -- running " + files.length + " test file" + (files.length === 1 ? "" : "s") + "\n");
 
-  // v1.0.8 round 5 (BUG 42): a test file using any format other than
+  // a test file using any format other than
   // bun:test (export const tests = [...], export const run, ...) ran ZERO
   // of its tests and still printed "Tests passed" -- false confidence.
   // Warn loudly for files that define no runnable tests.

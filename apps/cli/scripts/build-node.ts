@@ -1,6 +1,6 @@
 /** Build the Node.js CLI bundle: apps/cli/dist/tw.mjs (run: bun apps/cli/scripts/build-node.ts) */
 import { spawnSync } from "node:child_process";
-import { chmodSync, mkdirSync, copyFileSync } from "node:fs";
+import { chmodSync, mkdirSync, copyFileSync, existsSync } from "node:fs";
 import { join } from "node:path";
 
 // Call the esbuild binary directly (native Go binary) for maximum reliability.
@@ -34,7 +34,7 @@ const proc = spawnSync(esbuildBin, [
 if (proc.status !== 0) process.exit(proc.status ?? 1);
 chmodSync(out, 0o755);
 
-// v1.0.8 round 5 (BUG 39): server bundle for serverless adapters (Vercel
+// server bundle for serverless adapters (Vercel
 // functions etc.). `import { TWServer } from "tw-framework/server"`.
 {
   const serverOut = join(cliDir, "dist", "tw-server.mjs");
@@ -99,4 +99,20 @@ console.log("  \x1b[32mOK\x1b[0m " + out + " — run with: node apps/cli/dist/tw
 
 // Ship the hydration runtime so tw build (npm installs) can copy it into .tw/__tw_runtime.js
 copyFileSync(join(repoRoot, "packages", "runtime", "tw", "client", "hydration-runtime.js"), join(cliDir, "dist", "hydration-runtime.js"));
+// Public type declarations: a project's tw.config.ts does
+// `import type { TwConfig } from "tw-framework"`, which resolves through the
+// package's `types` field. Without this the import fails to typecheck.
+copyFileSync(join(cliDir, "types", "index.d.ts"), join(cliDir, "dist", "index.d.ts"));
+console.log("  OK dist/index.d.ts");
 console.log("  OK dist/hydration-runtime.js");
+
+// Ship the changelog with the package, from its single source at the repo root.
+// npm no longer includes CHANGELOG automatically, so it must be in `files` AND
+// present in apps/cli/ at pack time.
+const changelog = join(repoRoot, "CHANGELOG.md");
+if (existsSync(changelog)) {
+  copyFileSync(changelog, join(cliDir, "CHANGELOG.md"));
+  console.log("  OK CHANGELOG.md");
+} else {
+  console.warn("  ! CHANGELOG.md missing at the repo root — the package will ship without it");
+}

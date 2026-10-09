@@ -1,7 +1,7 @@
 ---
 name: bug-hunt
 description: Systematically hunt real bugs in the framework using the tables, the docs, and adversarial inputs
-version: 1.0.6
+version: 2.0.0
 ---
 
 # Skill: bug-hunt

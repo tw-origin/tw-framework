@@ -15,7 +15,8 @@
  * This is for production deployment.
  */
 
-import { join, resolve, dirname } from "node:path";
+import { join, resolve, dirname, extname } from "node:path";
+import { createHash } from "node:crypto";
 import { parseCacheBody as parseCacheBodyShared, resolveCache as resolveCacheShared, maskSourceStringsAndComments } from "@tw/shared";
 import { existsSync, mkdirSync, writeFileSync, readFileSync, readdirSync, statSync, copyFileSync, unlinkSync, rmdirSync } from "node:fs";
 
@@ -68,6 +69,18 @@ export function csrifyHtml(html: string): string {
     ].join("\n"),
   );
 }
+/**
+ * Does this directory entry name a page file?
+ *
+ * A page is MARKUP, so its extension is `.tw` -- decided by the file type
+ * (`getExtensionForType()`), not by configuration. `.twm` is the server-side
+ * module extension: API routes and middleware, JS functions rather than markup,
+ * so `page.twm` is not a thing.
+ */
+function matchesPageFile(entry: string, stem: string): boolean {
+  return entry === stem || entry === stem + ".tw";
+}
+
 function collectFiles(dir: string, fileName: string, results: string[]): void {
   if (!existsSync(dir)) return;
   for (const entry of readdirSync(dir)) {
@@ -78,7 +91,7 @@ function collectFiles(dir: string, fileName: string, results: string[]): void {
     const stat = statSync(fullPath);
     if (stat.isDirectory()) {
       collectFiles(fullPath, fileName, results);
-    } else if (entry === fileName) {
+    } else if (matchesPageFile(entry, fileName)) {
       results.push(fullPath);
     }
   }
@@ -256,6 +269,92 @@ function buildMetaTagsFromSource(source: string): string {
 
 // --- Build Command ----------------------------------------------------------
 
+/**
+ * Post-build transform pass (docs/plugins.md). Walks the written output and
+ * chains the content hooks -- transform:css, transform:js and optimize:asset.
+ * A plugin returns the replacement content, or undefined to leave it alone.
+ * The whole walk is skipped when no plugin registers any of the three, so a
+ * project without plugins pays nothing.
+ */
+async function transformEmittedFiles(outDir: string, pm: any): Promise<void> {
+  if (!pm?.runHookChain || !pm?.hooks?.get) return;
+  const has = (h: string) => (pm.hooks.get(h)?.length ?? 0) > 0;
+  const js = has("transform:js"), css = has("transform:css"), asset = has("optimize:asset");
+  if (!js && !css && !asset) return;
+
+  const walk = async (dir: string): Promise<void> => {
+    let entries: any[];
+    try { entries = readdirSync(dir, { withFileTypes: true }); } catch { return; }
+    for (const e of entries) {
+      const p = join(dir, e.name);
+      if (e.isDirectory()) { await walk(p); continue; }
+      const ext = extname(e.name).toLowerCase();
+      const rel = p.slice(outDir.length).replace(/^[\\/]/, "");
+      try {
+        if (js && (ext === ".js" || ext === ".mjs")) {
+          const out = await pm.runHookChain("transform:js", readFileSync(p, "utf-8"), { file: rel });
+          if (typeof out === "string") writeFileSync(p, out);
+        } else if (css && ext === ".css") {
+          const out = await pm.runHookChain("transform:css", readFileSync(p, "utf-8"), { file: rel });
+          if (typeof out === "string") writeFileSync(p, out);
+        } else if (asset && ![".html", ".json", ".js", ".mjs", ".css"].includes(ext)) {
+          const buf = readFileSync(p);
+          const out = await pm.runHookChain("optimize:asset", buf, { file: rel });
+          if (out && out !== buf) writeFileSync(p, out as any);
+        }
+      } catch { /* one file never fails the build */ }
+    }
+  };
+  await walk(outDir);
+}
+
+
+// Builtin template components (optImage, RouterLink, Head, Script, ...) are
+// resolved by the compiler and never have a components/*.tw file. Derive the
+// alias set from the compiler's own specifier list so it cannot drift.
+function builtinAliases(): Set<string> {
+  const specifiers: string[] = (_compilerMod as any).BUILTIN_COMPONENT_SPECIFIERS ?? [];
+  const names = new Set<string>();
+  for (const spec of specifiers) {
+    const tail = spec.split("/").pop() ?? "";
+    if (tail) names.add(tail);
+  }
+  // spellings users actually write in a template
+  for (const n of ["Link", "RouterLink", "Image", "optImage", "Suspense", "Head", "Script", "Form"]) {
+    names.add(n);
+  }
+  return names;
+}
+
+/**
+ * css.autoprefixer -- add the common vendor prefixes for a small set of
+ * properties that still need them. `css.targets` is recorded for tooling; the
+ * built-in prefixer always emits this fixed set.
+ */
+function autoprefixCss(css: string, targets: string[] = []): string {
+  // css.targets: -ms-/-moz- variants only matter for older browsers.
+  const legacy = targets.length === 0 || targets.some(t => /ie\s*\d|not dead|last [2-9]|> [0-9.]+%/.test(t));
+  const NEED: Record<string, string[]> = {
+    "user-select": legacy
+      ? ["-webkit-user-select", "-moz-user-select", "-ms-user-select"]
+      : ["-webkit-user-select"],
+    "appearance": legacy ? ["-webkit-appearance", "-moz-appearance"] : ["-webkit-appearance"],
+    "backdrop-filter": ["-webkit-backdrop-filter"],
+  };
+  const out: string[] = [];
+  for (const line of css.split("\n")) {
+    const m = /^(\s*)([a-z-]+)\s*:\s*(.+?);?\s*$/.exec(line);
+    if (m) {
+      const [, indent, prop, val] = m;
+      if (prop === "position" && val.trim() === "sticky") out.push(indent + "-webkit-position: sticky;");
+      const pf = NEED[prop];
+      if (pf) for (const p of pf) out.push(indent + p + ": " + val + ";");
+    }
+    out.push(line);
+  }
+  return out.join("\n");
+}
+
 export async function buildCommand(): Promise<void> {
   const rootDir = process.cwd();
   // --profile: emit a stage-by-stage timing report (docs/build-profiler.md)
@@ -264,8 +363,14 @@ export async function buildCommand(): Promise<void> {
   const begin = (n: string, files = 0) => { if (profile) P.startStage?.(n, files); };
   const end = (n: string) => { if (profile) P.endStage?.(n); };
   let needsRuntime = false;
+  // build.incremental -- a page-level build cache. A page whose own source and
+  // layout chain are unchanged (and whose output exists) is not recompiled.
+  let skippedPages = 0;
+  let incCache: Record<string, string> = {};
+  const incNext: Record<string, string> = {};
+  const incHash = (t: string): string => createHash("sha256").update(t).digest("hex").slice(0, 16);
   const homeDir = join(rootDir, "home");
-  const outDir = join(rootDir, ".tw");
+  let outDir = join(rootDir, ".tw");
   const publicDir = join(rootDir, "public");
   const libDir = join(rootDir, "lib");
   const stylePath = join(rootDir, "style.css");
@@ -308,6 +413,107 @@ export async function buildCommand(): Promise<void> {
   // Image optimization config (breakpoints/quality for the Image component)
   // cacheLife profiles (docs/cache-tags.md) -- assigned when tw.config.ts loads
   let cacheProfiles: Record<string, any> = {};
+  // Strategy layer: the signal transport is baked into each streamed page's
+  // __TW_SIGNALS__ manifest so the client runtime knows which transport to
+  // open (sse | ws | long-poll). CLI flag wins over config, config over default.
+  let signalTransport: "sse" | "ws" | "long-poll" = "sse";
+  // strategies.hydration.mode -- "none" ships zero client JS for static pages.
+  let hydrationMode: "auto" | "full" | "islands" | "none" = "auto";
+  // strategies.css.engine -- "tailwind" runs the project's Tailwind at build
+  // time and merges its output into the global stylesheet.
+  let cssEngine: "tss" | "tailwind" | "css" | "scss" = "tss";
+  // strategies.api.runtime -- "node" (default) allows every Node/Bun API;
+  // "edge" restricts .twm handlers to the portable surface (no fs, no native).
+  let apiRuntime: "node" | "edge" = "node";
+  // strategies.state.model -- signals (default) | hooks | store.
+  let stateModel: "signals" | "hooks" | "store" = "signals";
+  let dataLayer = "routes";
+  let cacheMode: "isr" | "swr" | "none" | "cdn" = "isr";
+  let authModel = "session";
+  // strategies.render.engine -- tw-vdom (default) is built in. react/preact
+  // are optional: when selected and missing the build offers to install them
+  // (interactive) or fails with a clear message (CI).
+  let renderEngine = "tw-vdom";
+  // build.* -- these were written by the scaffold and read by nothing, so
+  // `build.minify: false` silently still minified. Captured here so the
+  // options mean what they say. Defaults match today's behaviour.
+  // Only the two that can apply to a client chunk. `splitting` cannot -- the
+  // chunks are IIFE, and esbuild's splitting needs ESM -- and `target` is the
+  // runtime, which lives at strategies.runtime.server.
+  let cfgMinify = true;
+  let cfgSourcemap = true;
+  // The resolved build / compiler / css groups. resolve*Options fills every
+  // field with the framework default, so an unset field keeps today's
+  // behaviour and a set field actually reaches the build.
+  let buildOpts: any = null;
+  let compilerOpts: any = null;
+  let cssOpts: any = null;
+  // build.* -> the esbuild flags every client chunk honours.
+  const chunkFlags = (): any => buildOpts
+    ? {
+        minify: buildOpts.minify,
+        sourcemap: buildOpts.sourcemap,
+        format: buildOpts.format,
+        treeshake: buildOpts.treeshake,
+        splitting: buildOpts.splitting || buildOpts.codeSplitting,
+        define: buildOpts.define,
+        externals: buildOpts.externals,
+        inject: buildOpts.inject,
+        chunkNames: buildOpts.chunkNames,
+        assetNames: buildOpts.assetNames,
+        loaders: buildOpts.loaders,
+      }
+    : { minify: cfgMinify, sourcemap: cfgSourcemap };
+  // build.publicPath -- prefix for emitted asset/chunk URLs.
+  const withPublicPath = (u: string): string => {
+    const base = buildOpts?.publicPath ?? "/";
+    return (base.endsWith("/") ? base : base + "/") + u.replace(/^\/+/, "");
+  };
+  // build.assetsDir -- where emitted css/assets land (default "assets").
+  const assetsDirName = (): string => buildOpts?.assetsDir ?? "assets";
+  // compiler.* -> the compile passes. `optimization` maps to optimize
+  // (none = off); the rest pass straight through to the compiler so each
+  // fine-grained field reaches the pass it names.
+  const compilePassOpts = (): any =>
+    compilerOpts
+      ? {
+          optimize: compilerOpts.optimization !== "none",
+          incremental: compilerOpts.incremental,
+          compiler: {
+            hoistDirectives: compilerOpts.hoistDirectives,
+            ssrAttributes: compilerOpts.ssrAttributes,
+            foldConstants: compilerOpts.foldConstants,
+            deadCode: compilerOpts.deadCode,
+            treeShaking: compilerOpts.treeShaking,
+            removeEmptyBlocks: compilerOpts.removeEmptyBlocks,
+            // css.modules: false also turns off `.module.tss` scoping.
+            scopedStyles: (compilerOpts.scopedStyles === false || cssOpts?.modules === false) ? false : compilerOpts.scopedStyles,
+            cssPrefix: cssOpts?.prefix,
+            cssImportPaths: cssOpts?.importPaths,
+            inlineComponents: compilerOpts.inlineComponents,
+            sourceMaps: compilerOpts.sourceMaps,
+            cacheSize: compilerOpts.cacheSize,
+            minifyHTML: compilerOpts.minifyHTML,
+            minifyCSS: compilerOpts.minifyCSS,
+            minifyJS: compilerOpts.minifyJS,
+            preserveComments: compilerOpts.preserveComments,
+            looseDiagnostics: compilerOpts.strict === false,
+          },
+        }
+      : {};
+  // Plugins (docs/plugins.md): load from plugins/ per tw.config.ts and fire the
+  // build hooks. A broken plugin never fails the build -- the loader isolates it.
+  let pluginManager: any = null;
+  const runBuildHook = async (name: string, ctx: any = {}): Promise<void> => {
+    if (!pluginManager) return;
+    try { await pluginManager.runHook?.(name, ctx); } catch { /* isolated */ }
+  };
+  // Value-chaining hook: the plugin receives the content and may return a
+  // replacement. Used by transform:html (docs/plugins.md).
+  const runBuildHookValue = async <T>(name: string, value: T, ctx: any = {}): Promise<T> => {
+    if (!pluginManager?.runHookChain) return value;
+    try { return await pluginManager.runHookChain(name, value, ctx); } catch { return value; }
+  };
 
   try {
     const cfgPath = join(rootDir, "tw.config.ts");
@@ -315,12 +521,212 @@ export async function buildCommand(): Promise<void> {
       const { twImportTs } = await import("@tw/shared/tw/node-import");
       const cfgMod: any = await twImportTs(cfgPath);
       const cfg = cfgMod.default ?? cfgMod;
+      // Plugins load here so the config is already resolved when setup() runs.
+      try {
+        const { loadPlugins } = await import("@tw/plugins");
+        pluginManager = await loadPlugins(rootDir, cfg);
+        await runBuildHook("config:resolve", { config: cfg, rootDir });
+      } catch { /* plugins are optional */ }
       (_compilerMod as any).setBuiltinImageConfig?.((cfg as any)?.images);
       // cacheLife profiles (docs/cache-tags.md): user profiles resolve at
       // BUILD time into absolute seconds in routes.json.
       cacheProfiles = (cfg as any)?.cache?.profiles ?? {};
+      const b = (cfg as any)?.build ?? {};
+      if (typeof b.minify === "boolean") cfgMinify = b.minify;
+      if (typeof b.sourcemap === "boolean") cfgSourcemap = b.sourcemap;
+      // build.* / compiler.* / css.* -- resolved centrally so every field in
+      // those groups actually reaches the build.
+      try {
+        const { resolveBuildOptions, resolveCompilerOptions, resolveCssOptions } = await import("@tw/shared");
+        buildOpts = resolveBuildOptions(cfg);
+        compilerOpts = resolveCompilerOptions(cfg);
+        cssOpts = resolveCssOptions(cfg);
+        cfgMinify = buildOpts.minify;
+        cfgSourcemap = buildOpts.sourcemap !== false;
+        cssEngine = cssOpts.engine as any;
+      } catch { /* keep bare defaults */ }
+
+      // build.* that shape the OUTPUT rather than one chunk.
+      if (buildOpts) {
+        outDir = join(rootDir, buildOpts.outputDir);
+        if (buildOpts.incremental) {
+          try { incCache = JSON.parse(readFileSync(join(outDir, ".build-cache.json"), "utf-8")); } catch { incCache = {}; }
+        }
+        try {
+          const { setClientOutputRoot } = await import("./client-bundle");
+          setClientOutputRoot(buildOpts.outputDir);
+        } catch { /* default .tw */ }
+      }
+
+      // strategies.signals.transport (validated values only)
+      const t = (cfg as any)?.strategies?.signals?.transport;
+      if (t === "sse" || t === "ws" || t === "long-poll") signalTransport = t;
+      const h = (cfg as any)?.strategies?.hydration?.mode;
+      if (h === "auto" || h === "full" || h === "islands" || h === "none") hydrationMode = h;
+      const ce = (cfg as any)?.strategies?.css?.engine;
+      if (ce === "tss" || ce === "tailwind" || ce === "css" || ce === "scss") cssEngine = ce;
+      const ar = (cfg as any)?.strategies?.api?.runtime;
+      if (ar === "node" || ar === "edge") apiRuntime = ar;
+      const sm = (cfg as any)?.strategies?.state?.model;
+      if (sm === "signals" || sm === "hooks" || sm === "store") stateModel = sm;
+      const dl = (cfg as any)?.strategies?.data?.layer;
+      if (dl === "routes" || dl === "graphql" || dl === "trpc") dataLayer = dl;
+      const cm = (cfg as any)?.strategies?.cache?.mode;
+      if (cm === "isr" || cm === "swr" || cm === "none" || cm === "cdn") cacheMode = cm;
+      const am = (cfg as any)?.strategies?.auth?.model;
+      if (am === "session" || am === "jwt" || am === "oauth") authModel = am;
+      const re = (cfg as any)?.strategies?.render?.engine;
+      if (re === "tw-vdom" || re === "react" || re === "preact" || re === "none") renderEngine = re;
     }
   } catch { /* defaults */ }
+
+  // CLI flag overrides config: --signals=ws / --transport=long-poll
+  {
+    const { parseStrategyFlags, resolveStrategies, validateStrategies } = await import("@tw/shared");
+    const fromFlags: any = parseStrategyFlags(process.argv.slice(2));
+    if (Object.keys(fromFlags).length > 0) {
+      const bad = validateStrategies(fromFlags);
+      for (const issue of bad) console.warn("  ! " + issue.message);
+      const r = resolveStrategies({ signals: fromFlags.signals, hydration: fromFlags.hydration } as any);
+      if (r.signals.transport) signalTransport = r.signals.transport as any;
+      if ((fromFlags as any).hydration?.mode) hydrationMode = (fromFlags as any).hydration.mode;
+      const fe = (fromFlags as any).css?.engine;
+      if (fe === "tss" || fe === "tailwind" || fe === "css" || fe === "scss") cssEngine = fe;
+      const far = (fromFlags as any).api?.runtime;
+      if (far === "node" || far === "edge") apiRuntime = far;
+      const fsm = (fromFlags as any).state?.model;
+      if (fsm === "signals" || fsm === "hooks" || fsm === "store") stateModel = fsm;
+      const fdl = (fromFlags as any).data?.layer;
+      if (fdl === "routes" || fdl === "graphql" || fdl === "trpc") dataLayer = fdl;
+      const fcm = (fromFlags as any).cache?.mode;
+      if (fcm === "isr" || fcm === "swr" || fcm === "none" || fcm === "cdn") cacheMode = fcm;
+      const fre = (fromFlags as any).render?.engine;
+      if (fre === "tw-vdom" || fre === "react" || fre === "preact" || fre === "none") renderEngine = fre;
+    }
+  }
+
+  // Render engine: TW's VDOM is built in. React/Preact are optional -- if the
+  // engine is selected but not installed, offer to install it (interactive)
+  // or stop with a clear message (CI).
+  if (renderEngine === "react" || renderEngine === "preact") {
+    const { ensureRenderEngine } = await import("@tw/shared");
+    const res = await ensureRenderEngine(rootDir, renderEngine);
+    if (!res.ok) {
+      console.log("\n  \x1b[31m\u2717 Build failed \u2014 render.engine=" + renderEngine + "\x1b[0m");
+      console.log("    " + (res.message ?? "render engine not available"));
+      process.exit(3);
+    }
+    if (res.installed) console.log("  \x1b[32mOK\x1b[0m " + renderEngine + " installed");
+  }
+
+  // Foreign components (React/Preact .tsx / .jsx): render each to HTML at
+  // build time and register the renderer, so the compiler emits an island.
+  if (renderEngine === "react" || renderEngine === "preact") {
+    const ib: any = await import("./island-bundle.ts");
+    const foreign = ib.scanForeignImports(rootDir, ib.collectTwFiles(rootDir));
+    if (foreign.length > 0) {
+      const reg = (_compilerMod as any).registerForeignComponent;
+      for (const fi of foreign) {
+        try {
+          const url = ib.buildIslandChunk(rootDir, fi.absPath, fi.name, true);
+          const render = await ib.loadSsrRenderer(rootDir, fi.absPath);
+          reg(fi.name, { engine: renderEngine, source: fi.absPath, chunkUrl: url ? "/" + url : undefined, render });
+          console.log("  \x1b[36m\u26A1\x1b[0m island: " + fi.name + " (" + renderEngine + ")");
+        } catch (err: any) {
+          console.log("\n  \x1b[31m\u2717 Build failed \u2014 island " + fi.name + "\x1b[0m");
+          console.log("    " + (err?.message ?? String(err)));
+          process.exit(1);
+        }
+      }
+    }
+  }
+
+  // Tailwind engine: generate the stylesheet from the project's own classes
+  // and merge it into the global CSS every page already inlines.
+  if (cssEngine === "tailwind") {
+    const m = _compilerMod as any;
+    if (typeof m.runTailwind === "function") {
+      const globs = [
+        join(rootDir, "home") + "/**/*.tw",
+        join(rootDir, "components") + "/**/*.tw",
+        join(rootDir, "layouts") + "/**/*.tw",
+      ];
+      try {
+        const twCss = m.runTailwind({ rootDir, content: globs, extraArgs: ["--minify"] });
+        if (twCss) {
+          css = (css ? css + "\n" : "") + twCss;
+          console.log("  \x1b[32mOK\x1b[0m tailwind (" + twCss.length + " bytes)");
+        }
+      } catch (err: any) {
+        console.log("\n  \x1b[31m\u2717 Build failed \u2014 css.engine=tailwind\x1b[0m");
+        console.log("    " + (err?.message ?? String(err)));
+        process.exit(3);
+      }
+    }
+  }
+
+  // css.* -- variables, autoprefixer and minify on the global stylesheet.
+  if (cssOpts) {
+    if (cssOpts.variables && Object.keys(cssOpts.variables).length > 0) {
+      const decls = Object.entries(cssOpts.variables)
+        .map(([k, v]) => "  " + (k.startsWith("--") ? k : "--" + k) + ": " + v + ";")
+        .join("\n");
+      css = ":root {\n" + decls + "\n}\n" + css;
+    }
+    if (cssOpts.autoprefixer) css = autoprefixCss(css, cssOpts.targets);
+    if (cssOpts.minify) {
+      const m = _compilerMod as any;
+      if (typeof m.minifyCSS === "function") { try { css = m.minifyCSS(css); } catch { /* keep */ } }
+    }
+  }
+
+  // Optional data layers and the oauth auth model need their packages; offer
+  // to install them, or stop with a clear message (CI).
+  {
+    const { describeDataLayer, describeAuthModel, ensurePackages } = await import("@tw/shared");
+    const dl = describeDataLayer(dataLayer, rootDir);
+    if (!dl.available) {
+      const r = await ensurePackages(rootDir, dl.packages, `data.layer=${dl.layer}`);
+      if (!r.ok) { console.log("\n  \x1b[31m\u2717 Build failed \u2014 data.layer=" + dl.layer + "\x1b[0m"); console.log("    " + r.message); process.exit(3); }
+    }
+    const am = describeAuthModel(authModel, rootDir);
+    if (!am.available) {
+      const r = await ensurePackages(rootDir, am.packages, `auth.model=${am.model}`);
+      if (!r.ok) { console.log("\n  \x1b[31m\u2717 Build failed \u2014 auth.model=" + am.model + "\x1b[0m"); console.log("    " + r.message); process.exit(3); }
+    }
+  }
+
+  // State model "hooks" needs a React-compatible renderer: the hooks live in
+  // the component runtime. Fail here with the fix rather than at run time.
+  if (stateModel === "hooks" && renderEngine !== "react" && renderEngine !== "preact") {
+    console.log("\n  \x1b[31m\u2717 Build failed \u2014 state.model=hooks\x1b[0m");
+    console.log("    state.model=hooks needs render.engine=\"react\" or \"preact\" (currently " + renderEngine + ").");
+    console.log("    Set strategies.render.engine, or use state.model=\"signals\".");
+    process.exit(2);
+  }
+
+  // API runtime "edge": a V8 isolate cannot reach the filesystem, native
+  // modules or child processes. Check every .twm BEFORE shipping, so a deploy
+  // fails here with a fix rather than at run time.
+  if (apiRuntime === "edge") {
+    const { checkEdgeSafety } = await import("@tw/shared");
+    const apiFiles: string[] = [];
+    collectFiles(homeDir, "route.twm", apiFiles);
+    const violations: any[] = [];
+    for (const f of apiFiles) {
+      try { violations.push(...checkEdgeSafety(readFileSync(f, "utf-8"), f)); } catch { /* unreadable */ }
+    }
+    if (violations.length > 0) {
+      console.log("\n  \x1b[31m\u2717 Build failed \u2014 api.runtime=edge\x1b[0m");
+      for (const v of violations) {
+        const rel = v.file.startsWith(rootDir) ? v.file.slice(rootDir.length + 1) : v.file;
+        console.log("    " + rel + ":" + v.line + "  " + v.what);
+      }
+      console.log("    Edge isolates have no filesystem, native modules or child processes.");
+      console.log("    Move this work behind a service, or set strategies.api.runtime=\"node\".");
+      process.exit(2);
+    }
+  }
 
   let pageCount = 0;
   // Minor (v1.0.8): request-time-rendered pages were invisible in the
@@ -332,8 +738,8 @@ export async function buildCommand(): Promise<void> {
 
   // -- 1. Compile all page.tw files to HTML --------------------------------
   const pageFiles: string[] = [];
-  collectFiles(homeDir, "page.tw", pageFiles);
-  // v1.0.8 round 3 (BUG 23): page.tw + index.tw in one directory resolve
+  collectFiles(homeDir, "page", pageFiles);
+  // page.tw + index.tw in one directory resolve
   // to the same route with index.tw winning at runtime -- and the build
   // said nothing. Warn loudly instead.
   for (const pf of pageFiles) {
@@ -343,6 +749,9 @@ export async function buildCommand(): Promise<void> {
     }
   }
   begin("compile", pageFiles.length);
+  // Plugins see the discovered routes before any compilation happens.
+  await runBuildHook("pages:discover", { pages: pageFiles, rootDir });
+  await runBuildHook("before:build", { pages: pageFiles, rootDir, outDir });
   const htmlOutputs: Array<{ outputDir: string; html: string; route: string }> = [];
   (_compilerMod as any).clearCssCapture?.();
 
@@ -353,8 +762,22 @@ export async function buildCommand(): Promise<void> {
       .split("/")
       .filter(seg => !/^\(.*\)$/.test(seg))
       .join("/");
-    const routeName = relativePath.replace(/\/?page\.tw$/, "").replace(/\\/g, "/");
+    // Strip the page file name for the route. This matched the literal
+    // `page.tw`, so a `page.twm` page (allowed by router.pageExtensions) leaked
+    // its extension into the URL: /d/page.twm instead of /d.
+    const routeName = relativePath.replace(/\/?page(?:\.tw)?$/, "").replace(/\\/g, "/");
     const routePath = routeName === "" ? "/" : "/" + routeName;
+
+    // build.incremental: reuse an unchanged page's previous output.
+    if (buildOpts?.incremental) {
+      const deps = [pageFile, ...findLayoutChain(dirname(pageFile), homeDir)];
+      let raw = "";
+      for (const d of deps) { try { raw += d + "\u0000" + readFileSync(d, "utf-8"); } catch { /* skip */ } }
+      const h = incHash(raw);
+      incNext[pageFile] = h;
+      const outHtml = join(outDir, routeName, "index.html");
+      if (incCache[pageFile] === h && existsSync(outHtml)) { skippedPages++; continue; }
+    }
 
     // generateStaticParams: a sibling params.twm with fn generate() returning
     // [{ slug: "a" }, { slug: "b" }] statically prebuilds each dynamic route.
@@ -368,7 +791,7 @@ export async function buildCommand(): Promise<void> {
           if (typeof pmod.generate === "function") {
             const arr = pmod.generate();
             if (Array.isArray(arr) && arr.length > 0) {
-              // v1.0.8 round 4 (BUG 27): the DOCS form returns plain values
+              // the DOCS form returns plain values
               // (`return ["one", "two", "three"]` next to a [item]/page.tw).
               // Object.entries() on a string produced garbage ({0:"o",...})
               // so every variant wrote the same literal [item] output path
@@ -468,14 +891,14 @@ export async function buildCommand(): Promise<void> {
       console.log("  \x1b[36m~\x1b[0m " + routePath + " [" + renderMode + ": rendered at request time]");
       try {
         const src = readFileSync(pageFile, "utf-8");
-        const r = _compileSync(src, { filePath: pageFile });
+        const r = _compileSync(src, { filePath: pageFile, ...compilePassOpts() });
         const errs = (r.diagnostics || []).filter((d: any) => d.severity === "error");
         if (errs.length > 0) {
           console.log("  \x1b[33m! " + routePath + " (" + errs.length + " diagnostics)\x1b[0m");
           for (const d of errs.slice(0, 5)) console.log("      " + d.line + ":" + d.col + "  " + d.message);
           errorCount++;
         }
-        // v1.0.8 round 3 (BUG 22): SSR pages print warnings too, not just
+        // SSR pages print warnings too, not just
         // the static-compile path.
         const warns = (r.diagnostics || []).filter((d: any) => d.severity !== "error");
         if (warns.length > 0) {
@@ -485,13 +908,13 @@ export async function buildCommand(): Promise<void> {
           }
           if (warns.length > 3) console.log("        ... " + (warns.length - 3) + " more (tw check)");
         }
-        // v1.0.8 round 3: SSR pages skipped the unknown-component check the
+        // SSR pages skipped the unknown-component check the
         // static path had -- a missing component only failed for static pages.
         {
           const used = new Set<string>();
           collectComponentUsages(r.ast, used);
-          const BUILTIN_ALIASES = new Set(["Link", "RouterLink", "Image", "optImage", "Suspense"]);
-          const unknownSsr = [...used].filter(t => !BUILTIN_ALIASES.has(t) && !registeredComponentNames.has(t));
+          const BUILTIN_ALIASES = builtinAliases();
+          const unknownSsr = [...used].filter(t => !BUILTIN_ALIASES.has(t) && !registeredComponentNames.has(t) && !(_compilerMod as any).resolveForeignComponent?.(t));
           if (unknownSsr.length > 0) {
             const importSpecs = new Map<string, string>();
             for (const im of src.matchAll(/import\s+([A-Za-z_]\w*)\s+from\s+["']([^"']+)["']/g)) {
@@ -521,14 +944,14 @@ export async function buildCommand(): Promise<void> {
       // Route params are exposed BOTH flat ({slug}) and as an object
       // ({params.slug}) -- docs/project-tree.md documents params.slug.
       const scopeVars = { ...paramSet, params: paramSet };
-      const result = _compileSync(source, { filePath: pageFile, stateVars: scopeVars } as any);
+      const result = _compileSync(source, { filePath: pageFile, stateVars: scopeVars, ...compilePassOpts() } as any);
       {
         const used = new Set<string>();
         collectComponentUsages(result.ast, used);
-        const BUILTIN_ALIASES = new Set(["Link", "RouterLink", "Image", "optImage", "Suspense"]);
-        const unknown = [...used].filter(t => !BUILTIN_ALIASES.has(t) && !registeredComponentNames.has(t));
+        const BUILTIN_ALIASES = builtinAliases();
+        const unknown = [...used].filter(t => !BUILTIN_ALIASES.has(t) && !registeredComponentNames.has(t) && !(_compilerMod as any).resolveForeignComponent?.(t));
         if (unknown.length > 0) {
-          // v1.0.8 round 3 (BUG 24): for explicitly-imported components the
+          // for explicitly-imported components the
           // old message pointed at the CONVENTION path (components/<Name>.tw)
           // even though the import named a different file. Show the actual
           // import path when there is one.
@@ -551,7 +974,7 @@ export async function buildCommand(): Promise<void> {
       if (layoutChain.length > 0) {
         const layoutPrograms = layoutChain.map(lp => {
           const ls = readFileSync(lp, "utf-8");
-          const lr = _compileSync(ls, { filePath: lp });
+          const lr = _compileSync(ls, { filePath: lp, ...compilePassOpts() });
           return lr.ast;
         }).filter(Boolean);
         if (layoutPrograms.length > 0 && _generateWithLayoutChain) {
@@ -639,8 +1062,8 @@ export async function buildCommand(): Promise<void> {
         const { buildClientChunk, buildPageScope } = await import("./client-bundle");
         let clientTag = "";
         for (const l of pageMods.deps) {
-          const u = buildClientChunk(rootDir, l, true);
-          if (u) { clientTag += `<script defer src="/${u}"></script>\n  `; clientChunkUrls.add(u); }
+          const u = buildClientChunk(rootDir, l, chunkFlags());
+          if (u) { clientTag += `<script defer src="${withPublicPath(u)}"></script>\n  `; clientChunkUrls.add(u); }
           else {
             // A failed client chunk means the page's imports are undefined
             // at runtime -- every handler using them breaks. Never green.
@@ -652,7 +1075,7 @@ export async function buildCommand(): Promise<void> {
           const pu = buildPageScope(rootDir, pageMods.own);
           if (pu) clientTag += `<script defer src="/${pu}"></script>\n  `;
         }
-        // Zero-JS static pages (BUG 6, v1.0.8): the runtime used to ship on
+        // Zero-JS static pages the runtime used to ship on
         // EVERY page, breaking the "static pages ship 0 bytes of JavaScript"
         // promise (~21KB per page, even for plain /about). Only pages that
         // actually need the client ship it: interactive markers, client
@@ -665,7 +1088,17 @@ export async function buildCommand(): Promise<void> {
           || pageMods.own.length > 0
           || renderMode === "csr" || renderMode === "ppr"
           || renderMode === "stream" || renderMode === "signalStream";
-        if (needsClient) {
+        // strategies.hydration.mode overrides the per-page decision:
+        //   none    -> zero client JS,   islands -> only island-marked pages,
+        //   full    -> always hydrate interactive pages,  auto -> heuristic.
+        let shipClient = needsClient;
+        if (hydrationMode === "none") shipClient = false;
+        else if (hydrationMode === "islands") {
+          // island pages only (data-tw-i is an interpolation, not an island)
+          shipClient = renderMode === "island" || /data-tw-island/.test(html);
+        }
+        else if (hydrationMode === "full") shipClient = needsClient || /data-tw-s=|data-tw-state/.test(html);
+        if (shipClient) {
           const runtimeTag = `<script defer src="/__tw_runtime.js"></script>`;
           html = html.replace("</body>", "  " + clientTag + runtimeTag + "\n</body>");
           needsRuntime = true;
@@ -682,7 +1115,7 @@ export async function buildCommand(): Promise<void> {
         // decide whether to open the /_tw/stream connection.
         const sigs = (result as any).streamedSignals ?? {};
         if (Object.keys(sigs).length > 0) {
-          const manifest = JSON.stringify({ v: 1, route: routePath, signals: sigs })
+          const manifest = JSON.stringify({ v: 1, route: routePath, transport: signalTransport, signals: sigs })
             .replace(/</g, "\\u003c");
           html = html.replace(
             "</body>",
@@ -738,7 +1171,7 @@ export async function buildCommand(): Promise<void> {
       } else {
         console.log("  \x1b[32mOK\x1b[0m " + displayPath + " -> " + (outRoute === "" ? ".tw/index.html" : ".tw/" + outRoute + "/index.html"));
       }
-      // v1.0.8 round 3 (BUG 22): warnings were collected but never shown --
+      // warnings were collected but never shown --
       // `tw check` flags <ul2> while `tw build` printed nothing. Surface
       // them (capped) so both surfaces agree.
       const warnings = result.diagnostics.filter((d: any) => d.severity !== "error");
@@ -771,7 +1204,7 @@ export async function buildCommand(): Promise<void> {
     const outputDir = routeName === "" ? outDir : join(outDir, routeName);
     mkdirSync(outputDir, { recursive: true });
     copyFileSync(twmFile, join(outputDir, "route.twm"));
-    // v1.0.8 round 3 (BUG 8): a syntax-broken .twm used to pass the build
+    // a syntax-broken.twm used to pass the build
     // ("OK /api/broken [api]") and only fail at runtime with a misleading
     // 405. Validate the file's syntax now -- failure = build error.
     const { validateTWMSyntax } = await import("../../../../packages/server/tw/routing/twm-loader.ts");
@@ -827,21 +1260,55 @@ export async function buildCommand(): Promise<void> {
     console.log("  \x1b[32mOK\x1b[0m middleware.twm");
   }
 
+  // Cache mode "cdn": hand caching to the CDN and write the purge manifest the
+  // deploy can use to invalidate routes by path or tag.
+  if (cacheMode === "cdn") {
+    const { purgeManifest } = await import("@tw/shared");
+    const routes: Array<{ path: string; tags: string[] }> = [];
+    for (const out of htmlOutputs) { const rp = String(out.route ?? ""); routes.push({ path: rp.startsWith("/") ? rp : "/" + rp, tags: [] }); }
+    const manifest = purgeManifest(routes);
+    if (manifest) {
+      writeFileSync(join(outDir, "cdn-purge.json"), JSON.stringify(manifest, null, 2));
+      console.log("  \x1b[36m\u26A1\x1b[0m cdn: purge manifest for " + routes.length + " route" + (routes.length === 1 ? "" : "s"));
+    }
+  }
+
+  // -- 6b. Islands: hydrate chunks for foreign components ----------------------
+  {
+    const urls = new Set<string>();
+    for (const out of htmlOutputs) {
+      for (const m of out.html.matchAll(/data-tw-src="([^"]+)"/g)) urls.add(m[1]);
+    }
+    if (urls.size > 0) {
+      const tags = [...urls].map((u) => '<script defer src="' + u + '"></script>').join("\n");
+      for (const out of htmlOutputs) {
+        if (out.html.includes("</body>")) out.html = out.html.replace("</body>", tags + "\n</body>");
+        else out.html += tags;
+      }
+      console.log("  \x1b[36m\u26A1\x1b[0m islands: " + urls.size + " hydrate chunk" + (urls.size === 1 ? "" : "s"));
+    }
+  }
+
   // -- 7. CSS assets: route-split, deduped, content-hashed ---------------------
   end("emit");
   begin("css");
   {
     const m = _compilerMod as any;
     const routes: Map<string, string[]> = m.getCapturedCssRoutes ? m.getCapturedCssRoutes() : new Map();
-    if (routes.size > 0 && m.computeCssAssets) {
+    if (cssOpts?.extract !== false && routes.size > 0 && m.computeCssAssets) {
       const chunks = m.getCssChunks();
       const plan = m.computeCssAssets(routes, (id: string) => chunks.get(id));
       // only files some route actually links are written out
       const linkedNames = new Set<string>();
       for (const p of plan.routes.values()) for (const l of p.links) linkedNames.add(l.replace("/assets/", ""));
       if (linkedNames.size > 0) {
-        mkdirSync(join(outDir, "assets"), { recursive: true });
-        for (const f of plan.files) if (linkedNames.has(f.name)) writeFileSync(join(outDir, "assets", f.name), f.css);
+        mkdirSync(join(outDir, assetsDirName()), { recursive: true });
+        const postCss = (body: string): string => {
+          let out = cssOpts?.autoprefixer ? autoprefixCss(body, cssOpts.targets) : body;
+          if (cssOpts?.minify) { try { out = (_compilerMod as any).minifyCSS?.(out) ?? out; } catch { /* keep */ } }
+          return out;
+        };
+        for (const f of plan.files) if (linkedNames.has(f.name)) writeFileSync(join(outDir, assetsDirName(), f.name), postCss(f.css));
       }
       let inlined = 0;
       for (const out of htmlOutputs) {
@@ -852,16 +1319,24 @@ export async function buildCommand(): Promise<void> {
             inject = "  <style>\n" + p.inline + "\n  </style>";
             inlined++;
           } else {
-            inject = p.links.map((l: string) => `  <link rel="stylesheet" href="${l}">`).join("\n");
+            inject = p.links.map((l: string) => `  <link rel="stylesheet" href="${withPublicPath(l)}">`).join("\n");
           }
         }
         if (inject) out.html = out.html.replace("</head>", inject + "\n</head>");
-        writeFileSync(join(out.outputDir, "index.html"), out.html);
+        // transform:html -- the route-split branch writes here; see the else branch.
+        const finalHtml = await runBuildHookValue("transform:html", out.html, { route: out.route });
+        writeFileSync(join(out.outputDir, "index.html"), finalHtml);
       }
       const linked = htmlOutputs.length - inlined;
       console.log("  \x1b[36m\u26a1\x1b[0m styles: " + linkedNames.size + " css file" + (plan.files.length === 1 ? "" : "s") + " (route-split, content-hashed)" + (inlined > 0 ? " + " + inlined + " route" + (inlined === 1 ? "" : "s") + " inlined critical css" : "") + " [" + linked + " page" + (linked === 1 ? "" : "s") + " linked]");
     } else {
-      for (const out of htmlOutputs) writeFileSync(join(out.outputDir, "index.html"), out.html);
+      for (const out of htmlOutputs) {
+        // transform:html -- a plugin may rewrite the final HTML (minify,
+        // inject a tag, add an attribute). Returns the html unchanged when
+        // nothing is registered.
+        const finalHtml = await runBuildHookValue("transform:html", out.html, { route: out.route });
+        writeFileSync(join(out.outputDir, "index.html"), finalHtml);
+      }
     }
     m.clearCssCapture?.();
   }
@@ -876,15 +1351,79 @@ const runtimeSrc = _bundleDir
   ? resolve(_bundleDir, "hydration-runtime.js")
   : resolve(_srcDir, "../../../..", "packages/runtime/tw/client/hydration-runtime.js");
     if (existsSync(runtimeSrc)) {
-      copyFileSync(runtimeSrc, join(outDir, "__tw_runtime.js"));
-      console.log("  \x1b[36m\u26A1\x1b[0m hydration runtime: .tw/__tw_runtime.js");
+      // The runtime ships on every page that needs the client, so its comments
+      // and whitespace are pure payload. Minify it the same way app chunks are
+      // minified; fall back to the source verbatim if esbuild is unavailable.
+      const raw = readFileSync(runtimeSrc, "utf-8");
+      let code = raw;
+      try {
+        const cb: any = await import("./client-bundle.ts");
+        code = cb.minifyJsSource?.(rootDir, raw) ?? raw;
+      } catch { /* keep the unminified source */ }
+      writeFileSync(join(outDir, "__tw_runtime.js"), code);
+      const saved = raw.length - code.length;
+      console.log("  \x1b[36m\u26A1\x1b[0m hydration runtime: .tw/__tw_runtime.js"
+        + (saved > 0 ? " (" + (saved / 1024).toFixed(1) + " KB smaller)" : ""));
     }
   }
 
+  // transform:css / transform:js / optimize:asset -- a post-pass over the
+  // written output, so a plugin sees every emitted file (route-split css,
+  // client chunks, the hydration runtime, and everything from public/).
+  await transformEmittedFiles(outDir, pluginManager);
+
   console.log("\n  \x1b[32mBuild complete!\x1b[0m");
+  // The build is written -- let plugins post-process it (write an index,
+  // copy a file, report). A throw here is isolated by the loader.
+  await runBuildHook("after:build", { rootDir, outDir, pages: pageFiles });
   console.log("  Pages: " + pageCount + " compiled" + (requestRenderedCount > 0 ? " (+" + requestRenderedCount + " rendered at request time)" : ""));
   if (pageCount === 0) console.warn("  [!] No static pages were compiled -- every page is SSR/API. Static hosts (Vercel/Cloudflare Pages output) will serve an empty site. Use `render static` or check your render modes.");
   console.log("  APIs:  " + apiCount + " routes");
+  if (buildOpts?.incremental) {
+    try { writeFileSync(join(outDir, ".build-cache.json"), JSON.stringify(incNext)); } catch { /* best effort */ }
+    if (skippedPages > 0) console.log("  \x1b[36m~\x1b[0m incremental: " + skippedPages + " page(s) unchanged, reused");
+  }
+
+  // build.entryPoints -- extra JS entries bundled alongside the pages.
+  if (buildOpts?.entryPoints?.length) {
+    try {
+      const { buildEntryPoint } = await import("./client-bundle");
+      for (const e of buildOpts.entryPoints) {
+        const u = buildEntryPoint(rootDir, e, chunkFlags());
+        if (u) console.log("  \x1b[36m\u26a1\x1b[0m entry: " + e + " -> " + withPublicPath(u));
+        else console.warn("  [!] entry point not found or failed: " + e);
+      }
+    } catch { /* entries are optional */ }
+  }
+
+  // build.metafile / build.bundleAnalysis -- a size manifest of the output.
+  if (buildOpts?.metafile || buildOpts?.bundleAnalysis) {
+    try {
+      const files: { path: string; size: number }[] = [];
+      const walk = (dir: string) => {
+        for (const ent of readdirSync(dir, { withFileTypes: true })) {
+          const fp = join(dir, ent.name);
+          if (ent.isDirectory()) walk(fp);
+          else {
+            const rel = fp.slice(outDir.length + 1).replace(/\\/g, "/");
+            if (rel.startsWith(".")) continue;
+            files.push({ path: rel, size: statSync(fp).size });
+          }
+        }
+      };
+      walk(outDir);
+      files.sort((a, b) => b.size - a.size);
+      const total = files.reduce((n, f) => n + f.size, 0);
+      if (buildOpts.metafile) {
+        writeFileSync(join(outDir, "build-meta.json"), JSON.stringify({ total, files }, null, 2));
+      }
+      if (buildOpts.bundleAnalysis) {
+        console.log("\n  Bundle analysis (largest first):");
+        for (const f of files.slice(0, 10)) console.log("    " + (f.size / 1024).toFixed(1).padStart(8) + " KB  " + f.path);
+        console.log("    " + (total / 1024).toFixed(1).padStart(8) + " KB  TOTAL (" + files.length + " files)");
+      }
+    } catch { /* report is best-effort */ }
+  }
   // ISR manifest (docs/isr.md): serve reads this to route revalidate pages
   // through the render pipeline (MISS/HIT/STALE) instead of static files.
   if (isrRoutes.size > 0) {

@@ -37,7 +37,7 @@
 import type { Program, ASTNode } from "../ast/nodes";
 import type { CodegenContext } from "./types";
 
-// URL-attribute sanitizer (v1.0.7 round 4): `javascript:`/`data:text/html`
+// URL-attribute sanitizer (): `javascript:`/`data:text/html`
 // hrefs must be neutralized on EVERY render path.
 function sanitizeUrlAttr(name: string, value: string): string {
   const URL_ATTRS = new Set(["href", "src", "action", "formaction", "xlink:href", "poster", "background"]);

@@ -1,9 +1,114 @@
-import { parseWithDetails } from "./parser";
-import { transformHoistDirectives, transformMarkVDOM, transformSSRAttributes } from "./transform";
-import { optimize, DEFAULT_OPTS } from "./optimizer";
-import { generate, resetSuspenseCounter } from "./codegen";
+import { parseWithDetails, setParseCacheSize, getParseCacheSize } from "./parser";
+import { transformHoistDirectives, transformMarkVDOM, transformSSRAttributes, transformScopedStyles, programHasScopedStyleBlock, transformInlineComponents } from "./transform";
+import { optimize, DEFAULT_OPTS, minifyJS as minifyJSOut } from "./optimizer";
+import { generate, resetSuspenseCounter, minifyHTML as minifyHTMLOut, minifyCSS as minifyCSSOut, getComponentRegistry, generateSourceMap } from "./codegen";
 import { diagnose } from "./diagnostics";
 import type { Diagnostic } from "./diagnostics/types";
+/**
+ * compiler.incremental / cacheSize: the parser keeps its own cache (keyed on
+ * file + source hash, storing the AST and its diagnostics). This sizes that
+ * cache and lets `incremental: false` -- or `cacheSize: 0` -- bypass it.
+ */
+function parseForCompile(source: string, filePath: string, opts?: CompileOptions): any {
+  const size = opts?.compiler?.cacheSize ?? 256;
+  if (size !== getParseCacheSize()) setParseCacheSize(size);
+  return parseWithDetails(source, {
+    filePath,
+    cache: opts?.incremental !== false && size !== 0,
+  });
+}
+
+/** compiler.sourceMaps: a line-by-line map for the generated output. */
+function sourceMapFor(result: any, filePath: string, source: string, opts?: CompileOptions): any {
+  // compiler.sourceMaps is opt-in: the build does not consume the map, so
+  // generating one by default would be pure per-compile overhead.
+  if (opts?.compiler?.sourceMaps !== true) return undefined;
+  try { return generateSourceMap(result.js || result.html || "", filePath, source); }
+  catch { return undefined; }
+}
+
+/** Options the generator needs from compiler.* / css.* (scoping, prefix). */
+function genOpts(opts?: CompileOptions, scopeId?: string): { scopedStyles?: boolean; scopeId?: string; cssPrefix?: string; cssImportPaths?: string[] } {
+  return {
+    scopedStyles: opts?.compiler?.scopedStyles,
+    scopeId,
+    cssPrefix: opts?.cssPrefix,
+    cssImportPaths: opts?.cssImportPaths,
+  };
+}
+
+/** A stable scope id for a file -- same input, same id, every build. */
+function scopeIdFor(filePath: string): string {
+  let h = 5381;
+  for (let i = 0; i < filePath.length; i++) h = ((h << 5) + h + filePath.charCodeAt(i)) >>> 0;
+  return "s" + h.toString(36);
+}
+
+/**
+ * compiler.scopedStyles: a page that contains a `scoped` style block gets a
+ * scope id and its elements tagged, so the block actually applies. A page with
+ * no scoped block is returned untouched (byte-identical output).
+ */
+function applyScopedStyles(ast: any, opts: CompileOptions | undefined, filePath: string): { ast: any; scopeId?: string } {
+  if (opts?.compiler?.scopedStyles === false) return { ast };
+  if (!programHasScopedStyleBlock(ast)) return { ast };
+  const scopeId = scopeIdFor(filePath);
+  return { ast: transformScopedStyles(ast, scopeId), scopeId };
+}
+
+/**
+ * compiler.* -- apply the fine-grained pass flags to the AST. Shared by the
+ * sync and async compile paths so both honour the same config. An unset flag
+ * keeps the pass at its current behaviour.
+ */
+function applyCompilerPasses(ast: any, opts?: CompileOptions): any {
+  const p: CompilePassOptions = opts?.compiler ?? {};
+  if (opts?.transforms !== false) {
+    if (p.hoistDirectives !== false) ast = transformHoistDirectives(ast);
+    const { program: marked, needsVdom } = transformMarkVDOM(ast);
+    ast = p.ssrAttributes === false ? marked : transformSSRAttributes(marked);
+    if (needsVdom) (ast as any).hasVdom = true;
+  }
+  // compiler.inlineComponents: inline component bodies from the registry so
+  // the optimizer and codegen see one flat tree. Off by default (today).
+  if (p.inlineComponents === true) {
+    try { ast = transformInlineComponents(ast, getComponentRegistry()); } catch { /* leave as-is */ }
+  }
+  if (opts?.optimize !== false) {
+    ast = optimize(ast, {
+      constantFolding: p.foldConstants ?? DEFAULT_OPTS.constantFolding,
+      deadCode: p.deadCode ?? DEFAULT_OPTS.deadCode,
+      treeShaking: p.treeShaking ?? DEFAULT_OPTS.treeShaking,
+      removeEmptyBlocks: p.removeEmptyBlocks ?? DEFAULT_OPTS.removeEmptyBlocks,
+      minifyHTML: DEFAULT_OPTS.minifyHTML,
+      minifyCSS: DEFAULT_OPTS.minifyCSS,
+      minifyJS: DEFAULT_OPTS.minifyJS,
+    });
+  }
+  return ast;
+}
+
+/**
+ * compiler.minifyHTML / minifyCSS / minifyJS -- applied to the emitted output.
+ * HTML and CSS default to on, JS to off. compiler.preserveComments keeps the
+ * comments that HTML minification would otherwise strip.
+ */
+function applyOutputMinify(result: any, opts?: CompileOptions): any {
+  const p: CompilePassOptions = opts?.compiler ?? {};
+  const keep = p.preserveComments === true;
+  if (p.minifyHTML !== false && typeof result.html === "string" && result.html) {
+    // TW's HTML comments are semantic markers (slot boundaries, unresolved
+    // components) -- only whitespace is collapsed, never the comments.
+    try { result.html = minifyHTMLOut(result.html, { removeComments: false }); } catch { /* keep as-is */ }
+  }
+  if (!keep && p.minifyCSS !== false && typeof result.css === "string" && result.css) {
+    try { result.css = minifyCSSOut(result.css); } catch { /* keep as-is */ }
+  }
+  if (!keep && p.minifyJS === true && typeof result.js === "string" && result.js) {
+    try { result.js = minifyJSOut(result.js); } catch { /* keep as-is */ }
+  }
+  return result;
+}
 /**
  * TW Compiler -- Public API
  *
@@ -79,6 +184,49 @@ export interface CompileOptions {
   transforms?: boolean;
   incremental?: boolean;
   stateVars?: Record<string, string>;
+  /**
+   * Fine-grained compiler.* passes from tw.config.ts. Every field is optional;
+   * an unset field keeps the pass at its current behaviour, so a config that
+   * sets nothing compiles exactly as before.
+   */
+  compiler?: CompilePassOptions;
+  /** css.prefix -- prefix for generated module class names. */
+  cssPrefix?: string;
+  /** css.importPaths -- extra dirs to resolve stylesheet imports from. */
+  cssImportPaths?: string[];
+}
+
+export interface CompilePassOptions {
+  /** Gate the directive-hoisting transform. Default: on. */
+  hoistDirectives?: boolean;
+  /** Gate the SSR-attribute transform. Default: on. */
+  ssrAttributes?: boolean;
+  /** Optimizer: fold constant conditions. Default: on. */
+  foldConstants?: boolean;
+  /** Optimizer: drop unreachable branches. Default: on. */
+  deadCode?: boolean;
+  /** Optimizer: drop unused declarations. Default: on. */
+  treeShaking?: boolean;
+  /** Optimizer: drop empty text/block nodes. Default: on. */
+  removeEmptyBlocks?: boolean;
+  /** Scope `.module.tss` / `.module.css` classes. Default: on (today). */
+  scopedStyles?: boolean;
+  /** Inline component bodies into the page AST. Default: off (today). */
+  inlineComponents?: boolean;
+  /** Emit a source map for the generated output. Default: on. */
+  sourceMaps?: boolean;
+  /** Max entries in the parse cache. Default: 256; 0 disables it. */
+  cacheSize?: number;
+  /** Minify the emitted HTML. Default: on. */
+  minifyHTML?: boolean;
+  /** Minify the emitted CSS. Default: on. */
+  minifyCSS?: boolean;
+  /** Minify the emitted JS. Default: off. */
+  minifyJS?: boolean;
+  /** Keep HTML/JS comments through minification. Default: off. */
+  preserveComments?: boolean;
+  /** Treat compiler diagnostics as warnings instead of errors. Default: off. */
+  looseDiagnostics?: boolean;
 }
 
 export interface CompileResult {
@@ -93,6 +241,8 @@ export interface CompileResult {
   js: string;
   hasVdom: boolean;
   hasInteractivity: boolean;
+  /** compiler.sourceMaps -- the generated-output source map, when enabled. */
+  sourceMap?: any;
   diagnostics: Diagnostic[];
   metadata: {
     parseTime: number;
@@ -110,31 +260,19 @@ export async function compile(source: string, opts?: CompileOptions): Promise<Co
 
   // Parse
   const { parseWithDetails } = await import("./parser");
-  const parseResult = parseWithDetails(source, { filePath });
+  const parseResult = parseForCompile(source, filePath, opts);
   let ast = parseResult.program;
   const parseTime = performance.now() - startTime;
 
-  // Transforms
-  if (opts?.transforms !== false) {
-    const { transformHoistDirectives, transformMarkVDOM, transformSSRAttributes } = await import("./transform");
-    ast = transformHoistDirectives(ast);
-    const { program: marked, needsVdom } = transformMarkVDOM(ast);
-    ast = transformSSRAttributes(marked);
-    if (needsVdom) {
-      (ast as any).hasVdom = true;
-    }
-  }
-
-  // Optimize
-  if (opts?.optimize !== false) {
-    const { optimize, DEFAULT_OPTS } = await import("./optimizer");
-    ast = optimize(ast, DEFAULT_OPTS);
-  }
+  // Transforms + optimize: compiler.* passes (shared with compileSync)
+  ast = applyCompilerPasses(ast, opts);
+  const scoped = applyScopedStyles(ast, opts, filePath);
+  ast = scoped.ast;
 
   // Generate
   const codegenStart = performance.now();
   const { generate } = await import("./codegen");
-  const result = generate(ast, opts?.stateVars);
+  const result = applyOutputMinify(generate(ast, opts?.stateVars, genOpts(opts, scoped.scopeId)), opts);
   const codegenTime = performance.now() - codegenStart;
 
   // Diagnose
@@ -158,6 +296,11 @@ export async function compile(source: string, opts?: CompileOptions): Promise<Co
     }
   }
 
+  // compiler.strict === false -> report errors as warnings.
+  if (opts?.compiler?.looseDiagnostics) {
+    diagnostics = diagnostics.map((d) => (d.severity === "error" ? { ...d, severity: "warning" as any } : d));
+  }
+
   const totalTime = performance.now() - startTime;
 
   return {
@@ -170,6 +313,7 @@ export async function compile(source: string, opts?: CompileOptions): Promise<Co
     stateSeed: (result as any).stateSeed ?? {},
     streamedSignals: (result as any).streamedSignals ?? {},
     derivedSpecs: (result as any).derivedSpecs ?? {},
+    ...(() => { const sm = sourceMapFor(result, filePath, source, opts); return sm ? { sourceMap: sm } : {}; })(),
     diagnostics,
     metadata: {
       parseTime,
@@ -193,23 +337,17 @@ export function compileSync(source: string, opts?: CompileOptions): CompileResul
   // Strip a UTF-8 BOM: Windows editors commonly write one, and the lexer
   // would otherwise reject the very first character.
   if (source.charCodeAt(0) === 0xfeff) source = source.slice(1);
-  const parseResult = parseWithDetails(source, { filePath });
+  const parseResult = parseForCompile(source, filePath, opts);
   let ast = parseResult.program;
   const parseTime = performance.now() - startTime;
 
-  if (opts?.transforms !== false) {
-    ast = transformHoistDirectives(ast);
-    const { program: marked, needsVdom } = transformMarkVDOM(ast);
-    ast = transformSSRAttributes(marked);
-    if (needsVdom) (ast as any).hasVdom = true;
-  }
-
-  if (opts?.optimize !== false) {
-    ast = optimize(ast, DEFAULT_OPTS);
-  }
+  // Transforms + optimize: compiler.* passes (shared with compile)
+  ast = applyCompilerPasses(ast, opts);
+  const scoped = applyScopedStyles(ast, opts, filePath);
+  ast = scoped.ast;
 
   const codegenStart = performance.now();
-  const result = generate(ast, opts?.stateVars);
+  const result = applyOutputMinify(generate(ast, opts?.stateVars, genOpts(opts, scoped.scopeId)), opts);
   const codegenTime = performance.now() - codegenStart;
 
   let diagnostics: Diagnostic[] = [];
@@ -232,6 +370,11 @@ export function compileSync(source: string, opts?: CompileOptions): CompileResul
     }
   }
 
+  // compiler.strict === false -> report errors as warnings.
+  if (opts?.compiler?.looseDiagnostics) {
+    diagnostics = diagnostics.map((d) => (d.severity === "error" ? { ...d, severity: "warning" as any } : d));
+  }
+
   const totalTime = performance.now() - startTime;
 
   return {
@@ -244,6 +387,7 @@ export function compileSync(source: string, opts?: CompileOptions): CompileResul
     stateSeed: (result as any).stateSeed ?? {},
     streamedSignals: (result as any).streamedSignals ?? {},
     derivedSpecs: (result as any).derivedSpecs ?? {},
+    ...(() => { const sm = sourceMapFor(result, filePath, source, opts); return sm ? { sourceMap: sm } : {}; })(),
     diagnostics,
     metadata: {
       parseTime,
@@ -270,6 +414,8 @@ export type { ASTNode, ASTNodeType, ArrayExpr, ArrowFnExpr, AssignmentExpr, Asyn
 export { DiskCache, MemoryCache, UnifiedCache, makeConfigKey, makeFileKey, makeKey, makeSourceKey } from "./cache";
 export type { CacheOptions, DiskCacheEntry, MemoryCacheEntry } from "./cache";
 export { BUILTIN_COMPONENT_SPECIFIERS, collectBuiltinImports, generateImageTag, generateRouterLinkTag, generateBuiltinTag, resolveBuiltin, setBuiltinImageConfig, getBuiltinImageConfig } from "./codegen";
+export { detectTailwind, runTailwind } from "./codegen";
+export { registerForeignComponent, resolveForeignComponent, hasForeignComponents, clearForeignComponents, foreignComponentNames, islandWrapper } from "./codegen";
 export { ASTPrinter, CSSExtractor, CodegenOrchestrator, DEFAULT_CODEGEN_OPTIONS, JSBundleBuilder, Pipeline, SourceMapBuilder, SourceMapMerger, StreamingHTMLGenerator, SymbolTable, TemplateBuilder, TransformerPass, TypeChecker, VDOMCodeBuilder, chunksToHTML, createASTPrinter, createPipeline, createSourceMapBuilder, createSourceMapMerger, createSymbolTable, createTransformerPass, createTypeChecker, deepGenerate, extractCSS, generate, generateArrowTemplate, generateBootstrapCode, generateBundle, generateCSSOnly, generateHTML, generateHTMLOnly, beginCssRouteCapture, endCssRouteCapture, isCssCaptureActive, recordCssChunk, getCapturedCssRoutes, getCssChunks, clearCssCapture, hashCss, computeCssAssets, routeToCssName, generateJSOnly, generateNodeVDOM, generatePartials, generateRuntimeCode, generateSourceMap, generateStaticHTML, generateStaticVDOM, generateStreaming, generateTemplateFunction, generateVDOM, generateVDOMCode, generateWithLayout, generateWithLayoutChain, compileTSS, compileSCSS, mergeCSS, minifyCSS, minifyHTML, minifyHTMLWithStats, registerComponentTemplate, clearComponentRegistry, splitCriticalChunks, streamHTML } from "./codegen";
 export type { BundleOptions, CSSExtractionResult, ChunkType, CodegenContext, CodegenMetadata, CodegenMode, CodegenOptions, CodegenResult, DeepCodegenResult, HTMLChunk, HydrationMarker, JSBundle, JSBundleMetadata, MinifyHTMLOptions, MinifyStats, SourceMap, SourceMapEntry, SourceMapMapping, SourceMapOptions } from "./codegen";
 export { BUILTIN_RULES, ERROR_CODES, RuleEngine, RulesEngine, countBySeverity, createDefaultRulesEngine, createDiagnostic, createRulesEngine, diagnose, formatDiagnostic, formatDiagnosticReport, formatDiagnostics, getBuiltinRuleCount, getBuiltinRulesByCategory, getBuiltinRulesBySeverity, getDiagnosticStats } from "./diagnostics";
@@ -285,7 +431,7 @@ export type { BlockReadResult, ClusterType, ErrorStrategy, LexerMode, ModeFrame,
 export { compileAuto, compileChildProcess, compileChildProcessAsync, compileHtml, compileHtmlNative, compileNative, compilePooled, compileWith, destroyPool, detectBackends, findRustBinary, getBackendInfo, getBestBackend, getPool, hasChildProcess, hasNative, loadNative, setBackend, shutdown } from "./native";
 export type { Backend, BridgeResult, HybridCompileResult, NativeCompileResult, NativeModule } from "./native";
 export { optimizeAdvanced } from "./optimizer";
-export { CompilerError, CompilerState, ErrorCollector, ExpressionParser, LayoutRegistry, MEMBER_OPS, PARSER_SYNC_POINTS, PRECEDENCE, ParserRecovery, PropParser, SpeculativeParser, TokenCursor, attemptRecovery, clearParseCache, continueAfterError, createErrorNode, createMissingNode, detectCommonError, extractSlots, fillSlots, findSyncPoint, generateJSDoc, getNodeType, hasHigherPrec, invalidateCache, isArithmeticOp, isAssignmentOp, isBitwiseOp, isComparisonOp, isDirectiveKeyword, isLogicalOp, isMemberOp, isOptionalChainStart, isSpreadOrRest, isUnaryPrefixOp, isUpdateOp, maskError, parse, parseBatch, parseDirective, parseFile, parseLayout, parseStatements, parseTokens, parseWithDetails, renderLayoutWithSlots, reportInvalidValue, reportMissingToken, reportUnexpectedToken, resolveLayoutChain, shouldContinue, skipToSync, validateAst, validateConstraints, validateDirectives, validateEventHandlers, validateProp, validateRequiredAttrs, validateSlotRefs, validateStateRefs, validateTagNesting } from "./parser";
+export { CompilerError, CompilerState, ErrorCollector, ExpressionParser, LayoutRegistry, MEMBER_OPS, PARSER_SYNC_POINTS, PRECEDENCE, ParserRecovery, PropParser, SpeculativeParser, TokenCursor, attemptRecovery, clearParseCache, continueAfterError, createErrorNode, createMissingNode, detectCommonError, extractSlots, fillSlots, findSyncPoint, generateJSDoc, getNodeType, getParseCacheSize, hasHigherPrec, invalidateCache, isArithmeticOp, isAssignmentOp, isBitwiseOp, isComparisonOp, isDirectiveKeyword, isLogicalOp, isMemberOp, isOptionalChainStart, isSpreadOrRest, isUnaryPrefixOp, isUpdateOp, maskError, parse, parseBatch, parseDirective, parseFile, parseLayout, parseStatements, parseTokens, parseWithDetails, renderLayoutWithSlots, reportInvalidValue, reportMissingToken, reportUnexpectedToken, resolveLayoutChain, shouldContinue, setParseCacheSize, skipToSync, validateAst, validateConstraints, validateDirectives, validateEventHandlers, validateProp, validateRequiredAttrs, validateSlotRefs, validateStateRefs, validateTagNesting } from "./parser";
 export type { Associativity, CompilerStateSnapshot, LayoutChain, LayoutDef, ParseOptions, ParseResult, ParserCheckpoint, PropConstraints, PropDef, PropType, PropsBlock, RecoveryAction, SlotContent, SlotDef, StatementParserOptions, ValidationError, ValidationOptions } from "./parser";
 export { ANY, BIGINT, BOOLEAN, BUILTIN_TYPES, NEVER, NULL, NUMBER, OBJECT, STRING, SYMBOL, UNDEFINED, UNKNOWN, VOID, addBinding, analyzeDefiniteAssignment, arrayType, booleanLiteral, buildScopeTree, buildSymbolTable, check, conditionalType, createGlobalScope, createInferenceContext, createModuleScope, createScope, createTypeMismatchError, findCapturedBindings, findShadowedBindings, findTDZViolations, findUnusedBindings, functionType, genericType, getAllBindings, getBindingsInScope, getCommonSupertype, getEnclosingFunctionScope, getEnclosingLoopScope, getExportedBindings, getImportedBindings, getPropertyType, getScopeChain, getTruthiness, hasProperty, inferArrayType, inferFromValue, inferLiteralType, inferNode, inferNodeType, inferProgram, inferValueType, intersectionType, isAny, isArray, isAssignable, isAssignableTo, isBoolean, isConditional, isFunction, isIntersection, isMapped, isNever, isNull, isNumber, isNumericLiteral, isObject, isPrimitive, isReference, isString, isStringLiteralValue, isTemplate, isTuple, isUndefined, isUnion, isUnknown, isVoid, literalType, lookup, lookupInScope, lookupIncludingGlobals, mappedType, narrowType, numberLiteral, objectType, parseType, referenceType, resolveConditional, resolveReferences, scopeToString, stringLiteral, substituteTypeParams, templateType, tupleType, typeEquals, typeToString, unify, unifyTypes, unionType, validate, widenType } from "./semantic";
 export type { Binding, BindingKind, CheckResult, FunctionSig, InferenceContext, InferenceDiagnostic, NarrowCondition, ParamSig, PropertySig, Reference, ResolutionResult, ResolvedReference, Scope, ScopeKind, SemanticError, SymbolEntry, SymbolKind, TWType, TWTypeNode, TemplatePart, TypeConstraint, TypeKind, TypeParam } from "./semantic";
@@ -298,3 +444,4 @@ export { tokenizeArray as tokenize } from "./lexer";
 
 export { escapeHTML } from "./utils/string/escape";
 export { camelCase, kebabCase } from "./utils/string/case";
+export { RENDER_MODE_NAMES, RENDER_MODE_ALIASES, VALID_RENDER_MODES, resolveRenderMode } from "@tw/shared";

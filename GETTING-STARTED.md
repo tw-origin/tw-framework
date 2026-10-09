@@ -205,7 +205,7 @@ my-app/
     "ship": "tw ship"
   },
   "dependencies": {
-    "tw-framework": "^1.0.0"
+    "tw-framework": "^2.0.0"
   }
 }
 ```
@@ -274,10 +274,24 @@ Open any `.tw` file in the Git host's web editor, edit, commit. The platform reb
 
 ---
 
+## Checking Your Setup
+
+Any time you are unsure what your project is actually using, run:
+
+```bash
+tw doctor
+```
+
+It lists the active option in every subsystem (signals transport, CSS
+engine, render engine, runtime, cache, hydration…), whether each one is
+available in your project, and any combination that cannot work — each with
+a fix. Add `--json` for a machine-readable report. See
+[Strategies](./docs/strategies.md) for the full list of options.
+
 ## Where to Go Next
 
 - [Setup Guide](docs/setup-guide.md) — full walkthrough, editors, troubleshooting
 - [Commands Reference](docs/commands-reference.md) — every command and flag
 - [No-Terminal Guide](docs/no-terminal-guide.md) — the no-terminal path in depth
-- [Framework Overview](docs/framework-overview.md) — the full documentation index (177 documents)
+- [Framework Overview](docs/framework-overview.md) — the full documentation index (187 documents)
 - [Deployment Guides](docs/guide-vercel.md) — one guide per platform

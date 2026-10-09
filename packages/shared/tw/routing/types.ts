@@ -123,6 +123,14 @@ export interface RenderPipelineOptions {
   cacheTTL?: number;
   /** Inject dev-only HMR client script. */
   dev?: boolean;
+  /**
+   * Hydration strategy (strategies.hydration.mode):
+   *   "auto"    -> decide per page from its markers (default)
+   *   "full"    -> always hydrate interactive pages
+   *   "islands" -> hydrate only pages with explicit island markers
+   *   "none"    -> never ship client JS
+   */
+  hydrationMode?: "auto" | "full" | "islands" | "none";
 }
 
 /** Internal compiled file cache entry. */

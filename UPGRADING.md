@@ -11,6 +11,55 @@ step in your migration. File it.
 
 ---
 
+## 1.0.9 -> 2.0.0 (the strategy layer)
+
+### The golden rule still holds
+
+Every 2.0.0 feature is **opt-in**. Existing projects build and run
+byte-for-byte as before; nothing in your markup, config or commands has to
+change. If an upgrade forces a change, that is a bug — file it.
+
+### What was added
+
+1. **Strategies** (`strategies` in `tw.config.ts`). Each subsystem now ships
+   *all* of its options instead of one: signals transport
+   (`sse` | `ws` | `long-poll`), CSS engine (`tss` | `tailwind` | `css` |
+   `scss`), render engine (`tw-vdom` | `react` | `preact` | `none`), server
+   runtime, API runtime, state model, data layer, cache mode, package
+   manager, hydration mode. Omitted fields keep the previous behaviour, so
+   the defaults are exactly what 1.0.9 did. See `docs/strategies.md`.
+2. **Two more signal transports.** SSE stays the default; WebSocket
+   (`--signals=ws`) and long-poll (`--signals=long-poll`) carry the same
+   frame protocol, so app code never changes. See
+   `docs/signal-streaming.md`.
+3. **`tw doctor`.** Reports the active option in every subsystem, whether
+   the selected option is available here, and any conflicting combination —
+   with a fix for each. `tw doctor --json` is the CI form; exit codes are
+   `0` ok, `1` invalid value, `2` unsupported combination, `3` option
+   unavailable.
+4. **Cross-field validation.** A combination that cannot work (WebSocket on
+   a runtime with no WebSocket server, ISR on a runtime with no writable
+   cache, `hydration.mode=none` next to a client-side state model) is now a
+   config error at load, with the fix in the message.
+5. **Four new diagnostics** — `TW094`–`TW097` (state literals, for-loop
+   iterables, unknown state variables, `while` with a comparison). See
+   `docs/error-reference.md`.
+
+### What you must do
+
+Nothing. If you want any of the new options, set it in `strategies` or pass
+the matching flag; otherwise keep building as you always have.
+
+### How to verify
+
+```bash
+tw doctor          # shows every option, what changed, and any conflict
+tw build           # unchanged output for an unchanged project
+tw test            # your suite, green
+```
+
+---
+
 ## 1.0.5 -> 1.0.6 (the explicit cache layer)
 
 ### What was added

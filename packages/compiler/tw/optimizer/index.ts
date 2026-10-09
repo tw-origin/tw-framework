@@ -14,6 +14,7 @@ export interface OptimizeOptions {
   constantFolding: boolean;
   deadCode: boolean;
   treeShaking: boolean;
+  removeEmptyBlocks: boolean;
   minifyHTML: boolean;
   minifyCSS: boolean;
   minifyJS: boolean;
@@ -23,6 +24,7 @@ export const DEFAULT_OPTS: OptimizeOptions = {
   constantFolding: true,
   deadCode: true,
   treeShaking: true,
+  removeEmptyBlocks: true,
   minifyHTML: true,
   minifyCSS: true,
   minifyJS: false,
@@ -36,7 +38,7 @@ export function optimize(program: Program, opts: OptimizeOptions = DEFAULT_OPTS)
   }
 
   if (opts.deadCode) {
-    result = removeDeadCode(result);
+    result = removeDeadCode(result, opts);
   }
 
   if (opts.treeShaking) {
@@ -118,7 +120,7 @@ function foldConstants(program: Program): Program {
 
 // --- Dead Code Removal ---------------------------------------------------------
 
-function removeDeadCode(program: Program): Program {
+function removeDeadCode(program: Program, opts: OptimizeOptions = DEFAULT_OPTS): Program {
   const cleaned = deepClone(program) as Program;
 
   function visit(node: any): any {
@@ -152,8 +154,8 @@ function removeDeadCode(program: Program): Program {
       if (!node.content || node.content.trim().length === 0) return null;
     }
 
-    // Remove empty text nodes
-    if (node.type === "Text") {
+    // Remove empty text nodes -- gated by compiler.removeEmptyBlocks.
+    if (opts.removeEmptyBlocks && node.type === "Text") {
       if (!node.value || node.value.trim().length === 0) return null;
     }
 

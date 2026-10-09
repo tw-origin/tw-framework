@@ -103,16 +103,17 @@ export async function createCommand(): Promise<void> {
   if (!skipInstall) {
     console.log("\n  Installing packages. This might take a couple of minutes.\n");
     try {
-      const { spawnSync } = await import("node:child_process");
-      const npm = spawnSync("npm", ["install", "--no-audit", "--no-fund"], {
-        cwd: targetDir,
-        stdio: "inherit",
-      });
-      if (npm.status !== 0) {
-        console.log("\n  Install skipped -- run `npm install` inside the project.");
+      // Use the project's own package manager (a fresh scaffold has no
+      // lockfile, so detection falls back to npm unless the template wrote a
+      // packageManager field).
+      const { resolvePackageManager, runInstall, commandLine, installAllArgs } = await import("@tw/shared");
+      const manager = resolvePackageManager(targetDir).manager;
+      const ok = runInstall(targetDir, manager, [], { stdio: "inherit" });
+      if (!ok) {
+        console.log("\n  Install skipped -- run `" + commandLine(installAllArgs(manager)) + "` inside the project.");
       }
     } catch {
-      console.log("  npm not found -- run `npm install` inside the project.");
+      console.log("  Install skipped -- run `npm install` inside the project.");
     }
   }
 
@@ -143,7 +144,7 @@ async function createPackageJson(dir: string, name: string): Promise<void> {
       ship: "tw ship",
     },
     dependencies: {
-      "tw-framework": "^1.0.0",
+      "tw-framework": "^2.0.0",
     },
     devDependencies: {
       typescript: "^5.4.0",
@@ -156,7 +157,7 @@ async function createPackageJson(dir: string, name: string): Promise<void> {
 }
 
 async function createTwConfig(dir: string, name: string): Promise<void> {
-  const config = `import type { TwConfig } from "tw-framework";
+  const config = `import type { TwConfigInput } from "tw-framework";
 
 export default {
   name: "${name}",
@@ -177,7 +178,7 @@ export default {
   },
 
   server: {
-    port: 8000,
+    port: 3000,
     host: "0.0.0.0",
     compression: "brotli",
   },
@@ -187,11 +188,22 @@ export default {
     autoprefixer: true,
   },
 
-  router: {
-    mode: "filesystem",
-    baseDir: "home",
-    pageExtensions: [".tw", ".twm"],
-    renderModes: ["static", "ssr", "island", "edge"],
+  // Every subsystem offers all of its options; pick one per project.
+  // Omitting this block keeps today's defaults, so nothing changes until
+  // you opt in. Run 'tw doctor' to see the resolved values and warnings.
+  strategies: {
+    signals:   { transport: "sse" },   // sse | ws | long-poll
+    css:       { engine: "tss" },      // tss | tailwind | css | scss
+    render:    { engine: "tw-vdom" },  // tw-vdom | react | preact | none
+    runtime:   { server: "auto" },     // auto | bun | node | deno | edge
+    api:       { runtime: "node" },    // node | edge
+    state:     { model: "signals" },   // signals | hooks | store
+    auth:      { model: "session" },   // session | jwt | oauth
+    data:      { layer: "routes" },    // routes | graphql | trpc
+    cache:     { mode: "isr" },        // isr | swr | none | cdn
+    db:        { adapter: "sql" },     // sql | kv | vector
+    hydration: { mode: "auto" },       // auto | full | islands | none
+    packages:  { manager: "auto" },    // auto | npm | pnpm | yarn | bun
   },
 
   redirects: [],
@@ -225,7 +237,7 @@ dist/
 async function createReadme(dir: string, name: string): Promise<void> {
   const content = `# ${name}
 
-Built with TW Framework 1.0.0.
+Built with TW Framework 2.0.0.
 
 ## Getting Started
 
@@ -258,10 +270,10 @@ ${name}/
 \u2502           \u2514\u2500\u2500 page.tw      # \u2192 /blog/:slug
 \u251c\u2500\u2500 components/         # Reusable components
 \u251c\u2500\u2500 style/              # .tss stylesheets
-\u251c\u2500\u2502 lib/                # Utils and helpers (.ts)
-\u251c\u2500\u2502 public/             # Static assets
-\u251c\u2500\u2502 middleware.twm      # Root middleware
-\u251c\u2500\u2502 tw.config.ts        # Framework config
+\u251c\u2500\u2500 lib/                # Utils and helpers (.ts)
+\u251c\u2500\u2500 public/             # Static assets
+\u251c\u2500\u2500 middleware.twm      # Root middleware
+\u251c\u2500\u2500 tw.config.ts        # Framework config
 \u2514\u2500\u2500 package.json
 \`\`\`
 
@@ -291,7 +303,7 @@ ${name}/
 }
 
 async function createVercelJson(dir: string): Promise<void> {
-  // v1.0.8 round 5 (BUG 39): the old config was a STATIC deployment
+  // The old config was a STATIC deployment
   // (outputDirectory: .tw) while the scaffold app is SSR + API routes --
   // home and /api/* had nothing to serve on Vercel. The scaffold now ships
   // a serverless function that runs the TW server, with every route
@@ -313,7 +325,7 @@ async function createVercelJson(dir: string): Promise<void> {
   const fnDir = join(dir, "api");
   await mkdir(fnDir, { recursive: true });
   await writeFile(join(fnDir, "tw-server.ts"), [
-    "// TW Framework -- Vercel serverless entry (v1.0.8 round 5, BUG 39).",
+    "// TW Framework -- Vercel serverless entry.",
     "// Runs the full TW server (SSR pages + .twm API routes) as a Vercel",
     "// function. vercel.json rewrites every route here.",
     'import { TWServer } from "tw-framework/server";',
@@ -353,6 +365,8 @@ async function createDefaultProject(dir: string, name: string): Promise<void> {
   // home/layout.tw -- root layout: html shell, site nav, footer
   const layoutTw = T(`import "@./style/global.tss"
 import "@./style/site.tss"
+import Header from "@./components/Header.tw"
+import Footer from "@./components/Footer.tw"
 
 html {
   head {
@@ -360,24 +374,10 @@ html {
     meta name "viewport" content "width=device-width, initial-scale=1"
   }
   body {
-    header.sitenav {
-      div.wrap {
-        a.brand { href "/" "${'$'}{name}" }
-        nav.links {
-          a "Home" { href "/" }
-          a "About" { href "/about" }
-          a "Blog" { href "/blog/hello-world" }
-          a "API" { href "/api/hello" }
-        }
-      }
-    }
+    // Components are plain .tw files, imported and used like tags.
+    Header { title "${'$'}{name}" }
     main.site { slot { } }
-    footer.sitefoot {
-      div.wrap {
-        p "Built with TW Framework -- routes from folders, styles from TSS, APIs from route.twm."
-        p.small "home/ is your routing root. Every page.tw is a route; every route.twm is an endpoint."
-      }
-    }
+    Footer { }
   }
 }
 `);
@@ -598,7 +598,7 @@ fn cached get(request) {
 
 header.component {
   div.inner {
-    p.title "TW Starter"
+    p.title "{props.title}"
     nav.row {
       a "Home" { href "/" }
       a "About" { href "/about" }
@@ -721,24 +721,35 @@ a:hover { td underline }
 
   // ---- middleware ----
   const middlewareTwm = T(`// Middleware rules run before routing (docs/middleware.md).
-// This sample blocks known bot user agents everywhere. Guards are
-// fail-closed: a matching request that fails the condition gets the
-// rule's response, and no page code ever runs.
+// This sample rate-limits the API: 60 requests per minute per path. Rules
+// run in order and are fail-closed: a request that matches but fails a
+// condition gets the rule's response, and no page code ever runs.
 //
 // Note: a rule with ONLY match + response (no condition blocks) applies
 // to EVERY matching request -- e.g. a site-wide maintenance page. tw serve
 // lists each rule at startup and flags those unconditional ones.
 
-rule "block bots" {
-    match "/**"
-    user_agent {
-        block ["curl/", "wget/", "scrapy"]
+rule "api rate limit" {
+    match "/api/**"
+    rate_limit {
+        requests 60
+        window 60
+        identity "path"
     }
     response {
-        status 403
-        html "<h1>403 -- bots</h1>"
+        status 429
+        json { error "Too many requests" }
     }
 }
+
+// To block a known bad crawler, uncomment and adjust -- note that blocking
+// "curl/" here would also block your own terminal tests:
+//
+// rule "block bots" {
+//     match "/**"
+//     user_agent { block ["scrapy", "semrushbot"] }
+//     response { status 403 html "<h1>403</h1>" }
+// }
 `);
   await writeFile(join(dir, "middleware.twm"), middlewareTwm);
   console.log("  \u2713 middleware.twm (bot-guard rule)");
@@ -805,16 +816,30 @@ export function findPost(slug: string): Post | null {
 
   // ---- tests ----
   const apiTest = T(`import { test, expect } from "bun:test"
+import { slugify, truncate, formatDate } from "../lib/utils.ts"
+import { POSTS, findPost } from "../lib/posts.ts"
 
-// The scaffold ships runnable tests -- bun test from the project root.
-// Replace these with your app's real expectations.
+// Real tests for the code this scaffold ships -- run them with \`bun test\`.
+// Add your own below; each one is a template for testing part of your app.
 
-test("two plus two", () => {
-  expect(2 + 2).toBe(4)
+test("slugify makes URL-safe slugs", () => {
+  expect(slugify("Hello World")).toBe("hello-world")
 })
 
-test("sanity: booleans behave", () => {
-  expect(true).not.toBe(false)
+test("truncate keeps short text and clips long text", () => {
+  expect(truncate("short", 10)).toBe("short")
+  expect(truncate("a much longer string", 10)).toHaveLength(10)
+})
+
+test("formatDate returns YYYY-MM-DD", () => {
+  expect(formatDate(new Date("2026-01-02T03:04:05Z"))).toBe("2026-01-02")
+})
+
+test("every shipped post is findable by its slug", () => {
+  for (const post of POSTS) {
+    expect(findPost(post.slug)?.title).toBe(post.title)
+  }
+  expect(findPost("nope")).toBeNull()
 })
 `);
   await writeFile(join(dir, "tests", "api.test.ts"), apiTest);

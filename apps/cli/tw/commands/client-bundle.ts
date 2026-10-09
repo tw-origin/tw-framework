@@ -93,8 +93,20 @@ function findEsbuildBin(rootDir: string): string | null {
  * Relative imports must be .tw/.tss (components/styles); lib/, @tw/ and
  * relative .js/.ts modules belong to the server graph only.
  */
-/** Builtin component imports — handled by the compiler, never bundled. */
-export const BUILTIN_CLIENT_OK_SPECIFIERS = ["@tw/optImage", "@tw/RouterLink"];
+/**
+ * Builtin component imports — handled by the compiler, never bundled.
+ * Derived from the compiler's own specifier list so a new builtin is exempt
+ * here automatically (this list had already drifted once).
+ */
+function builtinClientOkSpecifiers(): string[] {
+  try {
+    const mod: any = require("@tw/compiler");
+    const list = mod?.BUILTIN_COMPONENT_SPECIFIERS;
+    if (Array.isArray(list) && list.length > 0) return list;
+  } catch { /* fall through */ }
+  return ["@tw/optImage", "@tw/RouterLink", "@tw/Head", "@tw/Script"];
+}
+export const BUILTIN_CLIENT_OK_SPECIFIERS = builtinClientOkSpecifiers();
 /**
  * Framework client utilities — bundled by buildClientChunk into a shared,
  * content-hashed chunk (esbuild tree-shakes to just the imported symbols).
@@ -117,7 +129,9 @@ export function findServerOnlyViolations(src: string): string[] {
       out.push(spec); continue;
     }
     if (spec.startsWith("@./") || spec.startsWith("./") || spec.startsWith("../")) {
-      if (/\.(tw|tss)$/.test(spec)) continue; // TW components/styles are fine
+      // TW components/styles, and React/Preact .tsx/.jsx components (which
+      // run in the browser as islands), are all fine in the client graph.
+      if (/\.(tw|tss|tsx|jsx)$/.test(spec)) continue;
       out.push(spec); continue;
     }
     if (spec.startsWith("lib/")) out.push(spec);
@@ -134,6 +148,14 @@ function contentHash(s: string): string {
 
 const chunkCache = new Map<string, string>(); // import line -> chunk URL
 
+/** build.outputDir -- where chunks land. `.tw` by default. */
+let OUT_ROOT = ".tw";
+export function setClientOutputRoot(dir: string): void {
+  if (dir && typeof dir === "string") OUT_ROOT = dir;
+}
+export function getClientOutputRoot(): string {
+  return OUT_ROOT;
+}
 /**
  * Absolute path of the vendored @tw/runtime client bundle shipped in the
  * CLI's dist/. Used to rewrite `from "@tw/runtime"` in chunk entries so
@@ -165,12 +187,108 @@ function rewriteRuntimeSpecifier(importLine: string): string {
  * browser cache is shared across pages. The chunk registers its exports on
  * the global `__twClient` namespace. Returns the script URL, "" on failure.
  */
-export function buildClientChunk(rootDir: string, importLine: string, minify: boolean): string {
-  if (!importLine) return "";
-  const cached = chunkCache.get(importLine);
-  if (cached && existsSync(join(rootDir, ".tw", cached))) return cached;
+/**
+ * Minify a standalone JS source string with the same esbuild the chunks use.
+ *
+ * Returns the input unchanged when esbuild is unavailable or fails -- a build
+ * must never break because an optional optimiser is missing.
+ */
+export function minifyJsSource(rootDir: string, source: string): string {
+  const bin = findEsbuildBin(rootDir);
+  const stamp = contentHash(source);
+  const inPath = join(rootDir, OUT_ROOT, ".min-in-" + stamp + ".js");
+  const outPath = join(rootDir, OUT_ROOT, ".min-out-" + stamp + ".js");
+  try {
+    mkdirSync(join(rootDir, OUT_ROOT), { recursive: true });
+    writeFileSync(inPath, source);
+    const r = spawnSync(bin, [inPath, "--minify", "--target=es2019", "--format=iife", "--outfile=" + outPath], { cwd: rootDir });
+    if (r.status !== 0) return source;
+    const out = readFileSync(outPath, "utf-8");
+    return out || source;
+  } catch {
+    return source;
+  } finally {
+    try { unlinkSync(inPath); } catch { /* keep */ }
+    try { unlinkSync(outPath); } catch { /* keep */ }
+  }
+}
 
-  const jsDir = join(rootDir, ".tw", "js");
+/** build.* -- the esbuild flags a client chunk honours. */
+export interface BuildChunkFlags {
+  minify?: boolean;
+  sourcemap?: boolean | "external" | "inline";
+  format?: "esm" | "cjs" | "iife";
+  treeshake?: boolean;
+  define?: Record<string, string>;
+  externals?: string[];
+  inject?: string[];
+  chunkNames?: string;
+  assetNames?: string;
+  loaders?: Record<string, string>;
+  /** esbuild code splitting (requires format=esm). */
+  splitting?: boolean;
+}
+
+/**
+ * build.entryPoints -- bundle one extra JS entry (a path relative to the
+ * project root) into `<outDir>/js/<name>-<hash>.js`. Returns the URL, or "".
+ */
+export function buildEntryPoint(rootDir: string, entry: string, flags: BuildChunkFlags = {}): string {
+  const abs = join(rootDir, entry);
+  if (!existsSync(abs)) return "";
+  const jsDir = join(rootDir, OUT_ROOT, "js");
+  mkdirSync(jsDir, { recursive: true });
+  const stamp = contentHash(entry);
+  const tmpOut = join(rootDir, OUT_ROOT, ".entry-tmp-" + stamp + ".js");
+  const bin = findEsbuildBin(rootDir);
+  const r = spawnSync(bin, [abs, ...chunkEsbuildArgs({ ...flags, format: flags.format ?? "esm" }, tmpOut)], { cwd: rootDir });
+  if (r.status !== 0) {
+    const errText = (r.stderr && r.stderr.toString ? r.stderr.toString() : "") || String(r.error || "unknown");
+    console.error("  [tw] entry point failed (" + entry + "): " + errText.split("\n")[0]);
+    try { unlinkSync(tmpOut); } catch { /* keep */ }
+    return "";
+  }
+  const code = readFileSync(tmpOut, "utf-8");
+  const url = "js/e-" + contentHash(code) + ".js";
+  writeFileSync(join(rootDir, OUT_ROOT, url), code);
+  try { unlinkSync(tmpOut); } catch { /* keep */ }
+  return url;
+}
+
+/** build.* -> the esbuild argv for one chunk. */
+export function chunkEsbuildArgs(f: BuildChunkFlags, outFile: string): string[] {
+  const args = ["--bundle", "--format=" + (f.format ?? "iife"), "--target=es2019", "--outfile=" + outFile];
+  if (f.minify) args.push("--minify");
+  if (f.sourcemap === "external") args.push("--sourcemap=external");
+  else if (f.sourcemap === "inline") args.push("--sourcemap=inline");
+  else if (f.sourcemap) args.push("--sourcemap");
+  if (f.treeshake === false) args.push("--tree-shaking=false");
+  for (const [k, v] of Object.entries(f.define ?? {})) args.push("--define:" + k + "=" + v);
+  for (const e of f.externals ?? []) args.push("--external:" + e);
+  for (const i of f.inject ?? []) args.push("--inject:" + i);
+  if (f.chunkNames) args.push("--chunk-names=" + f.chunkNames);
+  if (f.assetNames) args.push("--asset-names=" + f.assetNames);
+  for (const [ext, type] of Object.entries(f.loaders ?? {})) args.push("--loader:" + ext + "=" + type);
+  // esbuild only splits ESM output; ignore it for iife/cjs.
+  if (f.splitting && (f.format ?? "iife") === "esm") args.push("--splitting");
+  return args;
+}
+
+export function buildClientChunk(
+  rootDir: string,
+  importLine: string,
+  flagsOrMinify: BuildChunkFlags | boolean = true,
+  sourcemap = false,
+): string {
+  if (!importLine) return "";
+  const flags: BuildChunkFlags = typeof flagsOrMinify === "boolean"
+    ? { minify: flagsOrMinify, sourcemap }
+    : flagsOrMinify;
+  const key = importLine + "|" + JSON.stringify(flags);
+  const cached = chunkCache.get(key);
+  if (cached && existsSync(join(rootDir, OUT_ROOT, cached))) return cached;
+
+  const jsDir = join(rootDir, OUT_ROOT, "js");
   mkdirSync(jsDir, { recursive: true });
 
   const names = importNames(importLine);
@@ -181,13 +299,12 @@ export function buildClientChunk(rootDir: string, importLine: string, minify: bo
     ...names.map(n => "globalThis.__twClient." + n + " = " + n + ";"),
   ].join("\n");
   const stamp = contentHash(importLine);
-  const entryPath = join(rootDir, ".tw", ".chunk-entry-" + stamp + ".js");
-  const tmpOut = join(rootDir, ".tw", ".chunk-tmp-" + stamp + ".js");
+  const entryPath = join(rootDir, OUT_ROOT, ".chunk-entry-" + stamp + ".js");
+  const tmpOut = join(rootDir, OUT_ROOT, ".chunk-tmp-" + stamp + ".js");
   writeFileSync(entryPath, entry);
 
   const bin = findEsbuildBin(rootDir);
-  const args = [entryPath, "--bundle", "--format=iife", "--target=es2019", "--outfile=" + tmpOut];
-  if (minify) args.push("--minify");
+  const args = [entryPath, ...chunkEsbuildArgs(flags, tmpOut)];
   const r = spawnSync(bin, args, { cwd: rootDir });
   try { unlinkSync(entryPath); } catch { /* keep */ }
   if (r.status !== 0) {
@@ -199,9 +316,9 @@ export function buildClientChunk(rootDir: string, importLine: string, minify: bo
 
   const code = readFileSync(tmpOut, "utf-8");
   const url = "js/c-" + contentHash(code) + ".js";
-  writeFileSync(join(rootDir, ".tw", url), code);
+  writeFileSync(join(rootDir, OUT_ROOT, url), code);
   try { unlinkSync(tmpOut); } catch { /* keep */ }
-  chunkCache.set(importLine, url);
+  chunkCache.set(key, url);
   return url;
 }
 
@@ -215,10 +332,10 @@ export function buildPageScope(rootDir: string, ownImportLines: string[]): strin
   if (!ownImportLines || ownImportLines.length === 0) return "";
   const names = ownImportLines.flatMap(l => importNames(l));
   if (names.length === 0) return "";
-  mkdirSync(join(rootDir, ".tw", "js"), { recursive: true });
+  mkdirSync(join(rootDir, OUT_ROOT, "js"), { recursive: true });
   const body = names.map(n => "p." + n + " = g.__twClient." + n + ";").join("\n");
   const code = "(function(g){g.__twClient=g.__twClient||{};var p={};\n" + body + "\ng.__twClient.$page=p;})(globalThis);\n";
   const url = "js/p-" + contentHash(names.slice().sort().join("|")) + ".js";
-  writeFileSync(join(rootDir, ".tw", url), code);
+  writeFileSync(join(rootDir, OUT_ROOT, url), code);
   return url;
 }

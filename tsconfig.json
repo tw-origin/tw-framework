@@ -71,6 +71,8 @@
     "node_modules",
     "dist",
     "tests",
-    "examples"
+    "examples",
+    "packages/adapters/tw/deno",
+    "apps/cli/dist"
   ]
 }

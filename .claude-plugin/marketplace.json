@@ -6,7 +6,7 @@
       "name": "tw-dev",
       "source": "./plugin.json",
       "description": "Dev commands for the TW Framework monorepo",
-      "version": "1.0.6"
+      "version": "2.0.0"
     }
   ]
 }

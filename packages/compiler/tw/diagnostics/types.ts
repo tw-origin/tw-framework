@@ -50,7 +50,7 @@ export type ErrorCode =
   | "TW080" | "TW081" | "TW082" | "TW083" | "TW084"
   | "TW085" | "TW086" | "TW087" | "TW088" | "TW089"
   // Cache (TW090-TW093, docs/cache-tags.md)
-  // Silent-garbage guards (TW094-TW096, v1.0.8 round 3)
+  // Silent-garbage guards (TW094-TW096,)
   | "TW090" | "TW091" | "TW092" | "TW093"
   | "TW094" | "TW095" | "TW096" | "TW097";
 

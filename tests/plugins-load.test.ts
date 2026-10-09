@@ -20,14 +20,14 @@ describe("plugin failure isolation", () => {
     const pm = new PluginManager();
     const good: TWPlugin = {
       name: "good",
-      version: "1.0.0",
+      version: "2.0.0",
       setup(api) {
         api.on("onRequest", () => { /* healthy */ });
       },
     };
     const bad: TWPlugin = {
       name: "bad",
-      version: "1.0.0",
+      version: "2.0.0",
       setup(api) {
         api.on("onRequest", () => { throw new Error("boom"); });
       },
@@ -44,8 +44,8 @@ describe("plugin failure isolation", () => {
 
   test("list() returns registered plugins", () => {
     const pm = new PluginManager();
-    pm.register({ name: "a", version: "1.0.0" });
-    pm.register({ name: "b", version: "1.0.0" });
+    pm.register({ name: "a", version: "2.0.0" });
+    pm.register({ name: "b", version: "2.0.0" });
     expect(pm.list().map((p) => p.name).sort()).toEqual(["a", "b"]);
   });
 });
@@ -57,11 +57,11 @@ describe("loadPlugins", () => {
     mkdirSync(pluginsDir);
     writeFileSync(join(pluginsDir, "alpha.ts"),
       `import type { TWPlugin } from "@tw/plugins";
-       const p: TWPlugin = { name: "alpha", version: "1.0.0", setup() {} };
+       const p: TWPlugin = { name: "alpha", version: "2.0.0", setup() {} };
        export default p;`);
     writeFileSync(join(pluginsDir, "beta.ts"),
       `import type { TWPlugin } from "@tw/plugins";
-       const p: TWPlugin = { name: "beta", version: "1.0.0", setup() {} };
+       const p: TWPlugin = { name: "beta", version: "2.0.0", setup() {} };
        export default p;`);
 
     const pm = await loadPlugins(app, { plugins: ["alpha"] });
@@ -75,11 +75,11 @@ describe("loadPlugins", () => {
     mkdirSync(pluginsDir);
     writeFileSync(join(pluginsDir, "one.ts"),
       `import type { TWPlugin } from "@tw/plugins";
-       const p: TWPlugin = { name: "one", version: "1.0.0", setup() {} };
+       const p: TWPlugin = { name: "one", version: "2.0.0", setup() {} };
        export default p;`);
     writeFileSync(join(pluginsDir, "two.ts"),
       `import type { TWPlugin } from "@tw/plugins";
-       const p: TWPlugin = { name: "two", version: "1.0.0", setup() {} };
+       const p: TWPlugin = { name: "two", version: "2.0.0", setup() {} };
        export default p;`);
 
     const pm = await loadPlugins(app, {});

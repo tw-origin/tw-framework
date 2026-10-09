@@ -4,7 +4,7 @@ A server-rendered analytics dashboard whose stat cards are cached under the `das
 
 This example is part of the TW Framework example matrix -- every app here
 builds with `tw build` and serves with `tw serve`, and CI builds all of
-them on every push. It is the shortest complete demonstration of the v1.0.6 explicit cache layer on a page.
+them on every push. It is the shortest complete demonstration of the explicit cache layer on a page.
 
 ## Quick start
 

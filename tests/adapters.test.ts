@@ -11,10 +11,10 @@ describe("deployment adapters", () => {
     for (const d of dirs) rmSync(d, { recursive: true, force: true });
   });
 
-  test("registry lists all 15 adapters", () => {
+  test("registry lists all 16 adapters", () => {
     const names = listAdapters().map((a) => a.name).sort();
     expect(names).toEqual([
-      "bun", "caddy", "cloudflare", "digitalocean", "docker",
+      "bun", "caddy", "cloudflare", "deno", "digitalocean", "docker",
       "firebase", "fly", "github-pages", "netlify", "nginx",
       "node", "railway", "render", "vercel", "aws",
     ].sort());
@@ -49,6 +49,18 @@ describe("deployment adapters", () => {
     const src = readFileSync(written[0], "utf-8");
     expect(src).toContain("@tw/server");
     expect(src).toContain("server.start()");
+  });
+
+  test("deno adapter writes the Deno Deploy entry", () => {
+    const d = mkdtempSync(join(tmpdir(), "tw-deno-"));
+    dirs.push(d);
+    const written = generateAdapter("deno", d).map((p) => p.split("/").pop()).sort();
+    expect(written).toEqual(["deno.json", "server.ts"]);
+    const server = readFileSync(join(d, "server.ts"), "utf-8");
+    expect(server).toContain("Deno.serve");
+    expect(server).toContain("Cache-Control");
+    const conf = JSON.parse(readFileSync(join(d, "deno.json"), "utf-8"));
+    expect(conf.deploy.include).toContain(".tw");
   });
 
   test("docker adapter writes full + static Dockerfiles, compose, server", () => {

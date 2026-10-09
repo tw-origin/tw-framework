@@ -86,6 +86,66 @@ jobs:
           export NODE_PATH="$PWD/scripts/node_modules"
           node scripts/browser-e2e.mjs
 
+  strategy-matrix:
+    name: Strategy matrix (supported combos)
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: oven-sh/setup-bun@v2
+        with:
+          bun-version: 1.4.2
+
+      - name: Install dependencies
+        run: bun install
+
+      # The matrix lives in code (SUPPORTED_MATRIX in
+      # packages/shared/tw/config/compat.ts). This job proves two things:
+      #   1. every "supported" combination is conflict-free
+      #   2. the real CLI agrees -- `tw doctor` exits 0 for each one
+      # Combinations outside the matrix are allowed (best-effort) but are not
+      # promised, and any *unsupported* pair is a hard error (exit 2).
+      - name: Supported combinations are conflict-free (unit)
+        run: bun test tests/strategy-compat.test.ts
+
+      - name: tw doctor agrees on every supported combo
+        run: |
+          set -e
+          mkdir -p /tmp/tw-matrix && cd /tmp/tw-matrix
+          echo '{"name":"matrix","version":"0.0.0"}' > package.json
+          fail=0
+          check() {
+            echo "--- $*"
+            if ! bun "$GITHUB_WORKSPACE/apps/cli/tw/bin.ts" doctor --json "$@" > /tmp/tw-doctor.json; then
+              echo "tw doctor rejected a supported combo:"; cat /tmp/tw-doctor.json; fail=1
+            fi
+          }
+          check --signals=sse     --css=tss      --render=tw-vdom --runtime=bun  --cache=isr
+          check --signals=ws      --css=tss      --render=tw-vdom --runtime=bun  --cache=isr
+          check --signals=long-poll --css=tss    --render=tw-vdom --runtime=bun  --cache=isr
+          check --signals=sse     --css=scss     --render=tw-vdom --runtime=node --cache=swr
+          check --signals=long-poll --css=css    --render=none    --runtime=edge --cache=cdn --hydration=none
+          check --signals=long-poll --css=tss    --render=tw-vdom --runtime=edge --cache=cdn --api=edge
+          exit $fail
+
+      - name: Unavailable option is reported (exit 3)
+        run: |
+          cd /tmp/tw-matrix
+          set +e
+          bun "$GITHUB_WORKSPACE/apps/cli/tw/bin.ts" doctor --css=tailwind > /dev/null 2>&1
+          code=$?
+          set -e
+          if [ "$code" != "3" ]; then echo "expected exit 3 (tailwindcss not installed), got $code"; exit 1; fi
+
+      - name: Unsupported combination is rejected (exit 2)
+        run: |
+          cd /tmp/tw-matrix
+          set +e
+          bun "$GITHUB_WORKSPACE/apps/cli/tw/bin.ts" doctor --signals=ws --runtime=node > /dev/null 2>&1
+          code=$?
+          set -e
+          if [ "$code" != "2" ]; then echo "expected exit 2, got $code"; exit 1; fi
+
   examples:
     name: All examples build + serve smoke
     runs-on: ubuntu-latest

@@ -8,7 +8,7 @@ describe("Plugin Manager", () => {
     const manager = new PluginManager();
     const plugin: TWPlugin = {
       name: "test-plugin",
-      version: "1.0.0",
+      version: "2.0.0",
     };
     manager.register(plugin);
     expect(manager.size()).toBe(1);
@@ -19,7 +19,7 @@ describe("Plugin Manager", () => {
     const manager = new PluginManager();
     const plugin: TWPlugin = {
       name: "test-plugin",
-      version: "1.0.0",
+      version: "2.0.0",
     };
     manager.register(plugin);
     manager.unregister("test-plugin");
@@ -31,7 +31,7 @@ describe("Plugin Manager", () => {
     let called = false;
     const plugin: TWPlugin = {
       name: "hook-plugin",
-      version: "1.0.0",
+      version: "2.0.0",
       hooks: {
         beforeCompile: () => {
           called = true;
@@ -48,7 +48,7 @@ describe("Plugin Manager", () => {
     let called = false;
     const plugin: TWPlugin = {
       name: "setup-plugin",
-      version: "1.0.0",
+      version: "2.0.0",
       setup(api) {
         api.on("afterCompile", () => {
           called = true;
@@ -64,7 +64,7 @@ describe("Plugin Manager", () => {
     const manager = new PluginManager();
     const plugin: TWPlugin = {
       name: "route-plugin",
-      version: "1.0.0",
+      version: "2.0.0",
       routes: [
         { method: "GET", path: "/api/test", handler: () => "ok" },
         { method: "POST", path: "/api/submit", handler: () => "created" },
@@ -81,7 +81,7 @@ describe("Plugin Manager", () => {
     const mw = async (_ctx: any, next: () => Promise<void>) => { await next(); };
     const plugin: TWPlugin = {
       name: "mw-plugin",
-      version: "1.0.0",
+      version: "2.0.0",
       middleware: [mw],
     };
     manager.register(plugin);
@@ -93,7 +93,7 @@ describe("Plugin Manager", () => {
     const manager = new PluginManager();
     const plugin: TWPlugin = {
       name: "comp-plugin",
-      version: "1.0.0",
+      version: "2.0.0",
       components: { Button: { tag: "button" }, Card: { tag: "div" } },
     };
     manager.register(plugin);
@@ -108,7 +108,7 @@ describe("Plugin Manager", () => {
 
     const plugin: TWPlugin = {
       name: "priority-plugin",
-      version: "1.0.0",
+      version: "2.0.0",
       setup(api) {
         api.on("beforeCompile", () => order.push(2), 20);
         api.on("beforeCompile", () => order.push(1), 10);

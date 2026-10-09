@@ -16,6 +16,8 @@
  * request continues to normal routing).
  */
 
+import { ipAddress } from "@tw/shared";
+
 import { createHmac, timingSafeEqual } from "node:crypto";
 
 // --- Types --------------------------------------------------------------------
@@ -377,7 +379,7 @@ function verifyJwt_hs256(token: string, secret: string): boolean {
 // --- Evaluation ----------------------------------------------------------------------
 
 function matchPath(pattern: string, pathname: string): boolean {
-  // Round 4: normalize -- percent-decode and drop the trailing slash so
+  // normalize -- percent-decode and drop the trailing slash so
   // a rule for "/blog" matches "/blog/" and encoded paths match too.
   const norm = (p: string): string => {
     let x = p;
@@ -408,7 +410,7 @@ function matchPath(pattern: string, pathname: string): boolean {
 function ruleBlocked(rule: MiddlewareRule, request: Request, pathname: string): boolean {
   const headers = request.headers;
 
-  // v1.0.8 round 4 (BUG 29): a rule with ONLY `match` + `response` (no
+  // a rule with ONLY `match` + `response` (no
   // condition sections) used to NEVER fire -- ruleBlocked() had nothing to
   // trip on, so an unconditional exact-path guard was silently inactive.
   // Match alone is a valid condition: the rule's response applies.
@@ -456,7 +458,7 @@ function ruleBlocked(rule: MiddlewareRule, request: Request, pathname: string): 
     const max = rl.requests ?? 60;
     const windowMs = (rl.window ?? 60) * 1000;
     const id = rl.identity === "ip"
-      ? ((headers.get("x-forwarded-for") ?? "").split(",")[0].trim() || "local")
+      ? (ipAddress(headers) || "local")
       : pathname;
     const key = `${rule.name}:${id}`;
     const now = Date.now();

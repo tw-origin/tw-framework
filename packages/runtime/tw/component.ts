@@ -18,6 +18,7 @@ import type {
   VNode,
   VNodeChild,
 } from './render';
+import { runWithHooks } from './hooks';
 import { vnodeToString } from './render';
 
 // ---------------------------------------------------------------------------
@@ -37,6 +38,12 @@ export abstract class TWComponent<
 > {
   readonly props: P;
   state: S;
+  /** A client renderer (or test) can subscribe to re-renders caused by hooks. */
+  onUpdate?: (tree: VNode | VNodeChild[] | null) => void;
+  /** Set during a `setup()` render; re-run when a hook's state changes. */
+  _renderFn?: () => VNode | VNodeChild[] | null;
+  /** Called by the hooks runtime when a hook changes this component's state. */
+  __twRerender?: () => void;
   /** Bound during render so hooks (`useStore`, etc.) can locate the instance. */
   _internals: {
     mounted: boolean;
@@ -61,6 +68,7 @@ export abstract class TWComponent<
     const update =
       typeof partial === 'function' ? partial(this.state) : partial;
     this.state = { ...this.state, ...update };
+    this.__twRerender?.();
   }
 
   componentDidMount?(): void;
@@ -133,18 +141,29 @@ export function defineComponent<P extends DefaultProps = DefaultProps, S extends
       }
 
       render(): VNode | VNodeChild[] | null {
-        if (options.render) {
-          return options.render.call(this);
-        }
-        if (options.setup) {
-          const renderFn = options.setup.call(null, this.props, {
-            emit: () => {},
-            attrs: {},
-            slots: {},
-          });
-          return renderFn();
-        }
-        return null;
+        // Re-render bridge: when a hook (`useState`/`useReducer`) or `setState`
+        // changes state, re-run the render and tell a subscribed renderer.
+        (this as TWComponent<P, S>).__twRerender = () => {
+          const tree = this.render();
+          (this as TWComponent<P, S>).onUpdate?.(tree);
+        };
+        // Hooks in `setup`/`render` are keyed to this instance. Effects do NOT
+        // run here (SSR); a client mount runs them explicitly via runEffects().
+        return runWithHooks(this, () => {
+          if (options.render) {
+            return options.render.call(this);
+          }
+          if (options.setup) {
+            const renderFn = options.setup.call(null, this.props, {
+              emit: () => {},
+              attrs: {},
+              slots: {},
+            });
+            (this as TWComponent<P, S>)._renderFn = renderFn;
+            return renderFn();
+          }
+          return null;
+        }, { effects: false });
       }
 
       componentDidMount(): void {
@@ -157,11 +176,13 @@ export function defineComponent<P extends DefaultProps = DefaultProps, S extends
 
     const instance = new OptionsComponent(props ?? ({} as P));
     const tree = instance.render();
-    if (Array.isArray(tree)) {
-      // Wrap multiple roots in a fragment VNode.
-      return h('fragment', null, ...tree) as VNode;
+    const vnode = Array.isArray(tree) ? (h('fragment', null, ...tree) as VNode) : tree;
+    // A renderer needs the instance that owns this component's hooks (to
+    // subscribe onUpdate, run effects on mount, dispose on unmount).
+    if (vnode && typeof vnode === 'object') {
+      Object.defineProperty(vnode, '__instance', { value: instance, enumerable: false, configurable: true });
     }
-    return tree;
+    return vnode;
   };
 
   // Give the factory a readable name for devtools / debugging.

@@ -133,6 +133,22 @@ export type {
 
 export { AppBuilder, VERSION, createApp, isDevelopment, isProduction, loadConfig } from "./app";
 export { Fragment, createComponent, createRef, defineComponent, h } from "./component";
+export { cache, cached, draftMode, getCache, resetCache, setDraftSecret, verifyDraftCookie } from "./cache";
+export type { CacheEntry, CacheHandle, CachedFn, CachedOptions, CacheSetOptions, CacheStats, DraftMode } from "./cache";
+export { CookieJar, TWRequest, TWResponse, twRequest } from "./wrappers";
+export { canRenderPng, imageResponse, ogTemplate, pngResponse, setPngRenderer, toPng, toSvg, wrapText } from "./og-reexport";
+export type { ImageResponseOptions, OgCard } from "./og-reexport";
+export {
+  badRequest, forbidden, jsonResponse, notFound, permanentRedirect, redirect, unauthorized,
+} from "./response";
+export type { ErrorPageOptions, RedirectOptions, UnauthorizedOptions } from "./response";
+export {
+  after, background, clearDynamicReasons, clearMetrics, clientIp, collectedMetrics,
+  connection, counter, deadline, defer, dynamic, dynamicReasons, env, gauge, geolocation,
+  getDeadline, getEnv, histogram, inCidr, ipAddress, isPrivateIp, metric, normalizeIp,
+  parseDuration, pendingTasks, setMetricSink, setWaitUntilHook, staticRoute, timer, trustProxy, userAgent, waitUntil,
+} from "./request";
+export type { ClientIp, Deadline, DeferredTask, Duration, EnvSchemaResult, EnvType, EnvValues, Geo, MetricPoint, UserAgentInfo } from "./request";
 export { corsMiddleware, corsMiddlewareFactory, createRouter, css, defineAsyncComponent, defineErrorBoundary, defineLayout, defineMiddleware, definePage, definePlugin, defineRoute, defineSuspense, escapeHtml, html, join, json, loggingMiddleware, loggingMiddlewareFactory, memo, normalizePath, parseCookies, rateLimitMiddlewareFactory, serializeCookie, unescapeHtml } from "./helpers";
 export type { SDKRouter } from "./helpers";
 export type { AppConfig, AppMode, AppOptions, BuildContext, BuildStats, BuildTarget, BundleContext, CSPMode, CacheConfig, CacheType, CompileContext, ComponentDefinition, ComponentInstance, ComponentOptions, ComponentSetupContext, ComponentSetupResult, ComputedGetter, CookieOptions, DirectiveBinding, DirectiveHandler, ErrorHandler, ErrorInfo, HookName, I18nConfig, I18nStrategy, LayoutDefinition, LifecycleHook, MethodFn, Middleware, NextFunction, NotFoundHandler, PageDefinition, PluginAPI, PluginContext, PluginDefinition, PluginHooks, PluginLogger, PropDefinition, PropType, PropsDefinition, RenderContext, RequestContext, RouteDefinition, RouteHandler, SecurityConfig, ServeContext, ServerLifecycleContext, SourcemapOption, TWApp, VNode, WatchCallback } from "./types";

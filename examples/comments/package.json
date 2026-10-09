@@ -11,6 +11,6 @@
     "ship": "tw ship"
   },
   "dependencies": {
-    "tw-framework": "^1.0.6"
+    "tw-framework": "^2.0.0"
   }
 }

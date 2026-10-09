@@ -120,7 +120,7 @@ export class CSPBuilder {
       "Content-Security-Policy": this.build(),
       "X-Content-Type-Options": "nosniff",
       "X-Frame-Options": "DENY",
-      // BUG 48: x-xss-protection removed (deprecated, harmful in old browsers)
+      // x-xss-protection removed (deprecated, harmful in old browsers)
       "Referrer-Policy": "strict-origin-when-cross-origin",
       "Permissions-Policy": "geolocation=(), microphone=(), camera=(), payment=(), usb=(), magnetometer=(), gyroscope=(), accelerometer=()",
       "Cross-Origin-Opener-Policy": "same-origin",

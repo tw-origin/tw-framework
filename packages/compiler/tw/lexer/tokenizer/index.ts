@@ -22,6 +22,23 @@ import {
 } from "../char-utils";
 import { type RecoveryStrategy } from "../error-recovery";
 
+// --- ASCII character classes -------------------------------------------------
+// The tokenizer's hot loops used to run a RegExp per character
+// (`/[a-zA-Z0-9-]/.test(source[pos])`). These numeric comparisons are exact
+// equivalents for the ASCII ranges those patterns covered, and they do not
+// allocate the single-character string `source[pos]` either.
+const CH_DASH = 45, CH_DOT = 46, CH_COLON = 58, CH_AT = 64, CH_UNDERSCORE = 95, CH_DOLLAR = 36;
+
+function isDigitCode(c: number): boolean { return c >= 48 && c <= 57; }
+function isAlphaCode(c: number): boolean { return (c >= 65 && c <= 90) || (c >= 97 && c <= 122); }
+function isTagNameCode(c: number): boolean { return isAlphaCode(c) || isDigitCode(c) || c === CH_DASH; }
+function isWordCode(c: number): boolean { return isAlphaCode(c) || isDigitCode(c) || c === CH_UNDERSCORE; }
+function isIdentStartCode(c: number): boolean { return isAlphaCode(c) || c === CH_UNDERSCORE || c === CH_DOLLAR; }
+function isIdentPartCode(c: number): boolean { return isAlphaCode(c) || isDigitCode(c) || c === CH_UNDERSCORE || c === CH_DOLLAR; }
+function isAttrNameCode(c: number): boolean {
+  return isAlphaCode(c) || isDigitCode(c) || c === CH_UNDERSCORE || c === CH_COLON || c === CH_AT || c === CH_DOT || c === CH_DASH;
+}
+
 /** Wrap a function with error handling, logging to console.error. */
 function withErrorHandling<T extends (...args: any[]) => any>(fn: T, name: string): T {
   return ((...args: Parameters<T>) => {
@@ -99,7 +116,9 @@ export function tokenize(source: string, opts?: TokenizerOptions): TokenizerResu
   }
 
   function startsWith(str: string): boolean {
-    return source.slice(pos, pos + str.length) === str;
+    // Compare in place -- `source.slice(...)` allocated a substring per call,
+    // and this runs several times per character.
+    return source.startsWith(str, pos);
   }
 
   function precededByWhitespace(): boolean {
@@ -246,7 +265,7 @@ export function tokenize(source: string, opts?: TokenizerOptions): TokenizerResu
     if (startsWith("</")) {
       advance(2); // skip </
       let tagName = "";
-      while (pos < source.length && /[a-zA-Z0-9-]/.test(source[pos])) {
+      while (pos < source.length && isTagNameCode(source.charCodeAt(pos))) {
         tagName += source[pos];
         advance();
       }
@@ -260,10 +279,10 @@ export function tokenize(source: string, opts?: TokenizerOptions): TokenizerResu
     }
 
     // --- Opening Tag <tag --------------------------------------------------
-    if (ch === "<" && /[a-zA-Z]/.test(peek(1))) {
+    if (ch === "<" && isAlphaCode(source.charCodeAt(pos + 1))) {
       advance(); // skip <
       let tagName = "";
-      while (pos < source.length && /[a-zA-Z0-9-]/.test(source[pos])) {
+      while (pos < source.length && isTagNameCode(source.charCodeAt(pos))) {
         tagName += source[pos];
         advance();
       }
@@ -297,10 +316,10 @@ export function tokenize(source: string, opts?: TokenizerOptions): TokenizerResu
         }
 
         // Event binding on:event
-        if (attrCh === "o" && source.slice(pos, pos + 3) === "on:") {
+        if (attrCh === "o" && source.startsWith("on:", pos)) {
           advance(3);
           let eventName = "";
-          while (pos < source.length && /[a-zA-Z]/.test(source[pos])) {
+          while (pos < source.length && isAlphaCode(source.charCodeAt(pos))) {
             eventName += source[pos];
             advance();
           }
@@ -312,7 +331,7 @@ export function tokenize(source: string, opts?: TokenizerOptions): TokenizerResu
         if (attrCh === ":") {
           advance();
           let bindName = "";
-          while (pos < source.length && /[a-zA-Z0-9-]/.test(source[pos])) {
+          while (pos < source.length && isTagNameCode(source.charCodeAt(pos))) {
             bindName += source[pos];
             advance();
           }
@@ -335,7 +354,7 @@ export function tokenize(source: string, opts?: TokenizerOptions): TokenizerResu
         if (attrCh === "@") {
           advance();
           let dirName = "";
-          while (pos < source.length && /[a-zA-Z0-9-]/.test(source[pos])) {
+          while (pos < source.length && isTagNameCode(source.charCodeAt(pos))) {
             dirName += source[pos];
             advance();
           }
@@ -346,7 +365,7 @@ export function tokenize(source: string, opts?: TokenizerOptions): TokenizerResu
         // Attribute name
         if (/[a-zA-Z_:@]/.test(attrCh)) {
           let attrName = "";
-          while (pos < source.length && /[a-zA-Z0-9_:@.\-]/.test(source[pos])) {
+          while (pos < source.length && isAttrNameCode(source.charCodeAt(pos))) {
             attrName += source[pos];
             advance();
           }
@@ -388,7 +407,7 @@ export function tokenize(source: string, opts?: TokenizerOptions): TokenizerResu
     if (ch === "@") {
       advance(); // skip @
       let dirName = "";
-      while (pos < source.length && /[a-zA-Z0-9-]/.test(source[pos])) {
+      while (pos < source.length && isTagNameCode(source.charCodeAt(pos))) {
         dirName += source[pos];
         advance();
       }
@@ -582,7 +601,7 @@ export function tokenize(source: string, opts?: TokenizerOptions): TokenizerResu
     }
 
     // --- Numbers -------------------------------------------------------------
-    if (/[0-9]/.test(ch) || (ch === "." && /[0-9]/.test(peek(1)))) {
+    if (isDigitCode(source.charCodeAt(pos)) || (ch === "." && isDigitCode(source.charCodeAt(pos + 1)))) {
       const numResult = readNumber(source, pos);
       advance(numResult.end - pos);
       pushToken("NUMBER", numResult.value, startPos, numResult.raw);
@@ -600,7 +619,7 @@ export function tokenize(source: string, opts?: TokenizerOptions): TokenizerResu
     }
 
     // --- Regex --------------------------------------------------------------
-    if (ch === "/" && prevChar !== ")" && !/[a-zA-Z0-9_]/.test(prevChar)) {
+    if (ch === "/" && prevChar !== ")" && !isWordCode(prevChar.charCodeAt(0))) {
       const regResult = readRegex(source, pos);
       if (!regResult.error) {
         advance(regResult.end - pos);
@@ -610,9 +629,9 @@ export function tokenize(source: string, opts?: TokenizerOptions): TokenizerResu
     }
 
     // --- Identifiers & Keywords ---------------------------------------------
-    if (/[a-zA-Z_$]/.test(ch)) {
+    if (isIdentStartCode(source.charCodeAt(pos))) {
       let ident = "";
-      while (pos < source.length && /[a-zA-Z0-9_$]/.test(source[pos])) {
+      while (pos < source.length && isIdentPartCode(source.charCodeAt(pos))) {
         ident += source[pos];
         advance();
       }
@@ -647,49 +666,52 @@ export function tokenize(source: string, opts?: TokenizerOptions): TokenizerResu
 
 // --- Operator Reader ---------------------------------------------------------
 
+const OPERATORS3 = ["===", "!==", ">>>", "**=", "...", "=>>", "<<=", ">>=", ">>>=", "&&=", "||=", "??=", "?.", "||>"];
+const OPERATORS2 = ["==", "!=", "<=", ">=", "&&", "||", "??", "=>", "<<", ">>", "**", "++", "--", "+=", "-=", "*=", "/=", "%=", "&=", "|=", "^=", "~="];
+const OPERATORS1 = ["+", "-", "*", "/", "%", "=", "<", ">", "!", "&", "|", "^", "~", "?", ":", ";", ",", ".", "(", ")", "[", "]", "{", "}", "@", "#", "$", "`", "\\"];
+
 function readOperator(source: string, pos: number): string | null {
-  const operators3 = ["===", "!==", ">>>", "**=", "...", "=>>", "<<=", ">>=", ">>>=", "&&=", "||=", "??=", "?.", "||>"];
-  const operators2 = ["==", "!=", "<=", ">=", "&&", "||", "??", "=>", "<<", ">>", "**", "++", "--", "+=", "-=", "*=", "/=", "%=", "&=", "|=", "^=", "~="];
-  const operators1 = ["+", "-", "*", "/", "%", "=", "<", ">", "!", "&", "|", "^", "~", "?", ":", ";", ",", ".", "(", ")", "[", "]", "{", "}", "@", "#", "$", "`", "\\"];
-
-  const remaining = source.slice(pos);
-
-  for (const op of operators3) {
-    if (remaining.startsWith(op)) return op;
+  // `source.startsWith(op, pos)` compares in place. The old version sliced the
+  // entire remaining source (`source.slice(pos)`) on every call, which made
+  // operator-heavy input quadratic.
+  for (const op of OPERATORS3) {
+    if (source.startsWith(op, pos)) return op;
   }
-  for (const op of operators2) {
-    if (remaining.startsWith(op)) return op;
+  for (const op of OPERATORS2) {
+    if (source.startsWith(op, pos)) return op;
   }
-  for (const op of operators1) {
-    if (remaining.startsWith(op)) return op;
+  for (const op of OPERATORS1) {
+    if (source.startsWith(op, pos)) return op;
   }
 
   return null;
 }
 
+// Hoisted: the old `opType` built this ~45-entry object on every call.
+const OP_TYPE_MAP: Record<string, TokenType> = {
+  "===": "SEQ", "!==": "SNEQ",
+  "==": "EQ", "!=": "NEQ", "<=": "LE", ">=": "GE",
+  "&&": "AND", "||": "OR", "??": "NULLISH",
+  "=>": "ARROW", "...": "SPREAD",
+  "<<": "DOUBLE_LT", ">>": "DOUBLE_GT", ">>>": "TRIPLE_GT",
+  "**": "STAR", "++": "PLUS", "--": "MINUS",
+  "+=": "PLUS_ASSIGN", "-=": "MINUS_ASSIGN", "*=": "STAR_ASSIGN",
+  "/=": "SLASH_ASSIGN", "%=": "PERCENT_ASSIGN",
+  "&=": "AMP_ASSIGN", "|=": "PIPE_ASSIGN", "^=": "CARET_ASSIGN",
+  "<<=": "SHL_ASSIGN", ">>=": "SHR_ASSIGN", ">>>=": "USHR_ASSIGN",
+  "&&=": "AND_ASSIGN", "||=": "OR_ASSIGN", "??=": "NULLISH_ASSIGN",
+  "**=": "EXP_ASSIGN",
+  "+": "PLUS", "-": "MINUS", "*": "STAR", "/": "SLASH", "%": "PERCENT",
+  "=": "ASSIGN", "<": "LT", ">": "GT", "!": "BANG", "&": "AMPERSAND",
+  "|": "PIPE", "^": "CARET", "~": "TILDE", "?": "QUESTION", ":": "COLON",
+  ";": "SEMICOLON", ",": "COMMA", ".": "DOT", "(": "LPAREN", ")": "RPAREN",
+  "[": "LBRACKET", "]": "RBRACKET", "{": "LBRACE", "}": "RBRACE",
+  "@": "AT", "#": "HASH", "$": "DOLLAR", "`": "TEMPLATE", "\\": "BACKSLASH",
+  "?.": "DOT",
+};
+
 function opType(op: string): TokenType {
-  const map: Record<string, TokenType> = {
-    "===": "SEQ", "!==": "SNEQ",
-    "==": "EQ", "!=": "NEQ", "<=": "LE", ">=": "GE",
-    "&&": "AND", "||": "OR", "??": "NULLISH",
-    "=>": "ARROW", "...": "SPREAD",
-    "<<": "DOUBLE_LT", ">>": "DOUBLE_GT", ">>>": "TRIPLE_GT",
-    "**": "STAR", "++": "PLUS", "--": "MINUS",
-    "+=": "PLUS_ASSIGN", "-=": "MINUS_ASSIGN", "*=": "STAR_ASSIGN",
-    "/=": "SLASH_ASSIGN", "%=": "PERCENT_ASSIGN",
-    "&=": "AMP_ASSIGN", "|=": "PIPE_ASSIGN", "^=": "CARET_ASSIGN",
-    "<<=": "SHL_ASSIGN", ">>=": "SHR_ASSIGN", ">>>=": "USHR_ASSIGN",
-    "&&=": "AND_ASSIGN", "||=": "OR_ASSIGN", "??=": "NULLISH_ASSIGN",
-    "**=": "EXP_ASSIGN",
-    "+": "PLUS", "-": "MINUS", "*": "STAR", "/": "SLASH", "%": "PERCENT",
-    "=": "ASSIGN", "<": "LT", ">": "GT", "!": "BANG", "&": "AMPERSAND",
-    "|": "PIPE", "^": "CARET", "~": "TILDE", "?": "QUESTION", ":": "COLON",
-    ";": "SEMICOLON", ",": "COMMA", ".": "DOT", "(": "LPAREN", ")": "RPAREN",
-    "[": "LBRACKET", "]": "RBRACKET", "{": "LBRACE", "}": "RBRACE",
-    "@": "AT", "#": "HASH", "$": "DOLLAR", "`": "TEMPLATE", "\\": "BACKSLASH",
-    "?.": "DOT",
-  };
-  return map[op] ?? "ILLEGAL";
+  return OP_TYPE_MAP[op] ?? "ILLEGAL";
 }
 
 

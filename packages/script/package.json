@@ -1,0 +1,13 @@
+{
+  "name": "@tw/Script",
+  "version": "2.0.0",
+  "description": "TW Framework builtin component",
+  "exports": {
+    ".": "./tw/index.ts"
+  },
+  "main": "./tw/index.ts",
+  "types": "./tw/index.ts",
+  "files": [
+    "tw"
+  ]
+}

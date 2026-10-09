@@ -116,6 +116,10 @@ function parseItems(src: string): Item[] {
 
 type Env = Map<string, string>[];
 
+interface FnDef { params: Array<{ name: string; def?: string }>; body: Item[]; }
+const EXTENDS = new Map<string, Set<string>>();
+let USER_FNS = new Map<string, FnDef>();
+
 function lookupVar(env: Env, name: string): string | undefined {
   for (let i = env.length - 1; i >= 0; i--) {
     if (env[i].has(name)) return env[i].get(name);
@@ -125,6 +129,21 @@ function lookupVar(env: Env, name: string): string | undefined {
 
 function setVar(env: Env, name: string, value: string): void {
   env[env.length - 1].set(name, value);
+}
+function setVarGlobal(env: Env, name: string, value: string): void { env[0].set(name, value); }
+function evalArithmetic(value: string): string {
+  const op = /(-?\d+(?:\.\d+)?(?:px|em|rem|%|vh|vw|s|ms|deg)?)\s*([+*\/-])\s*(-?\d+(?:\.\d+)?(?:px|em|rem|%|vh|vw|s|ms|deg)?)/;
+  let out = value;
+  for (let guard = 0; guard < 30; guard++) {
+    const m = op.exec(out);
+    if (!m) break;
+    const a = parseFloat(m[1]), b = parseFloat(m[3]);
+    const unit = (m[1].match(/[a-z%]+$/) || m[3].match(/[a-z%]+$/) || [""])[0];
+    let n: number;
+    switch (m[2]) { case "+": n = a + b; break; case "-": n = a - b; break; case "*": n = a * b; break; case "/": n = b === 0 ? 0 : a / b; break; default: n = a; }
+    out = out.replace(m[0], String(Number(n.toFixed(6))) + unit);
+  }
+  return out;
 }
 
 /** Replace $vars and #{$var} interpolation inside a value/selector. */
@@ -176,8 +195,71 @@ function evalColorFns(value: string): string {
   return out;
 }
 
+function parseMap(raw: string): Array<[string, string]> {
+  const t = raw.trim();
+  if (!(t.startsWith("(") && t.endsWith(")"))) return [];
+  return splitArgs(t.slice(1, -1)).map(pair => {
+    const eq = pair.indexOf(":");
+    return eq < 0 ? [pair.trim(), ""] : [pair.slice(0, eq).trim(), pair.slice(eq + 1).trim()];
+  });
+}
+function findKnownCall(s: string, pred: (name: string) => boolean): { name: string; args: string; start: number; end: number } | null {
+  const re = /([\w.-]+)\(/g;
+  let m: RegExpExecArray | null;
+  while ((m = re.exec(s))) {
+    if (!pred(m[1])) continue;
+    const open = m.index + m[1].length;
+    let depth = 1, i = open + 1;
+    while (i < s.length && depth > 0) { if (s[i] === "(") depth++; else if (s[i] === ")") depth--; i++; }
+    if (depth === 0) return { name: m[1], args: s.slice(open + 1, i - 1), start: m.index, end: i };
+  }
+  return null;
+}
+function splitList(raw: string): string[] {
+  const t = raw.trim().replace(/^[(]|[)]$/g, "").trim();
+  if (t === "") return [];
+  return t.includes(",") ? splitArgs(t) : t.split(/\s+/).filter(Boolean);
+}
+const BUILTIN_FNS = new Set(["map-get", "map-merge", "nth", "length", "math.div", "unquote"]);
+function applyBuiltin(name: string, args: string[]): string {
+  if (name === "map-get") { const hit = parseMap(args[0] ?? "").find(([k]) => k === (args[1] ?? "").trim()); return hit ? hit[1] : ""; }
+  if (name === "map-merge") { const merged = new Map<string, string>(parseMap(args[0] ?? "")); for (const [k, v] of parseMap(args[1] ?? "")) merged.set(k, v); return "(" + Array.from(merged).map(([k, v]) => k + ": " + v).join(", ") + ")"; }
+  if (name === "nth") { const list = splitList(args[0] ?? ""); return list[parseInt(args[1] ?? "1", 10) - 1] ?? ""; }
+  if (name === "length") return String(splitList(args[0] ?? "").length);
+  if (name === "math.div") { const a = parseFloat(args[0] ?? ""), b = parseFloat(args[1] ?? ""); return b === 0 ? "0" : String(a / b); }
+  if (name === "unquote") return (args[0] ?? "").replace(/^["']|["']$/g, "");
+  return "";
+}
+function evalBuiltinFns(value: string, env: Env): string {
+  let out = value;
+  for (let guard = 0; guard < 50; guard++) {
+    const c = findKnownCall(out, (n) => BUILTIN_FNS.has(n));
+    if (!c) break;
+    const args = splitArgs(c.args).map(a => resolveValue(a, env));
+    out = out.slice(0, c.start) + applyBuiltin(c.name, args) + out.slice(c.end);
+  }
+  return out;
+}
+function evalUserFns(value: string, env: Env, depth = 0): string {
+  if (depth > 20) return value;
+  let out = value;
+  for (let guard = 0; guard < 50; guard++) {
+    const c = findKnownCall(out, (n) => USER_FNS.has(n));
+    if (!c) break;
+    const def = USER_FNS.get(c.name)!;
+    const args = splitArgs(c.args).map(a => resolveValue(a, env));
+    const scope = new Map<string, string>();
+    def.params.forEach((prm, i) => scope.set(prm.name, args[i] !== undefined ? args[i] : (prm.def ? resolveValue(prm.def, env) : "")));
+    const bodyEnv: Env = [...env, scope];
+    const ret = def.body.find(it => it.kind === "decl" && (it.text ?? "").trim().startsWith("@return"));
+    const expr = ret ? (ret.text ?? "").replace(/^@return/, "").trim() : "";
+    const r2 = evalUserFns(resolveValue(expr, bodyEnv), bodyEnv, depth + 1);
+    out = out.slice(0, c.start) + r2 + out.slice(c.end);
+  }
+  return out;
+}
 function resolveValue(text: string, env: Env): string {
-  return evalColorFns(resolveVars(text, env)).trim();
+  return evalBuiltinFns(evalUserFns(evalColorFns(evalArithmetic(resolveVars(text, env))), env), env).trim();
 }
 
 /* --- @if condition evaluation ------------------------------------------- */
@@ -316,11 +398,23 @@ function emit(items: Item[], parent: string, env: Env, mixins: Map<string, Mixin
     for (const it of list) {
       if (it.kind === "decl") {
         const t = (it.text ?? "").trim();
+        if (t.startsWith("@extend")) {
+          const target = t.replace(/^@extend/, "").trim();
+          if (target) { if (!EXTENDS.has(target)) EXTENDS.set(target, new Set()); EXTENDS.get(target)!.add(parent); }
+          pIf = false; continue;
+        }
         if (t.startsWith("$")) {
           const eq = t.indexOf(":");
-          if (eq > 0) setVar(aenv, t.slice(0, eq).trim(), resolveValue(t.slice(eq + 1), aenv));
-          pIf = false;
-          continue;
+          if (eq > 0) {
+            const name = t.slice(0, eq).trim();
+            let raw = t.slice(eq + 1).trim();
+            let isDefault = false, isGlobal = false;
+            if (/!default\s*$/.test(raw)) { isDefault = true; raw = raw.replace(/!default\s*$/, "").trim(); }
+            if (/!global\s*$/.test(raw)) { isGlobal = true; raw = raw.replace(/!global\s*$/, "").trim(); }
+            if (isDefault && lookupVar(aenv, name) !== undefined) { pIf = false; continue; }
+            if (isGlobal) setVarGlobal(aenv, name, resolveValue(raw, aenv)); else setVar(aenv, name, resolveValue(raw, aenv));
+          }
+          pIf = false; continue;
         }
         const eq = t.indexOf(":");
         if (eq > 0 && !t.startsWith("@")) decls.push(resolveVars(t.slice(0, eq), aenv).trim() + ": " + resolveValue(t.slice(eq + 1), aenv) + ";");
@@ -329,6 +423,27 @@ function emit(items: Item[], parent: string, env: Env, mixins: Map<string, Mixin
       }
       const sel = (it.selector ?? "").trim();
 
+      const fnMatch = /^@function\s+([\w-]+)\s*(?:\(([\s\S]*)\))?$/.exec(sel);
+      if (fnMatch) { USER_FNS.set(fnMatch[1], { params: parseMixinParams(fnMatch[2] ?? ""), body: it.items ?? [] }); pIf = false; continue; }
+      const forMatch = /^@for\s+(\$[\w-]+)\s+from\s+(.+?)\s+(through|to)\s+(.+)$/.exec(sel);
+      if (forMatch) {
+        const varName = forMatch[1];
+        const from = parseInt(resolveValue(forMatch[2], aenv), 10);
+        const to = parseInt(resolveValue(forMatch[4], aenv), 10);
+        const inclusive = forMatch[3] === "through";
+        const ascending = from <= to;
+        const end = inclusive ? to : (ascending ? to - 1 : to + 1);
+        for (let v = from; ascending ? v <= end : v >= end; v += ascending ? 1 : -1) absorb(it.items ?? [], [...aenv, new Map([[varName, String(v)]])]);
+        pIf = false; continue;
+      }
+      const whileMatch = /^@while\s+(.+)$/.exec(sel);
+      if (whileMatch) {
+        const loopEnv: Env = [...aenv, new Map()];
+        let guard = 0;
+        while (evalCond(whileMatch[1], loopEnv) && guard < 10000) { absorb(it.items ?? [], loopEnv); guard++; }
+        if (guard >= 10000) console.warn("[scss] @while hit the 10000-iteration cap");
+        pIf = false; continue;
+      }
       const mixMatch = /^@mixin\s+([\w-]+)\s*(?:\(([\s\S]*)\))?$/.exec(sel);
       if (mixMatch) {
         mixins.set(mixMatch[1], { params: parseMixinParams(mixMatch[2] ?? ""), items: it.items ?? [] });
@@ -399,16 +514,32 @@ function emit(items: Item[], parent: string, env: Env, mixins: Map<string, Mixin
   out.push(...childCss);
 }
 
+function applyExtends(lines: string[]): string[] {
+  if (EXTENDS.size === 0) return lines.slice();
+  const result: string[] = [];
+  for (const line of lines) {
+    if (line.endsWith(" {") && !line.trimStart().startsWith("@")) {
+      const sel = line.slice(0, -2);
+      const parts = sel.split(",").map(x => x.trim());
+      const extra: string[] = [];
+      for (const part of parts) { const ext = EXTENDS.get(part); if (ext) for (const e of ext) if (!parts.includes(e)) extra.push(e); }
+      result.push((extra.length ? parts.concat(extra).join(", ") : sel) + " {");
+    } else result.push(line);
+  }
+  return result;
+}
 /** Compile a SCSS source string to plain CSS. */
 export function compileSCSS(source: string): string {
-  // Round 4: silent data loss used to hide every unsupported construct
+  // silent data loss used to hide every unsupported construct
   // (unrecognized declarations and at-rules were dropped with no signal).
   const cleaned0 = stripComments(source);
-  // v1.0.8 round 5 (BUG 45): @mixin/@include ARE supported (they compile
+  // @mixin/@include ARE supported (they compile
   // to inlined output) -- the old warning called them "ignored" and
   // developers ripped out working mixins. Only genuinely unsupported
   // at-rules warn now.
-  const UNSUPPORTED = /@(import|extend|use|forward|function|each|if|else|for|while)\b/g;
+  USER_FNS = new Map();
+  EXTENDS.clear();
+  const UNSUPPORTED = /@(import|use|forward)\b/g;
   const m = cleaned0.match(UNSUPPORTED);
   if (m) {
     const seen = Array.from(new Set(m.map((x) => x.trim())));
@@ -417,6 +548,9 @@ export function compileSCSS(source: string): string {
   const items = parseItems(stripComments(source));
   const out: string[] = [];
   emit(items, "", [new Map()], new Map(), out);
+  const folded = applyExtends(out.slice());
+  out.length = 0;
+  out.push(...folded);
   if (out.length === 0 && cleaned0.replace(/[\s;]/g, "").length > 0) {
     console.warn("[scss] compileSCSS produced no output for a non-empty source -- check for unsupported syntax (TW uses `color: #fff` declarations, not `color #fff`)");
   }

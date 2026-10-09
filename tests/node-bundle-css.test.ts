@@ -77,7 +77,7 @@ describe("node bundle emits .tss css (GETTING-STARTED regression)", () => {
       writeFileSync(
         join(dir, "package.json"),
         JSON.stringify(
-          { name: "reg", version: "0.1.0", private: true, type: "module", dependencies: { "tw-framework": "^1.0.0" } },
+          { name: "reg", version: "0.1.0", private: true, type: "module", dependencies: { "tw-framework": "^2.0.0" } },
           null,
           2,
         ),

@@ -14,7 +14,7 @@ Both documented shapes work, like `redirects` and `headers`:
 
 ```typescript
 // tw.config.ts
-import type { TwConfig } from "tw-framework";
+import type { TwConfigInput } from "tw-framework";
 
 export default {
   name: "my-app",
@@ -25,7 +25,7 @@ export default {
     "/games": "/category/games",
     "/popular": "/category/popular",
   },
-} satisfies TwConfig;
+} satisfies TwConfigInput;
 ```
 
 ```typescript
@@ -36,7 +36,7 @@ export default {
     { from: "/app/:slug", to: "/game/:slug" },
     { from: "/legacy/**", to: "/new" },
   ],
-} satisfies TwConfig;
+} satisfies TwConfigInput;
 ```
 
 ## Three Matching Forms

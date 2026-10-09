@@ -37,7 +37,7 @@ import type {
   RenderPipelineOptions,
 } from "@tw/shared";
 import { scanRouteTree, matchRoute } from "./scanner";
-import { resolveLayoutChain, findGlobalError, findRootError, findRootNotFound, collectParallelPages } from "./layout-chain";
+import { resolveLayoutChain, findGlobalError, findRootError, findRootNotFound, collectParallelPages, clearRenderModeCache } from "./layout-chain";
 import { getSignalHub } from "./signal-stream";
 import { join } from "../../../sdk/tw/helpers";
 import { loadTWMModule } from "../index";
@@ -82,6 +82,13 @@ export class RenderPipeline {
   private routeTree: RouteNode | null = null;
   private compiledCache: Map<string, CompiledFileEntry> = new Map();
   /**
+   * Memoised route-file sources. The extract* helpers each re-read the same
+   * file, and `extractRenderMode` alone runs three times per render -- so one
+   * render used to hit the disk ~6 times. Cleared by rebuild(); not used in
+   * dev, where an edit must be picked up immediately.
+   */
+  private sourceCache: Map<string, string> = new Map();
+  /**
    * Render cache (docs/cache-tags.md). Entry fields:
    *   expiresAt -- v1.0.5 compat: fresh-until timestamp (same as freshUntil)
    *   freshUntil -- age < freshUntil -> HIT (zero work)
@@ -102,12 +109,16 @@ export class RenderPipeline {
     pathname?: string;
   }> = new Map();
 
+  /** strategies.hydration.mode -- decides whether client JS ships at all. */
+  private hydrationMode: "auto" | "full" | "islands" | "none";
+
   constructor(opts: RenderPipelineOptions) {
     this.rootDir = opts.rootDir;
     this.homeDir = opts.homeDir;
     this.enableCache = opts.enableCache ?? true;
     this.cacheTTL = opts.cacheTTL ?? 60000;
     this.dev = opts.dev ?? false;
+    this.hydrationMode = opts.hydrationMode ?? "auto";
   }
 
   /**
@@ -121,6 +132,19 @@ export class RenderPipeline {
     });
     this.compiledCache.clear();
     this.renderCache.clear();
+    this.sourceCache.clear();
+    clearRenderModeCache();
+  }
+
+  /** Read a route file, memoised outside dev. See `sourceCache`. */
+  private readSource(file: RouteFile): string {
+    const key = file.absolutePath;
+    if (this.dev) return readFileSync(key, "utf-8");
+    const hit = this.sourceCache.get(key);
+    if (hit !== undefined) return hit;
+    const src = readFileSync(key, "utf-8");
+    this.sourceCache.set(key, src);
+    return src;
   }
 
   /**
@@ -260,7 +284,7 @@ export class RenderPipeline {
       // Request-time vars (route params, caller stateVars) win over
       // compile-time state defaults -- snapshot the keys BEFORE compiling.
       const requestVarKeys = new Set(Object.keys({ ...(stateVars ?? {}), ...(match.params ?? {}) }));
-      // BUG 5 (v1.0.8): setSignal() updates the SignalHub and live SSE
+      // setSignal() updates the SignalHub and live SSE
       // clients, but a FRESH visitor's SSR render used the state-block
       // defaults -- the updated value only arrived after the stream
       // connected (and never for non-streaming visits). Seed the hub's
@@ -346,7 +370,7 @@ export class RenderPipeline {
       let layoutTitle: string | undefined;
       const liftedParts: string[] = [];
       {
-        // v1.0.8 round 3 (BUG 18): a layout.tw title template with the
+        // a layout.tw title template with the
         // {page.title} marker used to be ignored -- the LAST head in the
         // composition (the page's own plain title) always won. Collect
         // every title, then prefer the template one.
@@ -356,7 +380,7 @@ export class RenderPipeline {
           const tMatch = headInner.match(/<title>([^<]*)<\/title>/i);
           // The lifted title comes from COMPILED html, so it is already
           // HTML-escaped; assembleHTML escapes again -- decode it first
-          // (round 4: this double-escaped quotes in titles).
+          // (this double-escaped quotes in titles).
           if (tMatch) collectedTitles.push(tMatch[1].trim()
             .replace(/&(amp|lt|gt|quot);/g, (m, k) => k === "amp" ? String.fromCharCode(38) : k === "lt" ? String.fromCharCode(60) : k === "gt" ? String.fromCharCode(62) : String.fromCharCode(34)));
           else collectedTitles.push("");
@@ -383,7 +407,7 @@ export class RenderPipeline {
       const liftedHead = liftedParts.join("\n");
 
       // Wrap in error boundary if error.twm exists (markup only -- no JS).
-      // v1.0.8 round 5 (BUG 47): only SSR/stream pages can fail AT RUNTIME --
+      // only SSR/stream pages can fail AT RUNTIME --
       // prebuilt static pages shipped an empty wrapper on every response
       // for nothing.
       const liveRenderMode = this.extractRenderMode(ctx.page);
@@ -397,7 +421,7 @@ export class RenderPipeline {
       // loading.tw compiles to a FULL document -- embed only its body
       // content, or a nested <!DOCTYPE html>/<html>/<body> lands inside
       // the page body.
-      // v1.0.8 round 5 (BUG 47): the loading skeleton used to be inlined into
+      // the loading skeleton used to be inlined into
       // EVERY SSR response even for pages with no async boundaries at all.
       // Only pages that actually carry Suspense/PPR markers need it.
       const needsSkeleton =
@@ -450,13 +474,27 @@ export class RenderPipeline {
       // without these an SSR page ships ZERO scripts -- no SPA navigation,
       // no hydration, no events. (Interceptors, RouterLink, bindings all
       // depend on this.)
-      // Zero-JS static SSR (BUG 6, v1.0.8): only interactive pages
+      // Zero-JS static SSR only interactive pages
       // (markers, signals, suspense) or client-rendered modes get the
       // runtime + state seed; plain SSR pages ship 0 bytes of JS.
       const pageRenderMode = this.extractRenderMode(ctx.page);
-      const needsClientRuntime = /data-tw-event|data-tw-i|__TW_SIGNALS__|data-tw-suspense|data-tw-ppr/.test(fullHTML)
+      const autoNeedsRuntime = /data-tw-event|data-tw-i|__TW_SIGNALS__|data-tw-suspense|data-tw-ppr/.test(fullHTML)
         || pageRenderMode === "csr" || pageRenderMode === "stream"
         || pageRenderMode === "ppr" || pageRenderMode === "signalStream";
+      // strategies.hydration.mode overrides the per-page decision:
+      //   none    -> never ship client JS (a pure-HTML site)
+      //   islands -> only pages carrying explicit island markers
+      //   full    -> hydrate whenever the page is interactive at all
+      //   auto    -> the per-page heuristic above (default)
+      let needsClientRuntime = autoNeedsRuntime;
+      if (this.hydrationMode === "none") needsClientRuntime = false;
+      else if (this.hydrationMode === "islands") {
+        // `data-tw-i` marks an interpolation, not an island -- an island is a
+        // `render island` page or an explicit data-tw-island element.
+        needsClientRuntime = pageRenderMode === "island" || /data-tw-island/.test(fullHTML);
+      } else if (this.hydrationMode === "full") {
+        needsClientRuntime = autoNeedsRuntime || /data-tw-s=|data-tw-state/.test(fullHTML);
+      }
       if (needsClientRuntime && !/__tw_runtime\.js/.test(fullHTML)) {
         let stateSeed = "{}";
         try { stateSeed = JSON.stringify(pageState ?? {}); } catch { /* ignore */ }
@@ -582,8 +620,8 @@ export class RenderPipeline {
       throw new Error(`Route file not found: ${file.absolutePath}`);
     }
 
-    const source = readFileSync(file.absolutePath, "utf-8");
-    // v1.0.8 round 3 (BUG 18): {page.title} in a layout/template title is an
+    const source = this.readSource(file);
+    // {page.title} in a layout/template title is an
     // interpolation of a var that does not exist at layout-compile time, so
     // it compiled to EMPTY and the layout title template was lost. Swap it
     // for a sentinel that survives compilation; the pipeline substitutes
@@ -682,12 +720,12 @@ export class RenderPipeline {
    */
   private extractTitle(file: RouteFile): string | null {
     try {
-      const source = readFileSync(file.absolutePath, "utf-8");
+      const source = this.readSource(file);
       // Mask strings + comments: the words `title "x"` inside a quoted
       // example must not fake a page title. Match on the masked source,
       // read the value from the ORIGINAL by position (same length).
       const masked = maskSourceStringsAndComments(source);
-      // v1.0.8 round 3 (BUG 18 root cause): the mask strips the QUOTES too,
+ // (root cause): the mask strips the QUOTES too,
       // so the old `title\s+"` regex could never match -- extractTitle
       // ALWAYS returned null and layout title templates silently died.
       // Match on `title` + whitespace (masked), then read the quoted value
@@ -712,7 +750,7 @@ export class RenderPipeline {
   /** Page frontmatter render mode (static|ssr|island|edge|csr|stream|ppr). */
   private extractRenderMode(file: RouteFile): string {
     try {
-      const src = readFileSync(file.absolutePath, "utf8");
+      const src = this.readSource(file);
       // Mask strings + comments: example text must not flip the mode.
       const m = /render\s+(static|ssr|island|edge|csr|stream|ppr)\b/.exec(
         maskSourceStringsAndComments(src),
@@ -756,7 +794,7 @@ export class RenderPipeline {
     now: number,
     verdict: "HIT" | "STALE" | "MISS",
   ): Record<string, string> {
-    // v1.0.8 round 5 (BUG 48): x-tw-cache leaked internal cache state on
+    // x-tw-cache leaked internal cache state on
     // every HTML response. Debug-only now (TW_DEBUG_CACHE=1 or config
     // server.debugHeaders: true).
     const out: Record<string, string> = { ...(headers ?? {}) };
@@ -775,7 +813,7 @@ export class RenderPipeline {
 
   private extractRevalidate(file: RouteFile): number | null {
     try {
-      const source = readFileSync(file.absolutePath, "utf-8");
+      const source = this.readSource(file);
       // Mask strings + comments: `revalidate 60` shown as example text
       // must not fake an ISR window on the serve path.
       const m = maskSourceStringsAndComments(source).match(/page\s*\{[^}]*revalidate\s+(\d+)/);
@@ -798,7 +836,7 @@ export class RenderPipeline {
    */
   private extractCacheConfig(file: RouteFile): ResolvedCache | null {
     try {
-      const source = readFileSync(file.absolutePath, "utf-8");
+      const source = this.readSource(file);
       const meta = extractCacheDirective(source);
       if (meta) {
         try {
@@ -826,7 +864,7 @@ export class RenderPipeline {
    */
   private buildMetaTags(file: RouteFile): string {
     try {
-      const source = readFileSync(file.absolutePath, "utf-8");
+      const source = this.readSource(file);
       // Mask strings + comments, then cut the frontmatter body from
       // the ORIGINAL by position: a `page {` shown inside a quoted
       // example must not hijack the meta tags, but the real body's

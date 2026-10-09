@@ -1,7 +1,7 @@
 {
   "name": "@tw/shared",
   "private": true,
-  "version": "1.0.0",
+  "version": "2.0.0",
   "description": "TW Framework shared utilities \u2014 constants, hashing, logger, fs, config, types, env",
   "type": "module",
   "main": "./tw/index.ts",

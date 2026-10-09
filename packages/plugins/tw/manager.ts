@@ -3,7 +3,10 @@
  * and plugin-to-plugin communication. Supports async hooks, parallel
  * execution for independent hooks, and error isolation.
  *
- * 22 lifecycle hooks are supported, covering the entire build and serve
+ * The lifecycle hook names below describe the full surface -- all of them
+ * fire. The CLI (`tw build`, `tw serve`, `tw dev`) reaches 14 of them; the
+ * SDK's AppBuilder (`createApp()`) fires the full set programmatically.
+ * docs/plugins.md has the exact table.
  * pipeline from config resolution to response sending.
  */
 
@@ -29,7 +32,11 @@ export type HookName =
   | "server:start"
   | "server:stop"
   | "before:build"
-  | "after:build";
+  | "after:build"
+  // Serve-side request hooks -- the CLI fires these on every request.
+  | "onRequest"
+  | "onResponse"
+  | "onError";
 
 export interface PluginContext {
   app: any;
@@ -76,8 +83,10 @@ export class PluginManager {
 
     this.plugins.push(plugin);
 
-    // Sort by priority (higher priority runs first)
-    this.plugins.sort((a, b) => (b.priority ?? 0) - (a.priority ?? 0));
+    // Sort by priority: lower runs first, default 50 (docs/plugins.md).
+    // This matches PluginManager.runHooks in index.ts and the documented
+    // convention, so both plugin managers order hooks the same way.
+    this.plugins.sort((a, b) => (a.priority ?? 50) - (b.priority ?? 50));
 
     // Rebuild hook map
     this.rebuildHookMap();

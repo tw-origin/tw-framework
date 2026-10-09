@@ -35,6 +35,7 @@ export const helpText = `
       --host <address>     Host (default: 0.0.0.0)
 
     check                  Run type check and diagnostics
+    doctor                 Show active strategies and availability
 
     lsp                    Start the language server (stdio) for editors
                           completion, hover, format and diagnostics over

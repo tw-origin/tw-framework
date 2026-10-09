@@ -68,7 +68,7 @@ export class CompletionProvider {
   private getExpressionCompletions(doc: LSPDocument): CompletionItem[] {
     const items: CompletionItem[] = [];
     const definedVars = new Set<string>();
-    // Round 4: collect ALL script blocks (the old first-match-only regex
+    // collect ALL script blocks (the old first-match-only regex
     // lost every script after the first).
     const scriptMatches = [...doc.content.matchAll(/<script[^>]*>([\s\S]*?)<\/script>/gi)];
     const scriptMatch = scriptMatches.length

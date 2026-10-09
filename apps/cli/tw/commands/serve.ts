@@ -6,7 +6,7 @@ import { existsSync } from "node:fs";
 export async function serveCommand(): Promise<void> {
   const args = process.argv.slice(3);
 
-  // BUG 9 (v1.0.8): `tw serve --help` used to START the server instead
+  // `tw serve --help` used to START the server instead
   // of showing help -- the flag was never parsed.
   if (args.includes("-h") || args.includes("--help")) {
     console.log(`
@@ -30,12 +30,14 @@ export async function serveCommand(): Promise<void> {
 
   let port: number | null = null;
   let host = "0.0.0.0";
+  let hostSet = false;
 
   for (let i = 0; i < args.length; i++) {
     if (args[i] === "--port" && args[i + 1]) {
       port = parseInt(args[i + 1], 10);
     } else if (args[i] === "--host" && args[i + 1]) {
       host = args[i + 1];
+      hostSet = true;
     }
   }
 
@@ -76,6 +78,16 @@ export async function serveCommand(): Promise<void> {
   } catch (e: any) { console.error("[tw:node] config load failed:", e && e.message); }
   if (port === null) port = 8000;
 
+  // server.* -- the fine-grained server group. resolveServerOptions fills every
+  // field with the framework default, so an unset field keeps today's
+  // behaviour. `--host` on the command line still wins over server.host.
+  let srv: any = null;
+  try {
+    const { resolveServerOptions } = await import("@tw/shared");
+    srv = resolveServerOptions(config);
+  } catch { /* shared unavailable -- fall back to bare defaults */ }
+  if (!hostSet && srv?.host) host = srv.host;
+
   console.debug("\n  tw serve -- starting production server\n");
 
   // Check for built output
@@ -96,11 +108,21 @@ export async function serveCommand(): Promise<void> {
     } catch { /* plugins are optional */ }
 
     const server = new TWServer({
-      rootDir, port, host, staticDir: outDir, config,
+      rootDir, port, host, staticDir: srv?.staticServing === false ? undefined : outDir, config,
       ...(config?.rateLimit ? { rateLimit: config.rateLimit } : {}),
-      ...(config?.compression !== undefined || (config?.server as any)?.compression !== undefined
-        ? { compression: ((config?.compression ?? (config?.server as any)?.compression) as any) }
-        : {}),
+      ...(srv ? { compression: srv.compression } : {}),
+      ...(srv?.ssl ? { ssl: srv.ssl } : {}),
+      ...(srv?.workers > 1 || srv?.cluster ? { workers: srv.workers, cluster: srv.cluster } : {}),
+      ...(srv?.cors?.enabled ? { cors: srv.cors } : {}),
+      ...(srv ? {
+        bodyLimit: srv.bodyLimit,
+        timeout: srv.timeout,
+        keepAlive: srv.keepAlive,
+        keepAliveTimeout: srv.keepAliveTimeout,
+        maxConnections: srv.maxConnections,
+        trustProxy: srv.trustProxy,
+        gracefulShutdown: srv.gracefulShutdown,
+      } : {}),
       ...(pluginManager && pluginManager.size() > 0 ? { plugins: pluginManager } : {}),
       ...(config?.images ? { images: config.images } : {}),
       ...(config?.security ? { security: config.security } : {}),
@@ -114,11 +136,13 @@ export async function serveCommand(): Promise<void> {
     // (docker stop, k8s pod terminate, Ctrl+C) instead of dropping them.
     const shutdown = async (signal: string) => {
       console.log(`\n  [TW] ${signal} received — shutting down gracefully...`);
-      try { await server.gracefulShutdown(5000); } catch { /* already stopped */ }
+      try { await server.gracefulShutdown(srv?.keepAliveTimeout && srv.keepAliveTimeout > 0 ? Math.min(srv.keepAliveTimeout, 30000) : 5000); } catch { /* already stopped */ }
       process.exit(0);
     };
-    process.on("SIGTERM", () => void shutdown("SIGTERM"));
-    process.on("SIGINT", () => void shutdown("SIGINT"));
+    if (srv?.gracefulShutdown !== false) {
+      process.on("SIGTERM", () => void shutdown("SIGTERM"));
+      process.on("SIGINT", () => void shutdown("SIGINT"));
+    }
     // Keep the process alive through stray async failures (Node 15+ would
     // otherwise crash on an unhandled rejection from one bad route).
     process.on("unhandledRejection", (reason: any) => {

@@ -93,7 +93,7 @@ If you did not use the CLI, create `package.json`:
     "ship": "tw ship"
   },
   "dependencies": {
-    "tw-framework": "^1.0.0"
+    "tw-framework": "^2.0.0"
   },
   "devDependencies": {
     "typescript": "^5.4.0",
@@ -113,7 +113,7 @@ Then run `bun install` or `npm install`.
 This is the main configuration file. Place it at the project root.
 
 ```typescript
-import type { TwConfig } from "tw-framework";
+import type { TwConfigInput } from "tw-framework";
 
 export default {
   name: "my-app",
@@ -148,13 +148,6 @@ export default {
     autoprefixer: true,
   },
 
-  // Routing configuration
-  router: {
-    mode: "filesystem",  // File-based routing
-    baseDir: "home",     // Root routing directory
-    pageExtensions: [".tw", ".twm"],
-    renderModes: ["static", "ssr", "island", "edge"],
-  },
 
   // Redirects (optional)
   redirects: [
@@ -176,7 +169,7 @@ export default {
 
   // Plugins (optional)
   plugins: [],
-} satisfies TwConfig;
+} satisfies TwConfigInput;
 ```
 
 ### tsconfig.json

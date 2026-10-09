@@ -57,6 +57,7 @@ export { copyHTML, copyJSON, copyText, copyToClipboard, getClipboardManager, pas
 export { observeAllVitals, observeCLS, observeFCP, observeFID, observeINP, observeLCP, observeTTFB } from "./performance/metrics";
 export type { ClipboardOptions } from "./clipboard-utils";
 export { ErrorBoundary, Fragment, Suspense, createContext, defineComponent, forwardRef, fragment, memo, resolveContext, withScope } from "./component";
+export { runWithHooks, runEffects, disposeHooks, useState, useReducer, useMemo, useCallback, useRef, useEffect } from "./hooks";
 export type { Component, ComponentFactory, ComponentOptions, ComponentProps, Context, ContextValueStack, DefaultProps, DefaultState, ErrorBoundaryProps, ForwardRefComponent, MemoComponent, SetupContext, SuspenseProps, VNode, VNodeChild } from "./component";
 export { clearAllContexts, consumeContext, mapContext, popContextScope, provideContext, pushContextScope, setContextValue, useContext, useContextSignal, validateContext, withContextScope } from "./context";
 export type { ContextEntry } from "./context";
@@ -125,8 +126,8 @@ export { CLIENT_RUNTIME, blueprintToHydrationData, generateBlueprint, isReactive
 export type { BlueprintNode, Ref, Watcher } from "./reactivity";
 export { VOID_ELEMENTS, escapeText, h, renderError, renderToStream, renderToStreamAsync, renderToString, vnodeToString } from "./render";
 export type { RenderOptions, StyleObject, StyleProp } from "./render";
-export { createRouter, navigate, redirectTo, routerLink, routerView, setRouter, useRoute, useRouter } from "./router";
-export type { NavigationGuard, NavigationResult, RouteLocation, RouteParams, RouteQuery, RouteRecord, Router, RouterLinkProps, RouterOptions, RouterViewProps } from "./router";
+export { createRouter, matchPathPattern, navigate, redirectTo, routerLink, routerView, setRouter, useParam, useParamBool, useParamInt, useParamList, useParams, usePathname, useRoute, useRouteSegments, useRouter, useSearchParams } from "./router";
+export type { NavigationGuard, NavigationResult, ParamParse, PathnameMatch, RouteLocation, RouteParams, RouteQuery, RouteRecord, RouteSegment, RouteSegmentsInfo, Router, RouterLinkProps, RouterOptions, RouterViewProps, SearchParamsHandle } from "./router";
 export { cancel, flush, flushSync, getStats, isScheduled, nextTick, peekQueue, queueJob, resetScheduler, schedule } from "./scheduler";
 export type { Priority, SchedulePriority, ScheduledJob, SchedulerStats } from "./scheduler";
 export { clearServiceWorkerCaches, generateServiceWorkerScript, getServiceWorkerManager, registerServiceWorker, unregisterServiceWorker } from "./service-worker";

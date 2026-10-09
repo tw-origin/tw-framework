@@ -1,7 +1,7 @@
 ---
 name: release
 description: Cut a TW Framework release -- version, master gate, zip, fresh-verify, changelog
-version: 1.0.6
+version: 2.0.0
 ---
 
 # Skill: release
@@ -11,8 +11,8 @@ everything." The process exists to make the claim true.
 
 ## 1. Version
 
-Semver; the 1.0.x line uses patch releases for feature batches (1.0.5
-hardening, 1.0.6 cache layer) -- follow the convention unless told
+Semver. The current release is 2.0.0 (the strategy layer -- every
+subsystem offers all of its options). Follow the convention unless told
 otherwise. THREE files carry the number:
 
 - apps/cli/package.json
