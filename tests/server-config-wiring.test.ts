@@ -191,11 +191,11 @@ describe("server.trustProxy + server.maxConnections", () => {
   test("with trustProxy off, forwarded headers are ignored by clientIp", async () => {
     const ip = await import("../packages/shared/tw/net/ip.ts");
     const bag = { headers: { "x-forwarded-for": "203.0.113.9" } } as any;
-    ip.setTrustProxy(true);
-    expect(ip.clientIp(bag).ip).toBe("203.0.113.9");
-    ip.setTrustProxy(false);
-    expect(ip.clientIp(bag).ip).toBe("");
-    ip.setTrustProxy(true); // restore
+    // Per-call override, NOT setTrustProxy(): that flips process-wide state and
+    // bun runs test files concurrently, so other files observe the flipped
+    // value mid-run.
+    expect(ip.clientIp(bag, { trustProxy: true }).ip).toBe("203.0.113.9");
+    expect(ip.clientIp(bag, { trustProxy: false }).ip).toBe("");
   });
 
   test("a TWServer with trustProxy:false still serves", async () => {

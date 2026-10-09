@@ -112,17 +112,27 @@ export function fromForwardedHeader(value: string): string | undefined {
  * server.trustProxy -- when false, the forwarded-header families are ignored
  * (a client cannot spoof its address through X-Forwarded-For). Default true,
  * which is the behaviour every deployment behind a proxy expects.
+ *
+ * This is process-wide state, so a per-call override is also accepted
+ * (`clientIp(bag, { trustProxy: false })`). Tests must use the override rather
+ * than flipping the global: bun runs test files concurrently in one process,
+ * so a global flipped in one file is observed by another mid-run.
  */
 let trustProxyEnabled = true;
 export function setTrustProxy(v: boolean): void { trustProxyEnabled = !!v; }
 export function getTrustProxy(): boolean { return trustProxyEnabled; }
 
+export interface ClientIpOptions {
+  /** Override server.trustProxy for this call. */
+  trustProxy?: boolean;
+}
+
 /** The client address, with provenance. */
-export function clientIp(bag: HeaderBag): ClientIp {
+export function clientIp(bag: HeaderBag, opts?: ClientIpOptions): ClientIp {
   let ip = "";
   let source = "socket";
 
-  if (trustProxyEnabled) {
+  if (opts?.trustProxy ?? trustProxyEnabled) {
     const forwarded = readHeader(bag, "forwarded");
     if (forwarded) {
       const parsed = fromForwardedHeader(forwarded);
@@ -150,8 +160,8 @@ export function clientIp(bag: HeaderBag): ClientIp {
 }
 
 /** Plain string shorthand. */
-export function ipAddress(bag: HeaderBag): string | undefined {
-  const { ip } = clientIp(bag);
+export function ipAddress(bag: HeaderBag, opts?: ClientIpOptions): string | undefined {
+  const { ip } = clientIp(bag, opts);
   return ip || undefined;
 }
 

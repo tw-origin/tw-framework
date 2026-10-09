@@ -59,7 +59,7 @@ export function applyRewrites(rewrites: Array<{ from: string; to: string }>, pat
 }
 
 
-import { cacheControlFor, ipAddress, resolveI18nOptions, setTrustProxy } from "@tw/shared";
+import { cacheControlFor, ipAddress, resolveI18nOptions } from "@tw/shared";
 import { createImageHandler } from "@tw/optImage";
 import { configureI18n } from "./i18n";
 import { WebSocketManager } from "./websocket-manager";
@@ -272,9 +272,12 @@ export class TWServer {
       }
     } catch { /* i18n stays at defaults */ }
 
-    // server.trustProxy -- when false, forwarded headers are ignored and the
-    // connection's own address is used.
-    setTrustProxy(this.options.trustProxy !== false);
+    // server.trustProxy is applied per-server in `clientIpFor` -- it is NOT
+    // written to the process-wide flag here. A constructor must not mutate
+    // global state: two servers with different configs would fight, and under
+    // `bun test` (which runs files concurrently in one process) one file
+    // constructing a trustProxy:false server made every other file's ip()
+    // calls return "".
 
     // `compression` was accepted but never wired --
     // compressionMiddleware() was a deliberate no-op and no response path
@@ -867,7 +870,7 @@ export class TWServer {
         if (info?.address) return String(info.address);
       } catch { /* fall through */ }
     }
-    return ipAddress(request) || "local";
+    return ipAddress(request, { trustProxy: this.options.trustProxy !== false }) || "local";
   }
 
   /**

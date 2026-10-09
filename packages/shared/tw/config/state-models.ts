@@ -16,7 +16,11 @@ export interface StateModelInfo {
 }
 
 export const STATE_MODELS: Record<StateModelName, StateModelInfo> = {
-  signals: { model: "signals", detail: "TW signals (public/private/serverOnly/derived)", requiresRenderer: ["tw-vdom", "react", "preact"] },
+  // `signals` is TW's own model (public/private/serverOnly/derived) and works
+  // with no client renderer at all -- e.g. render.engine=none +
+  // hydration.mode=none, which SUPPORTED_MATRIX lists as supported and no
+  // COMPAT_RULE forbids. Only the client-side models below are renderer-bound.
+  signals: { model: "signals", detail: "TW signals (public/private/serverOnly/derived)", requiresRenderer: [] },
   hooks: { model: "hooks", detail: "React-style hooks (useState/useEffect)", requiresRenderer: ["react", "preact"] },
   store: { model: "store", detail: "external store adapter (defineStore)", requiresRenderer: ["tw-vdom", "react", "preact"] },
 };
@@ -30,7 +34,9 @@ export function resolveStateModel(cfg: any): StateModelName {
 /** Describe a model, and whether the chosen renderer can host it. */
 export function describeStateModel(model: string, renderEngine: string): StateModelInfo & { available: boolean; fix?: string } {
   const info = STATE_MODELS[(model as StateModelName)] ?? STATE_MODELS.signals;
-  const ok = info.requiresRenderer.includes(renderEngine as any);
+  // An empty `requiresRenderer` means the model needs no renderer at all
+  // (signals), so it is available whatever the engine is.
+  const ok = info.requiresRenderer.length === 0 || info.requiresRenderer.includes(renderEngine as any);
   return {
     ...info,
     available: ok,
