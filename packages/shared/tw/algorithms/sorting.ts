@@ -464,6 +464,10 @@ export function groupBy<T, K extends string>(arr: T[], key: (item: T) => K): Rec
 }
 
 export function chunk<T>(arr: T[], size: number): T[][] {
+  // A size <= 0 makes the loop below never advance (i += 0), so the result
+  // grows until memory dies -- a process kill on a single bad argument. Guard
+  // it, exactly as utils/array/manipulate.ts and the compiler's chunk.ts do.
+  if (size <= 0) return [arr];
   const result: T[][] = [];
   for (let i = 0; i < arr.length; i += size) {
     result.push(arr.slice(i, i + size));
@@ -761,12 +765,12 @@ export function nth<T>(arr: T[], n: number): T | undefined {
   return arr[n];
 }
 
-export function take<T>(arr: T[], n: number): T[] {
+export function take<T>(arr: T[], n: number = 1): T[] {
   return arr.slice(0, n);
 }
 
-export function takeRight<T>(arr: T[], n: number): T[] {
-  return arr.slice(arr.length - n);
+export function takeRight<T>(arr: T[], n: number = 1): T[] {
+  return arr.slice(Math.max(0, arr.length - n));
 }
 
 export function takeWhile<T>(arr: T[], predicate: (item: T) => boolean): T[] {
@@ -787,12 +791,12 @@ export function takeRightWhile<T>(arr: T[], predicate: (item: T) => boolean): T[
   return result;
 }
 
-export function drop<T>(arr: T[], n: number): T[] {
+export function drop<T>(arr: T[], n: number = 1): T[] {
   return arr.slice(n);
 }
 
-export function dropRight<T>(arr: T[], n: number): T[] {
-  return arr.slice(0, arr.length - n);
+export function dropRight<T>(arr: T[], n: number = 1): T[] {
+  return arr.slice(0, Math.max(0, arr.length - n));
 }
 
 export function dropWhile<T>(arr: T[], predicate: (item: T) => boolean): T[] {

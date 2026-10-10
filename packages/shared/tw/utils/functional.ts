@@ -2363,12 +2363,24 @@ export function sum2(...values: number[]): number {
   return values.reduce((a, b) => a + b, 0);
 }
 
+/**
+ * The numeric rest-args helpers (`product`, `average`, `variance`, `stdDev`)
+ * also accept a single array, so `product([1,2,3])` and `product(1,2,3)` agree.
+ * Before, an array was treated as one value and the result was NaN/null -- the
+ * same footgun `average` was documented to have.
+ */
+function spreadNums(values: number[]): number[] {
+  const first: unknown = values[0];
+  return values.length === 1 && Array.isArray(first) ? (first as number[]) : values;
+}
+
 export function product(...values: number[]): number {
-  return values.reduce((a, b) => a * b, 1);
+  return spreadNums(values).reduce((a, b) => a * b, 1);
 }
 
 export function average(...values: number[]): number {
-  return values.length === 0 ? 0 : sum2(...values) / values.length;
+  const nums = spreadNums(values);
+  return nums.length === 0 ? 0 : sum2(...nums) / nums.length;
 }
 
 export function median2(...values: number[]): number {
@@ -2379,9 +2391,10 @@ export function median2(...values: number[]): number {
 }
 
 export function variance(...values: number[]): number {
-  if (values.length === 0) return 0;
-  const avg = average(...values);
-  return values.reduce((sum, v) => sum + (v - avg) ** 2, 0) / values.length;
+  const nums = spreadNums(values);
+  if (nums.length === 0) return 0;
+  const avg = average(...nums);
+  return nums.reduce((sum, v) => sum + (v - avg) ** 2, 0) / nums.length;
 }
 
 export function stdDev(...values: number[]): number {

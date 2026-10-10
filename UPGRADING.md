@@ -130,6 +130,34 @@ delegate to the new implementation.
 invalid radix or digits throw. The old `(n >>> 0)` wrapped all of these
 silently. `toHex` and `toBase` now emit the same uppercase form.
 
+**`chunk` guards a non-positive size.** `algorithms/sorting.ts`,
+`utils/collection-utils.ts` and `utils/string/transform.ts` had no `size <= 0`
+guard, so the loop never advanced and the process died — one segfaults, the
+other two throw `RangeError: Out of memory`. All five copies now return
+`[input]`, exactly as `utils/array/manipulate.ts` and the compiler's `chunk.ts`
+already did.
+
+**`take` / `takeRight` / `drop` / `dropRight` default `n` to 1 everywhere.**
+`algorithms/sorting.ts` required `n` and, when it was omitted, returned the
+whole array (or `[]`). Every copy now uses the lodash default.
+
+**`countOccurrences` means one thing now.** `utils/array/manipulate.ts`'s
+map-shaped `countOccurrences(array) => Map` is renamed **`countOccurrencesMap`**;
+`countOccurrences` now unambiguously means `algorithms/sorting.ts`'s
+`countOccurrences(arr, value) => number` — the count of one value. `frequency`
+is unchanged.
+
+**`product` / `average` / `variance` / `stdDev` accept a single array.** They
+took rest args only, so `product([1,2,3,4])` was `NaN`/`null` — the array was
+treated as one value. `product(1,2,3,4)` and `product([1,2,3,4])` both work now.
+
+**Documented, not changed.** Names that are two contracts under one name are
+left as they are so neither call shape breaks — `zip`/`unzip`/`distinct`/
+`interleave` (eager array vs lazy `Iterable`), `median`/`mode` (element vs
+statistic), and the curried `map`/`filter`/`reduce`/`find`/`every`/`some` in
+`utils/functional.ts` versus the direct ones in `utils/array/manipulate.ts`.
+Pick by import path.
+
 ---
 
 ## 1.0.5 -> 1.0.6 (the explicit cache layer)

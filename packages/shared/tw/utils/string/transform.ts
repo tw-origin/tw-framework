@@ -297,6 +297,9 @@ export function toCharArray(str: string): string[] {
 }
 
 export function chunk(str: string, size: number): string[] {
+  // size <= 0 makes i += size never advance -> unbounded growth -> the process
+  // dies. Same guard as utils/array/manipulate.ts.
+  if (size <= 0) return [str];
   const chunks: string[] = [];
   for (let i = 0; i < str.length; i += size) {
     chunks.push(str.slice(i, i + size));

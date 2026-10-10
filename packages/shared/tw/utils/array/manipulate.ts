@@ -926,7 +926,16 @@ export function allDuplicates<T>(array: T[]): T[] {
   return [...seen.entries()].filter(([, count]) => count > 1).map(([item]) => item);
 }
 
-export function countOccurrences<T>(array: T[]): Map<T, number> {
+/**
+ * How many times each value appears, as a Map.
+ *
+ * Renamed from `countOccurrences`, which collided with
+ * `algorithms/sorting.ts`'s `countOccurrences(arr, value) => number` (the count
+ * of ONE value). That name now means the single-value count everywhere; this
+ * map-shaped helper has its own name so a caller can tell the two apart by the
+ * import path. (`frequency` is the same job with a plain-object return.)
+ */
+export function countOccurrencesMap<T>(array: T[]): Map<T, number> {
   const counts = new Map<T, number>();
   for (const item of array) {
     counts.set(item, (counts.get(item) ?? 0) + 1);
@@ -944,7 +953,7 @@ export function frequency<T>(array: T[]): Record<string, number> {
 }
 
 export function mostFrequent<T>(array: T[]): T | undefined {
-  const counts = countOccurrences(array);
+  const counts = countOccurrencesMap(array);
   let maxCount = 0;
   let result: T | undefined;
   for (const [item, count] of counts) {
@@ -957,7 +966,7 @@ export function mostFrequent<T>(array: T[]): T | undefined {
 }
 
 export function leastFrequent<T>(array: T[]): T | undefined {
-  const counts = countOccurrences(array);
+  const counts = countOccurrencesMap(array);
   let minCount = Infinity;
   let result: T | undefined;
   for (const [item, count] of counts) {

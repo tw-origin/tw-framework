@@ -10,6 +10,9 @@ import { unzip as unzipCanonical } from "./array/manipulate";
 export { compact, compactNullish, zip, zipWith, unzip } from "./array/manipulate";
 
 export function chunk<T>(array: T[], size: number): T[][] {
+  // size <= 0 makes i += size never advance -> unbounded growth -> the process
+  // dies. Same guard as utils/array/manipulate.ts.
+  if (size <= 0) return [array];
   const chunks: T[][] = [];
   for (let i = 0; i < array.length; i += size) {
     chunks.push(array.slice(i, i + size));
