@@ -42,21 +42,11 @@ export function sortByKey<T>(arr: T[], keyFn: (item: T) => string | number, dire
   });
 }
 
-export function range(start: number, end: number, step: number = 1): number[] {
-  const result: number[] = [];
-  if (step > 0) {
-    for (let i = start; i < end; i += step) result.push(i);
-  } else {
-    for (let i = start; i > end; i += step) result.push(i);
-  }
-  return result;
-}
+// Canonical implementation lives in @tw/shared. Re-exported here so the original
+// deep-import path keeps working unchanged. The compiler already depends on
+// @tw/shared elsewhere, so this adds no new dependency edge.
+export { range, MAX_RANGE_LENGTH } from "@tw/shared";
 
-export function zip<T, U>(a: T[], b: U[]): Array<[T, U]> {
-  const result: Array<[T, U]> = [];
-  const minLen = Math.min(a.length, b.length);
-  for (let i = 0; i < minLen; i++) {
-    result.push([a[i], b[i]]);
-  }
-  return result;
-}
+// Canonical implementation lives in @tw/shared. Re-exported so the original
+// deep-import path keeps working unchanged.
+export { zip } from "@tw/shared";

@@ -301,35 +301,93 @@ export function fromRoman(roman: string): number {
   return result;
 }
 
+/** Largest value the number conversions accept: 2^32 - 1. */
+export const MAX_CONVERSION_VALUE = 4294967295;
+
+const DIGIT_ALPHABET = "0123456789abcdefghijklmnopqrstuvwxyz";
+
+function assertConvertibleInteger(n: number, who: string): void {
+  if (typeof n !== "number" || !Number.isInteger(n)) {
+    throw new Error(`${who}: value must be an integer (got ${typeof n === "number" ? n : typeof n})`);
+  }
+  if (n < 0) throw new Error(`${who}: value must not be negative (got ${n})`);
+  if (n > MAX_CONVERSION_VALUE) {
+    throw new Error(`${who}: value must be at most ${MAX_CONVERSION_VALUE} (got ${n})`);
+  }
+}
+
+function assertRadix(base: number, who: string): void {
+  if (typeof base !== "number" || !Number.isInteger(base) || base < 2 || base > 36) {
+    throw new Error(`${who}: base must be an integer between 2 and 36 (got ${base})`);
+  }
+}
+
+function assertDigitsForBase(str: string, base: number, who: string): void {
+  if (typeof str !== "string" || str.length === 0) {
+    throw new Error(`${who}: input must be a non-empty string`);
+  }
+  const allowed = DIGIT_ALPHABET.slice(0, base);
+  if (!new RegExp(`^[${allowed}]+$`, "i").test(str)) {
+    throw new Error(`${who}: input contains digits outside base ${base}`);
+  }
+}
+
+/**
+ * Number to base-2/16/8/base string.
+ *
+ * The contract is a NON-NEGATIVE SAFE INTEGER up to `MAX_CONVERSION_VALUE`
+ * (2^32 - 1). Negative values, values above that, and fractions throw. The old
+ * `(n >>> 0)` silently wrapped all three; that is gone.
+ *
+ * `toHex` and `toBase` both emit UPPERCASE, so the two agree on the same value.
+ * No leading-zero padding is added (`toBinary(5)` is `"101"`).
+ */
 export function toBinary(n: number): string {
-  return (n >>> 0).toString(2);
+  assertConvertibleInteger(n, "toBinary");
+  return n.toString(2);
 }
 
 export function fromBinary(binary: string): number {
+  assertDigitsForBase(binary, 2, "fromBinary");
   return parseInt(binary, 2);
 }
 
 export function toHex(n: number): string {
-  return (n >>> 0).toString(16).toUpperCase();
+  assertConvertibleInteger(n, "toHex");
+  return n.toString(16).toUpperCase();
 }
 
+/**
+ * Parse hex to a number. Accepts any non-empty run of hex digits, including an
+ * odd count -- a hex number is not a byte string, and `toHex(1)` is `"1"`, so
+ * rejecting odd length here would break the round trip.
+ */
 export function fromHex(hex: string): number {
+  assertDigitsForBase(hex, 16, "fromHex");
   return parseInt(hex, 16);
 }
 
 export function toOctal(n: number): string {
-  return (n >>> 0).toString(8);
+  assertConvertibleInteger(n, "toOctal");
+  return n.toString(8);
 }
 
 export function fromOctal(octal: string): number {
+  assertDigitsForBase(octal, 8, "fromOctal");
   return parseInt(octal, 8);
 }
 
+/** Convert to an arbitrary base in 2..36, uppercase. */
 export function toBase(n: number, base: number): string {
-  return (n >>> 0).toString(base);
+  assertConvertibleInteger(n, "toBase");
+  assertRadix(base, "toBase");
+  return n.toString(base).toUpperCase();
 }
 
+/** Parse a string in an arbitrary base in 2..36. */
 export function fromBase(str: string, base: number): number {
+  assertRadix(base, "fromBase");
+  assertDigitsForBase(str, base, "fromBase");
   return parseInt(str, base);
 }
 

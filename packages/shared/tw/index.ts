@@ -2,6 +2,7 @@
 import { sha256 } from "./hashing/sha";
 
 export { ObjectUtils, createObjectUtils } from "./utils";
+export { range, MAX_RANGE_LENGTH, zip, zipWith, unzip } from "./utils/array/manipulate";
 export { clientIp, ipAddress, normalizeIp, isPrivateIp, inCidr, trustProxy, readHeader, isIpv6, fromForwardedHeader, ipToBigInt, IP_HEADERS, setTrustProxy, getTrustProxy } from "./net/ip";
 export * from "./net/request-context";
 export * from "./api/response";
@@ -74,6 +75,22 @@ export { CompileError, ConfigurationError, ParseError, RuntimeError, TWError, Ty
 export type { AsyncResult, Brand, Cloneable, Comparable, DeepPartial, DeepReadonly, Disposable, Equatable, Maybe, Result, Tagged } from "./types";
 
 export { uuidv4 } from "./utils/string/transform";
+// The case helpers live in utils/string/transform but were only reachable by
+// deep import; the compiler's copy of them used to be a second implementation.
+// Exporting them here gives both packages one source of truth.
+export {
+  camelCase,
+  capitalize,
+  constantCase,
+  dotCase,
+  kebabCase,
+  pascalCase,
+  slugify,
+  snakeCase,
+  titleCase,
+  truncate,
+  uncapitalize,
+} from "./utils/string/transform";
 // Stubs for missing shared utilities (used by tests)
 export function generateETag(data: string): string {
   // Simple hash-based ETag

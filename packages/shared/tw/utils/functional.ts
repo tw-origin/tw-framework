@@ -507,15 +507,9 @@ export function zipWith<A, B, R>(iterableA: Iterable<A>, iterableB: Iterable<B>,
   return result;
 }
 
-export function range(start: number, end: number, step: number = 1): number[] {
-  const result: number[] = [];
-  if (step > 0) {
-    for (let i = start; i < end; i += step) result.push(i);
-  } else if (step < 0) {
-    for (let i = start; i > end; i += step) result.push(i);
-  }
-  return result;
-}
+// Canonical implementation lives in shared/tw/utils/array/manipulate.ts.
+// Re-exported here so the original deep-import path keeps working unchanged.
+export { range, MAX_RANGE_LENGTH } from "./array/manipulate";
 
 export function repeat<T>(value: T, n: number): T[] {
   return Array(n).fill(value);

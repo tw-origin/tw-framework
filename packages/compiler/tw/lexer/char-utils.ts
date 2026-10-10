@@ -193,14 +193,15 @@ function isUnicodeWhitespace(ch: string): boolean {
 
 function isUnicodeIdentStart(ch: string): boolean {
   const code = ch.codePointAt(0)!;
-  // Unicode categories: Lu, Ll, Lt, Lm, Lo, Nl
-  // Simplified: check common ranges
-  if (code >= 0x00AA && code <= 0x00AA) return true; // ?
-  if (code >= 0x00B5 && code <= 0x00B5) return true; // ?
-  if (code >= 0x00BA && code <= 0x00BA) return true; // ?
-  if (code >= 0x00C0 && code <= 0x00D6) return true; // ?-?
-  if (code >= 0x00D8 && code <= 0x00F6) return true; // ?-?
-  if (code >= 0x00F8 && code <= 0x02C1) return true; // ?-?
+  // Unicode categories: Lu, Ll, Lt, Lm, Lo, Nl.
+  // This covers the Latin-1 letters plus the scripts TW ships, not every
+  // letter in Unicode -- a deliberate, documented approximation.
+  if (code === 0x00AA) return true;                          // feminine ordinal
+  if (code === 0x00B5) return true;                          // micro sign
+  if (code === 0x00BA) return true;                          // masculine ordinal
+  if (code >= 0x00C0 && code <= 0x00D6) return true;         // Latin-1 capitals
+  if (code >= 0x00D8 && code <= 0x00F6) return true;         // Latin-1 letters
+  if (code >= 0x00F8 && code <= 0x02C1) return true;         // Latin Extended + IPA
   if (code >= 0x0900 && code <= 0x097F) return true; // Devanagari
   if (code >= 0x0980 && code <= 0x09FF) return true; // Bengali
   if (code >= 0x0A00 && code <= 0x0A7F) return true; // Gurmukhi

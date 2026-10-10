@@ -3,25 +3,23 @@
  * @module shared/utils/object
  */
 
-export function assign<T extends object>(target: T, ...sources: Partial<T>[]): T {
-  return Object.assign(target, ...sources);
+import { merge } from "../collection-utils";
+
+// Canonical implementation lives in shared/tw/utils/collection-utils.ts.
+// Re-exported so the original deep-import path keeps working unchanged. It is a
+// deep merge now, not the shallow one this file used to export.
+export { merge };
+
+/**
+ * Alias of `merge`, which is already a deep merge. Kept so the existing export
+ * and its deep-import path keep working.
+ */
+export function mergeDeep<T extends object>(target: T, ...sources: Partial<T>[]): T {
+  return merge(target as Record<string, unknown>, ...(sources as Record<string, unknown>[])) as T;
 }
 
-export function mergeDeep<T extends object>(target: T, ...sources: Partial<T>[]): T {
-  const result = { ...target };
-  for (const source of sources) {
-    for (const key in source) {
-      if (source[key] instanceof Object && key in result) {
-        (result as Record<string, unknown>)[key] = mergeDeep(
-          (result as Record<string, unknown>)[key] as object,
-          (source as Record<string, unknown>)[key] as object,
-        );
-      } else {
-        (result as Record<string, unknown>)[key] = (source as Record<string, unknown>)[key];
-      }
-    }
-  }
-  return result;
+export function assign<T extends object>(target: T, ...sources: Partial<T>[]): T {
+  return Object.assign(target, ...sources);
 }
 
 export function clone<T>(obj: T): T {
@@ -249,17 +247,6 @@ export function defaultsDeep<T extends object>(obj: T, ...sources: Partial<T>[])
   return result;
 }
 
-export function merge<T extends object>(target: T, ...sources: Partial<T>[]): T {
-  const result = { ...target };
-  for (const source of sources) {
-    for (const key in source) {
-      if (source[key] !== undefined) {
-        result[key] = source[key] as any;
-      }
-    }
-  }
-  return result;
-}
 
 export function isEmpty(obj: unknown): boolean {
   if (obj === null || obj === undefined) return true;

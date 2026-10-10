@@ -12,8 +12,24 @@ export function chunk<T>(array: T[], size: number): T[][] {
   return chunks;
 }
 
+/**
+ * Remove every falsy value: `false`, `0`, `""`, `null`, `undefined` and `NaN`.
+ *
+ * This is the canonical `compact`. `utils/collection-utils.ts` and
+ * `algorithms/sorting.ts` re-export it, so all three paths return the same thing.
+ * The old collection-utils copy removed only `null`/`undefined`; that is a
+ * different contract and now lives in `compactNullish`.
+ */
 export function compact<T>(array: (T | null | undefined | false | 0 | "" | void)[]): T[] {
   return array.filter((item): item is T => Boolean(item));
+}
+
+/**
+ * Remove only `null` and `undefined`, keeping other falsy values (`0`, `""`,
+ * `false`, `NaN`). Use this when "defined" is the question and "truthy" is not.
+ */
+export function compactNullish<T>(array: T[]): T[] {
+  return array.filter((item) => item !== null && item !== undefined);
 }
 
 export function difference<T>(a: T[], b: T[]): T[] {
@@ -170,14 +186,29 @@ export function pullAt<T>(array: T[], indexes: number[]): T[] {
   return array.filter((_, i) => !set.has(i));
 }
 
+/**
+ * Remove every element matching `predicate` from `array` and return the removed
+ * elements in their original order.
+ *
+ * - The input array is mutated; that is the lodash `remove` contract.
+ * - Non-matching elements keep their original order.
+ * - No match returns `[]` and leaves the array untouched.
+ * - `predicate` runs over the array before anything is spliced, so if it throws
+ *   the array is left exactly as it was.
+ * - To keep the matching elements instead (what the old `collection-utils.remove`
+ *   did), use `reject`.
+ *
+ * Canonical implementation; `utils/collection-utils.ts` re-exports it.
+ */
 export function remove<T>(array: T[], predicate: (item: T) => boolean): T[] {
-  const removed: T[] = [];
-  for (let i = array.length - 1; i >= 0; i--) {
-    if (predicate(array[i])) {
-      removed.unshift(array[i]);
-      array.splice(i, 1);
-    }
+  if (!Array.isArray(array)) throw new Error("remove: array must be an array");
+  if (typeof predicate !== "function") throw new Error("remove: predicate must be a function");
+  const indices: number[] = [];
+  for (let i = 0; i < array.length; i++) {
+    if (predicate(array[i])) indices.push(i);
   }
+  const removed = indices.map((i) => array[i]);
+  for (let k = indices.length - 1; k >= 0; k--) array.splice(indices[k], 1);
   return removed;
 }
 
@@ -273,6 +304,11 @@ export function uniqWith<T>(array: T[], comparator: (a: T, b: T) => boolean): T[
   return result;
 }
 
+/**
+ * Transpose an array of arrays: group the elements by position, up to the
+ * longest inner array. Existing behaviour, preserved; the copies in
+ * `utils/collection-utils.ts` and `algorithms/sorting.ts` re-export it.
+ */
 export function unzip<T>(array: T[][]): T[][] {
   if (array.length === 0) return [];
   const maxLen = Math.max(...array.map((a) => a.length));
@@ -313,9 +349,18 @@ export function xorWith<T>(a: T[], b: T[], comparator: (a: T, b: T) => boolean):
   ];
 }
 
-export function zip<A, B>(a: A[], b: B[]): Array<[A, B]> {
+/**
+ * Pair two arrays position by position, up to the LONGER length.
+ *
+ * A position missing on one side is `undefined`, and the return type says so.
+ * The canonical implementation; `utils/collection-utils.ts`,
+ * `algorithms/sorting.ts` and the compiler's `utils/collections/group.ts`
+ * re-export it. Extra arguments and non-array inputs are not part of this
+ * contract.
+ */
+export function zip<A, B>(a: A[], b: B[]): Array<[A | undefined, B | undefined]> {
   const maxLen = Math.max(a.length, b.length);
-  const result: Array<[A, B]> = [];
+  const result: Array<[A | undefined, B | undefined]> = [];
   for (let i = 0; i < maxLen; i++) {
     result.push([a[i], b[i]]);
   }
@@ -330,7 +375,11 @@ export function zipObject<K extends string, V>(keys: K[], values: V[]): Record<K
   return result;
 }
 
-export function zipWith<A, B, R>(a: A[], b: B[], iteratee: (a: A, b: B) => R): R[] {
+/**
+ * Like `zip`, but combines each pair with `iteratee`. Pads to the longer
+ * length, so `iteratee` can receive `undefined` on either side.
+ */
+export function zipWith<A, B, R>(a: A[], b: B[], iteratee: (a: A | undefined, b: B | undefined) => R): R[] {
   const maxLen = Math.max(a.length, b.length);
   const result: R[] = [];
   for (let i = 0; i < maxLen; i++) {
@@ -515,14 +564,56 @@ export function sortedUniqBy<T, U>(array: T[], iteratee: (item: T) => U): T[] {
   return result;
 }
 
+/**
+ * Maximum number of elements `range` will produce.
+ * Guards against technically valid but enormous ranges exhausting memory.
+ */
+export const MAX_RANGE_LENGTH = 100_000;
+
+/**
+ * Build an array of numbers from `start` up to (excluding) `end`, stepping by `step`.
+ *
+ * Contract:
+ *   - `start`, `end` and `step` must be finite numbers. Anything else -- a string,
+ *     `NaN`, `Infinity` -- throws, so a bad call fails loudly instead of hanging.
+ *   - `step === 0` throws: it cannot make progress.
+ *   - A step pointing away from `end` (for example `range(0, 10, -1)`) returns `[]`.
+ *     It never loops.
+ *   - Ascending (`step > 0`) and descending (`step < 0`) ranges are both supported.
+ *   - The result never exceeds `MAX_RANGE_LENGTH` elements. Exceeding it throws
+ *     rather than truncating, so a caller is never handed a silently wrong array.
+ *   - Elements are `start + i * step`, so a fractional step yields a predictable
+ *     length instead of accumulating floating-point drift.
+ *
+ * This is the single canonical implementation; the copies in `utils/functional.ts`,
+ * `utils/function/index.ts`, `algorithms/sorting.ts` and the compiler's
+ * `utils/collections/group.ts` re-export from here.
+ */
 export function range(start: number, end: number, step: number = 1): number[] {
-  if (step === 0) return [];
-  const result: number[] = [];
-  if (step > 0) {
-    for (let i = start; i < end; i += step) result.push(i);
-  } else {
-    for (let i = start; i > end; i += step) result.push(i);
+  if (
+    typeof start !== "number" || typeof end !== "number" || typeof step !== "number" ||
+    !Number.isFinite(start) || !Number.isFinite(end) || !Number.isFinite(step)
+  ) {
+    throw new Error(
+      `range: start, end and step must be finite numbers (got ${typeof start}, ${typeof end}, ${typeof step})`,
+    );
   }
+  if (step === 0) {
+    throw new Error("range: step must not be zero");
+  }
+  const ascending = step > 0;
+  if (ascending ? start >= end : start <= end) return [];
+  // Count first, then generate deterministically as start + i * step.
+  // Accumulating (`i += step`) drifts: range(0, 1, 0.1) reached 0.9999999999999999,
+  // which is still below the bound, so it produced 11 elements where the cap
+  // arithmetic says 10. Counting first makes the limit exact and the length
+  // predictable for fractional steps.
+  const count = Math.ceil(Math.abs((end - start) / step));
+  if (count > MAX_RANGE_LENGTH) {
+    throw new Error(`range: ${count} elements exceeds MAX_RANGE_LENGTH (${MAX_RANGE_LENGTH})`);
+  }
+  const result: number[] = new Array(count);
+  for (let i = 0; i < count; i++) result[i] = start + i * step;
   return result;
 }
 

@@ -194,8 +194,11 @@ export class CodegenOrchestrator {
     // 6. Source Map
     let sourceMap: SourceMap | undefined;
     if (this.options.sourceMap) {
-            // Add mappings (simplified -- real impl tracks positions during generation)
-      sourceMap = generateSourceMap(html, "source.tw", "");
+      // The parser puts the original text and path on the program, so the map
+      // can point at something real. This used to pass "" as the source
+      // content and a fixed "source.tw" name, producing a map that referenced
+      // an empty file -- useless for debugging the generated output.
+      sourceMap = generateSourceMap(html, program.filePath ?? "source.tw", program.source ?? "");
     }
 
     // Calculate metadata

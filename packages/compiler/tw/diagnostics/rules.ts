@@ -611,3 +611,49 @@ export function checkWhileComparisons(program: Program, filePath: string, diags:
     }
   });
 }
+
+// --- deprecated import paths ------------------------------------------------
+
+/** An import name that is deprecated, with its replacement and removal release. */
+export interface DeprecatedImport {
+  /** Matched as a substring of the import source, so any deep path matches. */
+  source: string;
+  /** The imported name. */
+  name: string;
+  /** The name to use instead. */
+  replacement: string;
+  /** The release this name will be removed in. */
+  removal: string;
+}
+
+/**
+ * Deprecated import names. Add an entry when a name is deprecated. The warning
+ * must ship at least one release before the removal, so `removal` here must be
+ * later than the release that first carries this warning.
+ */
+export const DEPRECATED_IMPORTS: DeprecatedImport[] = [
+  { source: "utils/string/transform", name: "toHex", replacement: "stringToHex", removal: "2.1.0" },
+  { source: "utils/string/transform", name: "fromHex", replacement: "hexToString", removal: "2.1.0" },
+  { source: "utils/string/transform", name: "toBinary", replacement: "stringToBinary", removal: "2.1.0" },
+  { source: "utils/string/transform", name: "fromBinary", replacement: "binaryToString", removal: "2.1.0" },
+];
+
+/**
+ * Warn (TW088) when a deprecated name is imported, so a removal is never a
+ * silent break. Namespace imports (`import * as x`) are not checked, because the
+ * accessed name is not known until the member is used.
+ */
+export function checkDeprecatedImports(program: Program, filePath: string, diags: Diagnostic[]): void {
+  for (const imp of collectImports(program)) {
+    for (const entry of DEPRECATED_IMPORTS) {
+      if (!imp.source.includes(entry.source)) continue;
+      for (const item of imp.items) {
+        if (item !== entry.name) continue;
+        diags.push(createDiagnostic("TW088", imp.line, imp.col, filePath, item, [
+          `"${item}" from "${imp.source}" is deprecated; use "${entry.replacement}" instead`,
+          `"${item}" will be removed in ${entry.removal}`,
+        ]));
+      }
+    }
+  }
+}

@@ -3,6 +3,8 @@
  * @module shared/algorithms
  */
 
+import { unzip as unzipCanonical } from "../utils/array/manipulate";
+
 export type CompareFn<T> = (a: T, b: T) => number;
 
 export function defaultCompare<T>(a: T, b: T): number {
@@ -482,24 +484,9 @@ export function flattenDeep<T>(arr: unknown[]): T[] {
   }, []);
 }
 
-export function range(start: number, end: number, step: number = 1): number[] {
-  const result: number[] = [];
-  if (step > 0) {
-    for (let i = start; i < end; i += step) result.push(i);
-  } else {
-    for (let i = start; i > end; i += step) result.push(i);
-  }
-  return result;
-}
-
-export function zip<A, B>(a: A[], b: B[]): Array<[A, B]> {
-  const length = Math.min(a.length, b.length);
-  const result: Array<[A, B]> = [];
-  for (let i = 0; i < length; i++) {
-    result.push([a[i], b[i]]);
-  }
-  return result;
-}
+// Canonical implementation lives in shared/tw/utils/array/manipulate.ts.
+// Re-exported here so the original deep-import path keeps working unchanged.
+export { range, MAX_RANGE_LENGTH, zip } from "../utils/array/manipulate";
 
 export function zipLongest<A, B>(a: A[], b: B[], fillA?: A, fillB?: B): Array<[A | undefined, B | undefined]> {
   const length = Math.max(a.length, b.length);
@@ -757,9 +744,9 @@ export function pairwise<T>(arr: T[]): Array<[T, T]> {
   return sliding(arr, 2, 1) as Array<[T, T]>;
 }
 
-export function compact<T>(arr: (T | null | undefined | false | 0 | "")[]): T[] {
-  return arr.filter((item) => Boolean(item)) as T[];
-}
+// Canonical implementation lives in shared/tw/utils/array/manipulate.ts.
+// Re-exported so the original deep-import path keeps working unchanged.
+export { compact, compactNullish } from "../utils/array/manipulate";
 
 export function first<T>(arr: T[]): T | undefined {
   return arr[0];
@@ -1077,14 +1064,13 @@ export function deepFlatten<T>(arr: unknown[]): T[] {
   return flattenDepth(arr, Infinity) as T[];
 }
 
+/**
+ * Split an array of pairs into two arrays. Keeps its own tuple return type and
+ * delegates to the canonical `unzip`, so there is one implementation.
+ */
 export function unzip<A, B>(pairs: Array<[A, B]>): [A[], B[]] {
-  const a: A[] = [];
-  const b: B[] = [];
-  for (const [x, y] of pairs) {
-    a.push(x);
-    b.push(y);
-  }
-  return [a, b];
+  const out = unzipCanonical(pairs as unknown as A[][]);
+  return [(out[0] ?? []) as A[], (out[1] ?? []) as unknown as B[]];
 }
 
 export function unzip3<A, B, C>(triples: Array<[A, B, C]>): [A[], B[], C[]] {

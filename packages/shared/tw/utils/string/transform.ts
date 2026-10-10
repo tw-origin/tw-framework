@@ -14,7 +14,12 @@ export function uncapitalize(str: string): string {
 }
 
 export function titleCase(str: string): string {
-  return str.replace(/\w\S*/g, (word) => capitalize(word.toLowerCase()));
+  // `\w\S*` treats `-` and `_` as part of a word, so "hello-world_foo" came
+  // out as "Hello-world_foo" instead of "Hello World Foo". Normalise the
+  // separators to spaces first, then capitalise each word.
+  return str
+    .replace(/[-_\s]+/g, " ")
+    .replace(/\w\S*/g, (word) => capitalize(word.toLowerCase()));
 }
 
 export function sentenceCase(str: string): string {
@@ -22,8 +27,11 @@ export function sentenceCase(str: string): string {
 }
 
 export function camelCase(str: string): string {
+  // The `^(.)` branch that used to sit in this pattern also upper-cased the
+  // FIRST character, so `camelCase("hello-world")` returned "HelloWorld" --
+  // PascalCase. Only the character after a separator is upper-cased.
   return str
-    .replace(/[-_\s]+(.)|^(.)/g, (_, p1, p2) => (p1 || p2 || "").toUpperCase())
+    .replace(/[-_\s]+(.)/g, (_, p1) => (p1 || "").toUpperCase())
     .replace(/[^a-zA-Z0-9]/g, "");
 }
 
@@ -364,13 +372,15 @@ export function shuffle(str: string, seed?: number): string {
 }
 
 export function slugify(str: string, separator: string = "-"): string {
+  // `_` used to be stripped while `-` was kept, so "hello-world_foo" became
+  // "hello-worldfoo". Both are separators now, and the run collapses to one.
   return str
     .normalize("NFD")
     .replace(/[\u0300-\u036f]/g, "")
     .toLowerCase()
-    .replace(/[^a-z0-9\s-]/g, "")
+    .replace(/[^a-z0-9\s_-]/g, "")
     .trim()
-    .replace(/\s+/g, separator)
+    .replace(/[\s_-]+/g, separator)
     .replace(new RegExp(`${separator}+`, "g"), separator);
 }
 
@@ -652,37 +662,86 @@ export function fromBase64(str: string): string {
   return str;
 }
 
-export function toHex(str: string): string {
+/** Decode UTF-8 bytes, refusing anything that is not a valid sequence. */
+function decodeUtf8(bytes: Uint8Array, who: string): string {
+  try {
+    return new TextDecoder("utf-8", { fatal: true }).decode(bytes);
+  } catch {
+    throw new Error(`${who}: input is not a valid UTF-8 byte sequence`);
+  }
+}
+
+/**
+ * Encode a string to lowercase hex, one hex pair per UTF-8 byte.
+ *
+ * The old `toHex` padded each UTF-16 code unit to two hex digits, which broke
+ * for anything above Latin-1 (`"हिं"` produced an odd-length string that would
+ * not decode). Encoding UTF-8 bytes first makes the output always even-length
+ * and round-trippable for ASCII, Devanagari, emoji and mixed text alike.
+ */
+export function stringToHex(str: string): string {
   let result = "";
-  for (let i = 0; i < str.length; i++) {
-    result += str.charCodeAt(i).toString(16).padStart(2, "0");
+  for (const byte of new TextEncoder().encode(str)) {
+    result += byte.toString(16).padStart(2, "0");
   }
   return result;
 }
 
-export function fromHex(str: string): string {
+/**
+ * Decode lowercase or uppercase hex back to a string. Throws on odd length, on a
+ * non-hex character, or on bytes that are not valid UTF-8.
+ */
+export function hexToString(hex: string): string {
+  if (typeof hex !== "string") throw new Error("hexToString: input must be a string");
+  if (hex.length % 2 !== 0) throw new Error(`hexToString: odd-length hex (${hex.length} characters)`);
+  const bytes = new Uint8Array(hex.length / 2);
+  for (let i = 0; i < bytes.length; i++) {
+    const pair = hex.slice(i * 2, i * 2 + 2);
+    if (!/^[0-9a-fA-F]{2}$/.test(pair)) throw new Error(`hexToString: invalid hex "${pair}" at position ${i * 2}`);
+    bytes[i] = parseInt(pair, 16);
+  }
+  return decodeUtf8(bytes, "hexToString");
+}
+
+/**
+ * Encode a string to 8-bit binary groups, one group per UTF-8 byte. The output
+ * length is always a multiple of 8.
+ */
+export function stringToBinary(str: string): string {
   let result = "";
-  for (let i = 0; i < str.length; i += 2) {
-    result += String.fromCharCode(parseInt(str.slice(i, i + 2), 16));
+  for (const byte of new TextEncoder().encode(str)) {
+    result += byte.toString(2).padStart(8, "0");
   }
   return result;
 }
 
-export function toBinary(str: string): string {
-  let result = "";
-  for (let i = 0; i < str.length; i++) {
-    result += str.charCodeAt(i).toString(2).padStart(8, "0");
+/**
+ * Decode binary back to a string. Throws when the length is not a multiple of 8,
+ * when a character is not 0 or 1, or on bytes that are not valid UTF-8.
+ */
+export function binaryToString(binary: string): string {
+  if (typeof binary !== "string") throw new Error("binaryToString: input must be a string");
+  if (binary.length % 8 !== 0) throw new Error(`binaryToString: length ${binary.length} is not a multiple of 8`);
+  const bytes = new Uint8Array(binary.length / 8);
+  for (let i = 0; i < bytes.length; i++) {
+    const group = binary.slice(i * 8, i * 8 + 8);
+    if (!/^[01]{8}$/.test(group)) throw new Error(`binaryToString: invalid binary "${group}" at position ${i * 8}`);
+    bytes[i] = parseInt(group, 2);
   }
-  return result;
+  return decodeUtf8(bytes, "binaryToString");
 }
 
-export function fromBinary(str: string): string {
-  let result = "";
-  for (let i = 0; i < str.length; i += 8) {
-    result += String.fromCharCode(parseInt(str.slice(i, i + 8), 2));
-  }
-  return result;
-}
+/** @deprecated use `stringToHex`. Kept as an alias for one release. */
+export const toHex = stringToHex;
+
+/** @deprecated use `hexToString`. Kept as an alias for one release. */
+export const fromHex = hexToString;
+
+/** @deprecated use `stringToBinary`. Kept as an alias for one release. */
+export const toBinary = stringToBinary;
+
+/** @deprecated use `binaryToString`. Kept as an alias for one release. */
+export const fromBinary = binaryToString;
 
 export function rotate(str: string, n: number): string {
   const len = str.length;

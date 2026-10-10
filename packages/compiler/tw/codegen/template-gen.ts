@@ -34,6 +34,7 @@
 
 import type { Program, ASTNode } from "../ast/nodes";
 import type { CodegenContext } from "./types";
+import { generateHTML } from "./html";
 
 // --- Template Builder ------------------------------------------------
 
@@ -335,12 +336,11 @@ export class TemplateBuilder {
  * This produces a plain HTML string with no JS -- for fully static pages.
  */
 export function generateStaticHTML(program: Program, ctx?: CodegenContext): string {
-  const builder = new TemplateBuilder("data", ctx);
-  const templateFn = builder.generate(program);
-
-  // In real usage, this function would be evaluated
-  // For now, return the template function source
-  return templateFn;
+  // This used to return the *template function source* -- a JavaScript string --
+  // even though the name and the doc above promise an HTML document. Delegate
+  // to the real generator: for a page with no interactivity it emits a complete
+  // document with no <script> tag, which is exactly "static HTML, no JS".
+  return generateHTML(program, ctx);
 }
 
 /**

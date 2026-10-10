@@ -1,74 +1,31 @@
-/** Case conversion utilities. */
+/**
+ * Case conversion utilities used by the compiler.
+ *
+ * The canonical implementation lives in
+ * `@tw/shared/tw/utils/string/transform`. These are re-exported rather than
+ * reimplemented: the two copies had already drifted (this file's `dotCase`
+ * dropped hyphens, the shared `titleCase` kept them), and a second copy is the
+ * only way they can drift again.
+ */
 
-export function camelCase(str: string): string {
-  return str
-    .replace(/[-_\s]+(.)/g, (_, c: string) => c.toUpperCase())
-    .replace(/[-_\s]/g, "");
-}
+export {
+  camelCase,
+  capitalize,
+  constantCase,
+  dotCase,
+  kebabCase,
+  pascalCase,
+  slugify,
+  snakeCase,
+  titleCase,
+  truncate,
+  uncapitalize,
+} from "@tw/shared";
 
-export function pascalCase(str: string): string {
-  const camel = camelCase(str);
-  return camel.charAt(0).toUpperCase() + camel.slice(1);
-}
-
-export function kebabCase(str: string): string {
-  return str
-    .replace(/([a-z])([A-Z])/g, "$1-$2")
-    .replace(/[\s_]+/g, "-")
-    .toLowerCase();
-}
-
-export function snakeCase(str: string): string {
-  return str
-    .replace(/([a-z])([A-Z])/g, "$1_$2")
-    .replace(/[\s-]+/g, "_")
-    .toLowerCase();
-}
-
-export function titleCase(str: string): string {
-  return str
-    .replace(/[-_\s]+/g, " ")
-    .replace(/\w\S*/g, (word) =>
-      word.charAt(0).toUpperCase() + word.slice(1).toLowerCase()
-    );
-}
-
-export function constantCase(str: string): string {
-  return snakeCase(str).toUpperCase();
-}
-
-export function dotCase(str: string): string {
-  return str
-    .replace(/([a-z])([A-Z])/g, "$1.$2")
-    .replace(/[\s_]+/g, ".")
-    .toLowerCase();
-}
-
+/** Path-style case (`some/path/here`). The shared package has no equivalent. */
 export function pathCase(str: string): string {
   return str
     .replace(/([a-z])([A-Z])/g, "$1/$2")
     .replace(/[\s_.]+/g, "/")
     .toLowerCase();
-}
-
-export function slugify(str: string): string {
-  return str
-    .toLowerCase()
-    .trim()
-    .replace(/[^\w\s-]/g, "")
-    .replace(/[\s_-]+/g, "-")
-    .replace(/^-+|-+$/g, "");
-}
-
-export function truncate(str: string, maxLen: number, suffix: string = "..."): string {
-  if (str.length <= maxLen) return str;
-  return str.slice(0, maxLen - suffix.length) + suffix;
-}
-
-export function capitalize(str: string): string {
-  return str.charAt(0).toUpperCase() + str.slice(1);
-}
-
-export function uncapitalize(str: string): string {
-  return str.charAt(0).toLowerCase() + str.slice(1);
 }

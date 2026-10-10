@@ -14,7 +14,8 @@
  *   Also enables streaming SSR -- start parsing before full file is read.
  */
 
-import type { Token, TokenType } from "./tokens/types";
+import type { Token, TokenType, TokenPosition } from "./tokens/types";
+import { tokenize } from "./tokenizer";
 
 // --- Token Clusters ---------------------------------------------------
 
@@ -360,6 +361,18 @@ export async function* tokenizeStream(
  * This is the core of incremental compilation.
  * SWC does this for Next.js, TW does it natively.
  */
+/**
+ * Incremental tokenizer -- re-tokenize only the changed region.
+ *
+ * `changeStart` / `changeEnd` are offsets into the OLD source naming the range
+ * that the edit replaced (a pure insertion has start === end). The matching
+ * region of the new source is `[changeStart, changeEnd + delta)`, where
+ * `delta = newSource.length - oldSource.length`; tokens after it are shifted by
+ * `delta`. Returns the full token list for `newSource`.
+ *
+ * The previous version computed those bounds and then threw them away,
+ * returning only before + after -- every token covering the edit vanished.
+ */
 export function tokenizeIncremental(
   oldSource: string,
   oldTokens: Token[],
@@ -385,21 +398,52 @@ export function tokenizeIncremental(
     }
   }
 
-  // Keep tokens before the change
   const beforeTokens = oldTokens.slice(0, startIdx);
-
-  // Keep tokens after the change
   const afterTokens = oldTokens.slice(endIdx);
 
-  // Re-tokenize the changed region + some context around it
-  const contextStart = Math.max(0, changeStart - 100);
-  const contextEnd = Math.min(newSource.length, changeEnd + 100);
-  
-  // In real implementation, would use the full tokenizer on this region
-  // For now, just return before + after (tokens for changed region
-  // would be produced by the main tokenizer)
+  const delta = newSource.length - oldSource.length;
+  const region = newSource.slice(changeStart, Math.max(changeStart, changeEnd + delta));
+  const { tokens: regionTokens } = tokenize(region, { filePath: "<incremental>" });
 
-  return [...beforeTokens, ...afterTokens];
+  const starts = lineStarts(newSource);
+
+  const midTokens = regionTokens
+    .filter((t) => t.type !== "EOF")
+    .map((t) => reposition(t, starts, changeStart));
+
+  // Everything after the edit moved by the change in source length.
+  const tailTokens = delta === 0 ? afterTokens : afterTokens.map((t) => reposition(t, starts, delta));
+
+  return [...beforeTokens, ...midTokens, ...tailTokens];
+}
+
+/** Offsets of the start of each line, for O(log n) line/column lookup. */
+function lineStarts(source: string): number[] {
+  const starts = [0];
+  for (let i = 0; i < source.length; i++) {
+    if (source[i] === "\n") starts.push(i + 1);
+  }
+  return starts;
+}
+
+/** A token with both positions shifted by `delta` and line/col recomputed. */
+function reposition(token: Token, starts: number[], delta: number): Token {
+  return {
+    ...token,
+    pos: positionAt(starts, token.pos.offset + delta),
+    end: positionAt(starts, token.end.offset + delta),
+  };
+}
+
+function positionAt(starts: number[], offset: number): TokenPosition {
+  let lo = 0;
+  let hi = starts.length - 1;
+  while (lo < hi) {
+    const mid = (lo + hi + 1) >> 1;
+    if (starts[mid] <= offset) lo = mid;
+    else hi = mid - 1;
+  }
+  return { line: lo + 1, col: offset - starts[lo] + 1, offset };
 }
 
 

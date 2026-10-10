@@ -1,7 +1,7 @@
 {
   "version": 1,
-  "generatedAt": "2026-10-09T03:36:16.915Z",
-  "count": 97,
+  "generatedAt": "2026-10-10T04:29:50.061Z",
+  "count": 99,
   "codes": {
     "TW001": {
       "message": "Unexpected token",
@@ -81,12 +81,14 @@
     "TW016": {
       "message": "Missing key attribute in for loop",
       "severity": "info",
-      "category": "best-practice"
+      "category": "best-practice",
+      "reserved": true
     },
     "TW017": {
       "message": "Script block is empty",
       "severity": "warning",
-      "category": "syntax"
+      "category": "syntax",
+      "reserved": true
     },
     "TW018": {
       "message": "Style block is empty",
@@ -96,7 +98,8 @@
     "TW019": {
       "message": "Circular component reference detected",
       "severity": "error",
-      "category": "semantic"
+      "category": "semantic",
+      "reserved": true
     },
     "TW020": {
       "message": "Duplicate page directive",
@@ -116,12 +119,14 @@
     "TW023": {
       "message": "Component prop type mismatch",
       "severity": "warning",
-      "category": "semantic"
+      "category": "semantic",
+      "reserved": true
     },
     "TW024": {
       "message": "Missing required prop",
       "severity": "warning",
-      "category": "semantic"
+      "category": "semantic",
+      "reserved": true
     },
     "TW025": {
       "message": "Unused import",
@@ -156,7 +161,8 @@
     "TW031": {
       "message": "Event handler not defined",
       "severity": "warning",
-      "category": "semantic"
+      "category": "semantic",
+      "reserved": true
     },
     "TW032": {
       "message": "Binding expression is empty",
@@ -236,17 +242,20 @@
     "TW047": {
       "message": "Missing lang attribute on html element",
       "severity": "info",
-      "category": "accessibility"
+      "category": "accessibility",
+      "reserved": true
     },
     "TW048": {
       "message": "Tab order may be incorrect",
       "severity": "info",
-      "category": "accessibility"
+      "category": "accessibility",
+      "reserved": true
     },
     "TW049": {
       "message": "Color contrast may be insufficient",
       "severity": "info",
-      "category": "accessibility"
+      "category": "accessibility",
+      "reserved": true
     },
     "TW050": {
       "message": "Large inline script -- consider extracting",
@@ -276,32 +285,38 @@
     "TW055": {
       "message": "Unused CSS rules detected",
       "severity": "info",
-      "category": "performance"
+      "category": "performance",
+      "reserved": true
     },
     "TW056": {
       "message": "Duplicate styles detected",
       "severity": "info",
-      "category": "performance"
+      "category": "performance",
+      "reserved": true
     },
     "TW057": {
       "message": "Consider code splitting for large components",
       "severity": "info",
-      "category": "performance"
+      "category": "performance",
+      "reserved": true
     },
     "TW058": {
       "message": "Inline event handler may cause performance issues",
       "severity": "info",
-      "category": "performance"
+      "category": "performance",
+      "reserved": true
     },
     "TW059": {
       "message": "Consider memoization for expensive computation",
       "severity": "info",
-      "category": "performance"
+      "category": "performance",
+      "reserved": true
     },
     "TW060": {
       "message": "Potential XSS vulnerability -- unescaped output",
       "severity": "warning",
-      "category": "security"
+      "category": "security",
+      "reserved": true
     },
     "TW061": {
       "message": "Dangerous HTML injection detected",
@@ -311,7 +326,8 @@
     "TW062": {
       "message": "Inline event handler -- consider CSP",
       "severity": "info",
-      "category": "security"
+      "category": "security",
+      "reserved": true
     },
     "TW063": {
       "message": "External script without integrity check",
@@ -321,22 +337,26 @@
     "TW064": {
       "message": "Missing Content-Security-Policy",
       "severity": "info",
-      "category": "security"
+      "category": "security",
+      "reserved": true
     },
     "TW065": {
       "message": "Mixed content detected (HTTP on HTTPS page)",
       "severity": "warning",
-      "category": "security"
+      "category": "security",
+      "reserved": true
     },
     "TW066": {
       "message": "Sensitive data in template",
       "severity": "warning",
-      "category": "security"
+      "category": "security",
+      "reserved": true
     },
     "TW067": {
       "message": "Missing nonce for inline script",
       "severity": "info",
-      "category": "security"
+      "category": "security",
+      "reserved": true
     },
     "TW068": {
       "message": "eval() usage detected",
@@ -346,12 +366,14 @@
     "TW069": {
       "message": "Dangerous URL pattern detected",
       "severity": "warning",
-      "category": "security"
+      "category": "security",
+      "reserved": true
     },
     "TW070": {
       "message": "Use semantic HTML elements",
       "severity": "info",
-      "category": "best-practice"
+      "category": "best-practice",
+      "reserved": true
     },
     "TW071": {
       "message": "Avoid inline styles -- use CSS classes",
@@ -366,12 +388,14 @@
     "TW073": {
       "message": "Add type attribute to script tags",
       "severity": "info",
-      "category": "best-practice"
+      "category": "best-practice",
+      "reserved": true
     },
     "TW074": {
       "message": "Use async/defer for non-critical scripts",
       "severity": "info",
-      "category": "best-practice"
+      "category": "best-practice",
+      "reserved": true
     },
     "TW075": {
       "message": "Add width/height to images",
@@ -386,57 +410,68 @@
     "TW077": {
       "message": "Add loading=\"lazy\" to below-fold images",
       "severity": "info",
-      "category": "best-practice"
+      "category": "best-practice",
+      "reserved": true
     },
     "TW078": {
       "message": "Consider using <picture> for responsive images",
       "severity": "info",
-      "category": "best-practice"
+      "category": "best-practice",
+      "reserved": true
     },
     "TW079": {
       "message": "Use <button type=\"button\"> for non-submit buttons",
       "severity": "info",
-      "category": "best-practice"
+      "category": "best-practice",
+      "reserved": true
     },
     "TW080": {
       "message": "Deprecated HTML tag",
       "severity": "warning",
-      "category": "deprecation"
+      "category": "deprecation",
+      "reserved": true
     },
     "TW081": {
       "message": "Deprecated CSS property",
       "severity": "warning",
-      "category": "deprecation"
+      "category": "deprecation",
+      "reserved": true
     },
     "TW082": {
       "message": "Deprecated API usage",
       "severity": "warning",
-      "category": "deprecation"
+      "category": "deprecation",
+      "reserved": true
     },
     "TW083": {
       "message": "Deprecated attribute",
       "severity": "warning",
-      "category": "deprecation"
+      "category": "deprecation",
+      "reserved": true
     },
     "TW084": {
       "message": "Deprecated event name",
       "severity": "warning",
-      "category": "deprecation"
+      "category": "deprecation",
+      "reserved": true
     },
     "TW085": {
       "message": "Deprecated directive syntax -- use new syntax",
       "severity": "warning",
-      "category": "deprecation"
+      "category": "deprecation",
+      "reserved": true
     },
     "TW086": {
       "message": "Deprecated state declaration syntax",
       "severity": "warning",
-      "category": "deprecation"
+      "category": "deprecation",
+      "reserved": true
     },
     "TW087": {
       "message": "Deprecated component lifecycle hook",
       "severity": "warning",
-      "category": "deprecation"
+      "category": "deprecation",
+      "reserved": true
     },
     "TW088": {
       "message": "Deprecated import path",
@@ -446,7 +481,8 @@
     "TW089": {
       "message": "Deprecated render mode -- use 'interactive'",
       "severity": "warning",
-      "category": "deprecation"
+      "category": "deprecation",
+      "reserved": true
     },
     "TW090": {
       "message": "cache { } requires a revalidate window or a life profile",
@@ -456,17 +492,20 @@
     "TW091": {
       "message": "fn cached handler is impure (request.cookies/headers/body or setSignal)",
       "severity": "error",
-      "category": "semantic"
+      "category": "semantic",
+      "reserved": true
     },
     "TW092": {
       "message": "Unknown cache profile",
       "severity": "error",
-      "category": "semantic"
+      "category": "semantic",
+      "reserved": true
     },
     "TW093": {
       "message": "Non-deterministic call in a cached handler (value freezes into the cache entry)",
       "severity": "warning",
-      "category": "best-practice"
+      "category": "best-practice",
+      "reserved": true
     },
     "TW094": {
       "message": "Invalid state literal -- array/object elements must be comma-separated (and objects need colons)",
@@ -487,6 +526,16 @@
       "message": "while with a comparison renders its body ONCE at build time (state cannot mutate during SSR) -- use for loops for repetition",
       "severity": "warning",
       "category": "semantic"
+    },
+    "TW303": {
+      "message": "Unbalanced braces in a stylesheet -- a rule block is never closed",
+      "severity": "error",
+      "category": "syntax"
+    },
+    "TW000": {
+      "message": "Generic error with no specific code",
+      "severity": "error",
+      "category": "syntax"
     }
   }
 }

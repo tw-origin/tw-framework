@@ -3,6 +3,11 @@
 # Usage: bun run lint
 set -u
 cd "$(dirname "$0")/.."
+
+# The per-group config is written next to the repo root; without this trap an
+# interrupted run (Ctrl-C, CI timeout) leaves tsconfig.check.json behind.
+trap 'rm -f tsconfig.check.json' EXIT INT TERM
+
 total=0
 for g in packages/shared packages/compiler packages/runtime packages/server \
          packages/lsp packages/plugins \

@@ -233,15 +233,9 @@ export function times<T>(n: number, iteratee: (index: number) => T): T[] {
   return Array.from({ length: n }, (_, i) => iteratee(i));
 }
 
-export function range(start: number, end: number, step: number = 1): number[] {
-  const result: number[] = [];
-  if (step > 0) {
-    for (let i = start; i < end; i += step) result.push(i);
-  } else {
-    for (let i = start; i > end; i += step) result.push(i);
-  }
-  return result;
-}
+// Canonical implementation lives in shared/tw/utils/array/manipulate.ts.
+// Re-exported here so the original deep-import path keeps working unchanged.
+export { range, MAX_RANGE_LENGTH } from "../array/manipulate";
 
 export function iteratee(value: unknown): (...args: unknown[]) => unknown {
   if (typeof value === "function") return value as (...args: unknown[]) => unknown;

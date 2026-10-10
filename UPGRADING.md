@@ -47,7 +47,8 @@ change. If an upgrade forces a change, that is a bug — file it.
 
 ### What you must do
 
-Nothing. If you want any of the new options, set it in `strategies` or pass
+Nothing — unless you deep-import one of the internal utilities listed below.
+If you want any of the new options, set it in `strategies` or pass
 the matching flag; otherwise keep building as you always have.
 
 ### How to verify
@@ -57,6 +58,77 @@ tw doctor          # shows every option, what changed, and any conflict
 tw build           # unchanged output for an unchanged project
 tw test            # your suite, green
 ```
+
+### Internal utilities you may deep-import
+
+`packages/*/tw/*` is reachable by deep import, so these changes are listed
+rather than made quietly. They do not affect markup, config or commands.
+
+**`remove` now removes.** `@tw/shared/tw/utils/collection-utils`'s `remove`
+used to return the elements that *survived* the predicate and leave the array
+alone. It now returns the elements that *matched* and mutates the array,
+matching the name and the copy in `utils/array/manipulate`.
+
+```diff
+- const kept = remove(values, x => x > 2);      // survivors, array untouched
++ const removed = remove(values, x => x > 2);   // the matches
++ // and values no longer contains them
+```
+
+Migration: `reject` has always kept the survivors, and is exported from both
+modules.
+
+```ts
+import { reject } from "@tw/shared/tw/utils/collection-utils";
+const kept = reject(values, x => x > 2);        // what the old remove returned
+```
+
+**`merge` is a deep merge on every path.** `utils/object/manipulate`'s `merge`
+was shallow. Both paths now deep-merge plain objects; arrays are replaced
+rather than merged index by index; only own properties are copied; `__proto__`,
+`constructor` and `prototype` keys are ignored; null-prototype objects count as
+plain; Dates, RegExps, Maps, Sets and class instances are replaced rather than
+walked into. Circular references have a defined policy — a value that would need
+to be recursed into throws a named error, while a circular value that is merely
+assigned (no matching plain object on the target) is copied by reference.
+`mergeDeep` is now an alias of `merge`.
+
+**`compact` removes every falsy value on all three paths.** The behaviour the
+old `collection-utils` copy had — remove only `null` and `undefined` — is now
+`compactNullish`.
+
+**`range` validates its arguments.** A non-finite input, a zero step, or an
+output longer than `MAX_RANGE_LENGTH` (100000) throws instead of looping.
+
+**`zip` pads to the longer array.** `zip(a, b)` and `zipWith(a, b, fn)` now
+return `max(a.length, b.length)` rows; a position missing on one side is
+`undefined`. The return type says so too: `Array<[A | undefined, B | undefined]>`.
+`unzip` keeps its existing behaviour. Extra arguments and non-array inputs are
+not part of the contract. `functional.zip` still takes `Iterable`s and still
+stops at the shorter side — it is a separate contract and was left alone.
+
+**String hex/binary conversions are UTF-8.** The old `toHex` / `fromHex` /
+`toBinary` / `fromBinary` in `utils/string/transform` encoded UTF-16 code units
+and corrupted anything above Latin-1. They are replaced by:
+
+| New name | Contract |
+|---|---|
+| `stringToHex(s)` | UTF-8 bytes to lowercase hex (always even length) |
+| `hexToString(h)` | hex to UTF-8 string; throws on odd length, bad characters or invalid UTF-8 |
+| `stringToBinary(s)` | UTF-8 bytes to 8-bit groups (always a multiple of 8) |
+| `binaryToString(b)` | binary to UTF-8 string; throws on bad length, bad characters or invalid UTF-8 |
+
+The four old names remain as aliases so deep imports keep working, and are
+**planned for removal in 2.1.0**. Importing one of them now raises **TW088**
+(deprecated import path), naming the replacement and that removal release, so
+the removal is never a silent break. `ConversionUtils.toHex` and friends
+delegate to the new implementation.
+
+**Numeric conversions validate their input.** `toHex`, `toBinary`, `toOctal`,
+`toBase` and their parsers now take a non-negative integer up to
+`MAX_CONVERSION_VALUE` (2^32 - 1). Negatives, fractions, larger values and
+invalid radix or digits throw. The old `(n >>> 0)` wrapped all of these
+silently. `toHex` and `toBase` now emit the same uppercase form.
 
 ---
 

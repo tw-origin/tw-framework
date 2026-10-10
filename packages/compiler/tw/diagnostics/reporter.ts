@@ -3,7 +3,7 @@
 import { type DiagnosticSeverity, type Diagnostic, type DiagnosticCategory, type ErrorCode, type AutofixSuggestion } from "./types";
 import { ERROR_CODES } from "./codes";
 import { type Program } from "../ast/nodes";
-import { checkUnknownTags, checkCSSProperties, checkEventTypes, checkAttributes, checkAccessibility, checkPerformance, checkSecurity, checkBestPractices, checkSemanticErrors, checkDirectives, checkUnusedDeclarations, checkStateLiterals, checkLoopIterables, checkUnknownStateVars, checkWhileComparisons } from "./rules";
+import { checkUnknownTags, checkCSSProperties, checkEventTypes, checkAttributes, checkAccessibility, checkPerformance, checkSecurity, checkBestPractices, checkSemanticErrors, checkDirectives, checkUnusedDeclarations, checkStateLiterals, checkLoopIterables, checkUnknownStateVars, checkWhileComparisons, checkDeprecatedImports } from "./rules";
 
 export function createDiagnostic(
   code: ErrorCode,
@@ -56,6 +56,8 @@ export function diagnose(program: Program, filePath: string): Diagnostic[] {
   checkDirectives(program, filePath, diagnostics);
   // Rule: check unused imports/state
   checkUnusedDeclarations(program, filePath, diagnostics);
+  // Rule: warn on deprecated import paths (TW088)
+  checkDeprecatedImports(program, filePath, diagnostics);
   // silent-garbage guards
   checkStateLiterals(program, filePath, diagnostics);
   checkLoopIterables(program, filePath, diagnostics);

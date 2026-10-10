@@ -16,6 +16,28 @@ Semver on the 1.0.x line: patch releases for feature batches (one was a
 hardening pass; another the cache layer + the test
 infrastructure). Keep the convention unless told otherwise.
 
+### Deprecating an API (the 2.x rule)
+
+> A deprecated API keeps working, with a warning, for at least one minor
+> release. It is removed in a later minor -- never in the release that
+> introduces the warning.
+
+Concretely:
+
+- **Rename, do not delete.** The old name stays as an alias.
+- **Warn from the release the alias appears.** Importing a deprecated name
+  raises `TW088` (`DEPRECATED_IMPORTS` in
+  `packages/compiler/tw/diagnostics/rules.ts`), naming the replacement and the
+  release the name goes away in.
+- **Record it in `UPGRADING.md`** with the migration step and the planned
+  removal release, so a consumer sees both.
+- **Remove only in the named release**, and only after the warning has shipped
+  in at least one earlier release.
+
+The warning is what makes the removal safe. A removal that lands in the same
+release as its warning, or with no warning at all, is a silent break whatever
+semver allows.
+
 **Proof step**: build any example; the output must contain
 `<meta name="generator" content="TW Framework X.Y.Z">` matching the
 package version. Mismatch = a file was missed = stop.

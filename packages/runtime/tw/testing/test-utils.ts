@@ -316,15 +316,15 @@ export function beforeAll(fn: () => void | Promise<void>): void {
 }
 
 export function afterAll(fn: () => void | Promise<void>): void {
-  void fn;
+  fn();
 }
 
 export function beforeEach(fn: () => void | Promise<void>): void {
-  void fn;
+  fn();
 }
 
 export function afterEach(fn: () => void | Promise<void>): void {
-  void fn;
+  fn();
 }
 
 export function expect<T>(value: T): { toBe: (expected: T) => void; toEqual: (expected: T) => void; toBeNull: () => void; toBeUndefined: () => void; toBeDefined: () => void; toBeTruthy: () => void; toBeFalsy: () => void; toContain: (expected: any) => void; toHaveLength: (expected: number) => void; toBeGreaterThan: (expected: number) => void; toBeLessThan: (expected: number) => void; toBeGreaterThanOrEqual: (expected: number) => void; toBeLessThanOrEqual: (expected: number) => void; toMatch: (expected: string | RegExp) => void; toThrow: (expected?: string | RegExp | Error) => void; toBeInstanceOf: (expected: any) => void; toHaveProperty: (path: string, value?: any) => void; resolves: { toBe: (expected: T) => Promise<void>; toEqual: (expected: T) => Promise<void>; } ; rejects: { toThrow: (expected?: string | RegExp | Error) => Promise<void>; } ; not: { toBe: (expected: T) => void; toEqual: (expected: T) => void; toBeNull: () => void; toContain: (expected: any) => void; toHaveLength: (expected: number) => void; toMatch: (expected: string | RegExp) => void; toThrow: (expected?: string | RegExp | Error) => void; }; } {
@@ -363,18 +363,6 @@ expect.stringMatching = (pattern: string | RegExp) => ({ $$typeof: "expect.strin
 expect.assertions = (count: number) => { void count; };
 expect.hasAssertions = () => {};
 
-export function mockRoute(path: string, handler: () => unknown): void { void path; void handler; }
-export function mockFetch(response: unknown): void { void response; }
-export function mockLocalStorage(data: Record<string, string>): void { void data; }
-export function mockSessionStorage(data: Record<string, string>): void { void data; }
-export function mockMatchMedia(matches: boolean): void { void matches; }
-export function mockIntersectionObserver(isIntersecting: boolean): void { void isIntersecting; }
-export function mockResizeObserver(entries: Array<{ contentRect: { width: number; height: number } }>): void { void entries; }
-export function mockMutationObserver(callback: (mutations: MutationRecord[]) => void): void { void callback; }
-export function mockScroll(position: { x: number; y: number }): void { void position; }
-export function mockWindowProperty(prop: string, value: unknown): void { void prop; void value; }
-export function mockDocumentProperty(prop: string, value: unknown): void { void prop; void value; }
-export function mockElementProperty(element: HTMLElement, prop: string, value: unknown): void { void element; void prop; void value; }
 export function mockEvent(type: string, options?: Record<string, unknown>): Event { return new Event(type, options); }
 export function mockKeyboardEvent(key: string, options?: KeyboardEventInit): KeyboardEvent { return new KeyboardEvent("keydown", { key, ...options }); }
 export function mockMouseEvent(type: string, options?: MouseEventInit): MouseEvent { return new MouseEvent(type, options); }
@@ -385,97 +373,3 @@ export function mockHeaders(data: Record<string, string>): Headers { return new 
 export function mockRequest(url: string, options?: RequestInit): Request { return new Request(url, options); }
 export function mockResponse(body: unknown, options?: ResponseInit): Response { return new Response(JSON.stringify(body), options); }
 export function mockURL(url: string): URL { return new URL(url); }
-export function mockHistory(): void {}
-export function mockLocation(url: string): void { void url; }
-export function mockNavigator(properties: Record<string, unknown>): void { void properties; }
-export function mockScreen(properties: Record<string, number>): void { void properties; }
-export function mockCrypto(): void {}
-export function mockPerformance(): void {}
-export function mockClipboard(text: string): void { void text; }
-export function mockNotification(): void {}
-export function mockServiceWorker(): void {}
-export function mockWebSocket(): void {}
-export function mockIndexedDB(): void {}
-export function mockWebGL(): void {}
-export function mockCanvas(): void {}
-export function mockAudio(): void {}
-export function mockVideo(): void {}
-export function mockGeolocation(position: { latitude: number; longitude: number }): void { void position; }
-export function mockBattery(level: number, charging: boolean): void { void level; void charging; }
-export function mockVibration(): void {}
-export function mockDeviceOrientation(orientation: { alpha: number; beta: number; gamma: number }): void { void orientation; }
-export function mockDeviceMotion(motion: { acceleration: { x: number; y: number; z: number } }): void { void motion; }
-export function mockTouch(): void {}
-export function mockPointer(): void {}
-export function mockGamepad(): void {}
-export function mockXR(): void {}
-export function mockBluetooth(): void {}
-export function mockUSB(): void {}
-export function mockNFC(): void {}
-export function mockSerial(): void {}
-export function mockHID(): void {}
-export function mockCredentials(): void {}
-export function mockPayment(): void {}
-export function mockCredentialsStore(): void {}
-export function mockCookieStore(): void {}
-export function mockWakeLock(): void {}
-export function mockBackgroundFetch(): void {}
-export function mockBackgroundSync(): void {}
-export function mockPeriodicBackgroundSync(): void {}
-export function mockPush(): void {}
-export function mockNotifications(): void {}
-export function mockShare(): void {}
-export function mockPresentation(): void {}
-export function mockRemotePlayback(): void {}
-export function mockMediaSession(): void {}
-export function mockPictureInPicture(): void {}
-export function mockFullscreen(): void {}
-export function mockScreenOrientation(): void {}
-export function mockScreenWakeLock(): void {}
-export function mockVisibilityState(state: "visible" | "hidden"): void { void state; }
-export function mockPageVisibility(): void {}
-export function mockOnline(online: boolean): void { void online; }
-export function mockConnection(type: string): void { void type; }
-export function mockNetworkInformation(): void {}
-export function mockDeviceInfo(): void {}
-export function mockMemoryInfo(): void {}
-export function mockStorageEstimate(usage: number, quota: number): void { void usage; void quota; }
-export function mockStorageAccess(): void {}
-export function mockCookieStore2(): void {}
-export function mockPermissions(): void {}
-export function mockPermissionStatus(): void {}
-export function mockCredential(): void {}
-export function mockIdentityProvider(): void {}
-export function mockWebAuthn(): void {}
-export function mockAuthenticatorAttestation(): void {}
-export function mockAuthenticatorAssertion(): void {}
-export function mockPublicKeyCredential(): void {}
-export function mockAuthenticatorResponse(): void {}
-export function mockAuthenticatorAttachment(): void {}
-export function mockAuthenticatorTransport(): void {}
-export function mockUserVerificationMethod(): void {}
-export function mockAttestationConveyancePreference(): void {}
-export function mockAuthenticatorSelectionCriteria(): void {}
-export function mockPublicKeyCredentialRequestOptions(): void {}
-export function mockPublicKeyCredentialCreationOptions(): void {}
-export function mockPublicKeyCredentialParameters(): void {}
-export function mockPublicKeyCredentialDescriptor(): void {}
-export function mockPublicKeyCredentialRpEntity(): void {}
-export function mockPublicKeyCredentialUserEntity(): void {}
-export function mockPublicKeyCredentialEntity(): void {}
-export function mockAuthenticatorAssertionResponse(): void {}
-export function mockAuthenticatorAttestationResponse(): void {}
-export function mockAuthenticatorAttachment2(): void {}
-export function mockAuthenticatorTransport2(): void {}
-export function mockUserVerificationMethod2(): void {}
-export function mockAttestationConveyancePreference2(): void {}
-export function mockAuthenticatorSelectionCriteria2(): void {}
-export function mockPublicKeyCredentialRequestOptions2(): void {}
-export function mockPublicKeyCredentialCreationOptions2(): void {}
-export function mockPublicKeyCredentialParameters2(): void {}
-export function mockPublicKeyCredentialDescriptor2(): void {}
-export function mockPublicKeyCredentialRpEntity2(): void {}
-export function mockPublicKeyCredentialUserEntity2(): void {}
-export function mockPublicKeyCredentialEntity2(): void {}
-export function mockAuthenticatorAssertionResponse2(): void {}
-export function mockAuthenticatorAttestationResponse2(): void {}

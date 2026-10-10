@@ -286,6 +286,15 @@ export function createRulesEngine(): RulesEngine {
   return new RulesEngine();
 }
 
+/**
+ * The built-in rule set.
+ *
+ * A rule whose `check` never emits is declared with `enabled: false` (marked
+ * `// not implemented`). `RulesEngine.run()` only executes enabled rules, so
+ * `createDefaultRulesEngine()` runs exactly the rules that can produce a
+ * diagnostic -- a disabled entry is a declared intent, not a working check.
+ * Enable one only after its `check` actually pushes messages.
+ */
 export const BUILTIN_RULES: DiagnosticRule[] = [
   {
     id: "no-console",
@@ -342,7 +351,7 @@ export const BUILTIN_RULES: DiagnosticRule[] = [
     description: "Disallow unused variables",
     severity: "warning",
     category: "best-practice",
-    enabled: true,
+    enabled: false, // not implemented,
     check: (node, ctx) => {
       const msgs: DiagnosticMessage[] = [];
       const nodeType = (node as unknown as { type?: string }).type;
@@ -413,7 +422,7 @@ export const BUILTIN_RULES: DiagnosticRule[] = [
     description: "Prefer const over let for variables that are never reassigned",
     severity: "info",
     category: "best-practice",
-    enabled: true,
+    enabled: false, // not implemented,
     check: (node, _ctx) => {
       const msgs: DiagnosticMessage[] = [];
       const nodeType = (node as unknown as { type?: string }).type;
@@ -622,7 +631,7 @@ export const BUILTIN_RULES: DiagnosticRule[] = [
     description: "Disallow mixed spaces and tabs for indentation",
     severity: "error",
     category: "style",
-    enabled: true,
+    enabled: false, // not implemented,
     check: (_node, _ctx) => {
       return [];
     },
@@ -666,7 +675,7 @@ export const BUILTIN_RULES: DiagnosticRule[] = [
     description: "Disallow undefined variables",
     severity: "warning",
     category: "semantic",
-    enabled: true,
+    enabled: false, // not implemented,
     check: (_node, _ctx) => {
       return [];
     },
@@ -1237,7 +1246,7 @@ export const BUILTIN_RULES: DiagnosticRule[] = [
     description: "Enforce maximum function length",
     severity: "warning",
     category: "best-practice",
-    enabled: true,
+    enabled: false, // not implemented,
     options: { max: 100 },
     check: (_node, _ctx) => {
       return [];
@@ -1249,7 +1258,7 @@ export const BUILTIN_RULES: DiagnosticRule[] = [
     description: "Enforce maximum cyclomatic complexity",
     severity: "warning",
     category: "best-practice",
-    enabled: true,
+    enabled: false, // not implemented,
     options: { max: 10 },
     check: (_node, _ctx) => {
       return [];
@@ -1352,7 +1361,7 @@ export const BUILTIN_RULES: DiagnosticRule[] = [
     description: "Disallow async functions with no await",
     severity: "warning",
     category: "best-practice",
-    enabled: true,
+    enabled: false, // not implemented,
     check: (_node, _ctx) => {
       return [];
     },
@@ -1390,7 +1399,7 @@ export const BUILTIN_RULES: DiagnosticRule[] = [
     description: "Require Error objects in Promise.reject()",
     severity: "warning",
     category: "best-practice",
-    enabled: true,
+    enabled: false, // not implemented,
     check: (_node, _ctx) => {
       return [];
     },
@@ -1609,7 +1618,7 @@ export const BUILTIN_RULES: DiagnosticRule[] = [
     description: "Disallow extending native prototypes",
     severity: "error",
     category: "best-practice",
-    enabled: true,
+    enabled: false, // not implemented,
     check: (_node, _ctx) => {
       return [];
     },
@@ -1620,7 +1629,7 @@ export const BUILTIN_RULES: DiagnosticRule[] = [
     description: "Disallow assignment to native globals",
     severity: "error",
     category: "best-practice",
-    enabled: true,
+    enabled: false, // not implemented,
     check: (_node, _ctx) => {
       return [];
     },
@@ -1631,7 +1640,7 @@ export const BUILTIN_RULES: DiagnosticRule[] = [
     description: "Disallow implicit global variables",
     severity: "error",
     category: "best-practice",
-    enabled: true,
+    enabled: false, // not implemented,
     check: (_node, _ctx) => {
       return [];
     },
@@ -1665,7 +1674,7 @@ export const BUILTIN_RULES: DiagnosticRule[] = [
     description: "Disallow labels with same name as variables",
     severity: "warning",
     category: "best-practice",
-    enabled: true,
+    enabled: false, // not implemented,
     check: (_node, _ctx) => {
       return [];
     },
@@ -1676,7 +1685,7 @@ export const BUILTIN_RULES: DiagnosticRule[] = [
     description: "Disallow unused labels",
     severity: "error",
     category: "best-practice",
-    enabled: true,
+    enabled: false, // not implemented,
     check: (_node, _ctx) => {
       return [];
     },
@@ -1713,7 +1722,7 @@ export const BUILTIN_RULES: DiagnosticRule[] = [
     description: "Disallow unnecessary escape characters",
     severity: "warning",
     category: "best-practice",
-    enabled: true,
+    enabled: false, // not implemented,
     check: (_node, _ctx) => {
       return [];
     },
@@ -1724,7 +1733,7 @@ export const BUILTIN_RULES: DiagnosticRule[] = [
     description: "Disallow unnecessary return statements",
     severity: "warning",
     category: "best-practice",
-    enabled: true,
+    enabled: false, // not implemented,
     check: (_node, _ctx) => {
       return [];
     },
@@ -1735,7 +1744,7 @@ export const BUILTIN_RULES: DiagnosticRule[] = [
     description: "Disallow unnecessary constructors",
     severity: "warning",
     category: "best-practice",
-    enabled: true,
+    enabled: false, // not implemented,
     check: (_node, _ctx) => {
       return [];
     },
@@ -1746,7 +1755,7 @@ export const BUILTIN_RULES: DiagnosticRule[] = [
     description: "Disallow unnecessary .call() and .apply()",
     severity: "warning",
     category: "best-practice",
-    enabled: true,
+    enabled: false, // not implemented,
     check: (_node, _ctx) => {
       return [];
     },
@@ -1812,7 +1821,7 @@ export const BUILTIN_RULES: DiagnosticRule[] = [
     description: "Disallow chained assignments",
     severity: "warning",
     category: "best-practice",
-    enabled: true,
+    enabled: false, // not implemented,
     check: (_node, _ctx) => {
       return [];
     },
@@ -1823,7 +1832,7 @@ export const BUILTIN_RULES: DiagnosticRule[] = [
     description: "Disallow multi-line strings",
     severity: "warning",
     category: "best-practice",
-    enabled: true,
+    enabled: false, // not implemented,
     check: (_node, _ctx) => {
       return [];
     },
@@ -1834,7 +1843,7 @@ export const BUILTIN_RULES: DiagnosticRule[] = [
     description: "Disallow octal literals",
     severity: "error",
     category: "best-practice",
-    enabled: true,
+    enabled: false, // not implemented,
     check: (_node, _ctx) => {
       return [];
     },
@@ -1845,7 +1854,7 @@ export const BUILTIN_RULES: DiagnosticRule[] = [
     description: "Disallow octal escape sequences in strings",
     severity: "error",
     category: "best-practice",
-    enabled: true,
+    enabled: false, // not implemented,
     check: (_node, _ctx) => {
       return [];
     },
@@ -1856,7 +1865,7 @@ export const BUILTIN_RULES: DiagnosticRule[] = [
     description: "Disallow implied eval()",
     severity: "error",
     category: "security",
-    enabled: true,
+    enabled: false, // not implemented,
     check: (_node, _ctx) => {
       return [];
     },
@@ -1919,7 +1928,7 @@ export const BUILTIN_RULES: DiagnosticRule[] = [
     description: "Disallow new require()",
     severity: "error",
     category: "best-practice",
-    enabled: true,
+    enabled: false, // not implemented,
     check: (_node, _ctx) => {
       return [];
     },
@@ -1930,7 +1939,7 @@ export const BUILTIN_RULES: DiagnosticRule[] = [
     description: "Disallow string concatenation with __dirname and __filename",
     severity: "warning",
     category: "best-practice",
-    enabled: true,
+    enabled: false, // not implemented,
     check: (_node, _ctx) => {
       return [];
     },
@@ -2026,7 +2035,7 @@ export const BUILTIN_RULES: DiagnosticRule[] = [
     description: "Disallow with in strict mode",
     severity: "error",
     category: "best-practice",
-    enabled: true,
+    enabled: false, // not implemented,
     check: (_node, _ctx) => {
       return [];
     },
@@ -2037,7 +2046,7 @@ export const BUILTIN_RULES: DiagnosticRule[] = [
     description: "Require strict mode directive",
     severity: "warning",
     category: "best-practice",
-    enabled: true,
+    enabled: false, // not implemented,
     check: (_node, _ctx) => {
       return [];
     },
@@ -2059,7 +2068,7 @@ export const BUILTIN_RULES: DiagnosticRule[] = [
     description: "Disallow catch clause parameters that shadow outer scope",
     severity: "warning",
     category: "best-practice",
-    enabled: true,
+    enabled: false, // not implemented,
     check: (_node, _ctx) => {
       return [];
     },
@@ -2097,7 +2106,7 @@ export const BUILTIN_RULES: DiagnosticRule[] = [
     description: "Disallow initializing to undefined",
     severity: "warning",
     category: "best-practice",
-    enabled: true,
+    enabled: false, // not implemented,
     check: (_node, _ctx) => {
       return [];
     },
@@ -2108,7 +2117,7 @@ export const BUILTIN_RULES: DiagnosticRule[] = [
     description: "Disallow undeclared variables",
     severity: "error",
     category: "semantic",
-    enabled: true,
+    enabled: false, // not implemented,
     check: (_node, _ctx) => {
       return [];
     },
@@ -2119,7 +2128,7 @@ export const BUILTIN_RULES: DiagnosticRule[] = [
     description: "Disallow using variables before they are defined",
     severity: "warning",
     category: "best-practice",
-    enabled: true,
+    enabled: false, // not implemented,
     check: (_node, _ctx) => {
       return [];
     },

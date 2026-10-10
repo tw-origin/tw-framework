@@ -3,6 +3,8 @@
  * @module shared/utils
  */
 
+import { stringToHex, hexToString, stringToBinary, binaryToString } from "./string/transform";
+
 export type SchemaType = "string" | "number" | "integer" | "boolean" | "array" | "object" | "null" | "any";
 
 export interface SchemaProperty {
@@ -962,36 +964,24 @@ export class ConversionUtils {
     return value;
   }
 
+  /** Delegates to the canonical `stringToHex`, so there is one implementation. */
   static toHex(value: string): string {
-    let result = "";
-    for (let i = 0; i < value.length; i++) {
-      result += value.charCodeAt(i).toString(16).padStart(2, "0");
-    }
-    return result;
+    return stringToHex(value);
   }
 
+  /** Delegates to the canonical `hexToString`. */
   static fromHex(value: string): string {
-    let result = "";
-    for (let i = 0; i < value.length; i += 2) {
-      result += String.fromCharCode(parseInt(value.slice(i, i + 2), 16));
-    }
-    return result;
+    return hexToString(value);
   }
 
+  /** Delegates to the canonical `stringToBinary`. */
   static toBinary(value: string): string {
-    let result = "";
-    for (let i = 0; i < value.length; i++) {
-      result += value.charCodeAt(i).toString(2).padStart(8, "0");
-    }
-    return result;
+    return stringToBinary(value);
   }
 
+  /** Delegates to the canonical `binaryToString`. */
   static fromBinary(value: string): string {
-    let result = "";
-    for (let i = 0; i < value.length; i += 8) {
-      result += String.fromCharCode(parseInt(value.slice(i, i + 8), 2));
-    }
-    return result;
+    return binaryToString(value);
   }
 
   static toURLSearchParams(value: Record<string, unknown>): string {

@@ -628,8 +628,8 @@ export async function buildCommand(): Promise<void> {
       const reg = (_compilerMod as any).registerForeignComponent;
       for (const fi of foreign) {
         try {
-          const url = ib.buildIslandChunk(rootDir, fi.absPath, fi.name, true);
-          const render = await ib.loadSsrRenderer(rootDir, fi.absPath);
+          const url = ib.buildIslandChunk(rootDir, fi.absPath, fi.name, true, renderEngine);
+          const render = await ib.loadSsrRenderer(rootDir, fi.absPath, renderEngine);
           reg(fi.name, { engine: renderEngine, source: fi.absPath, chunkUrl: url ? "/" + url : undefined, render });
           console.log("  \x1b[36m\u26A1\x1b[0m island: " + fi.name + " (" + renderEngine + ")");
         } catch (err: any) {

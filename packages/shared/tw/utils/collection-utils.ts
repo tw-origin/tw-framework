@@ -3,16 +3,18 @@
  * @module shared/utils
  */
 
+import { unzip as unzipCanonical } from "./array/manipulate";
+
+// Canonical implementations live in shared/tw/utils/array/manipulate.ts.
+// Re-exported so the original deep-import paths keep working unchanged.
+export { compact, compactNullish, zip, zipWith, unzip } from "./array/manipulate";
+
 export function chunk<T>(array: T[], size: number): T[][] {
   const chunks: T[][] = [];
   for (let i = 0; i < array.length; i += size) {
     chunks.push(array.slice(i, i + size));
   }
   return chunks;
-}
-
-export function compact<T>(array: T[]): T[] {
-  return array.filter((item) => item !== null && item !== undefined);
 }
 
 export function difference<T>(array: T[], values: T[]): T[] {
@@ -173,9 +175,11 @@ export function pullAt<T>(array: T[], indexes: number[]): T[] {
   return array.filter((_, i) => !set.has(i));
 }
 
-export function remove<T>(array: T[], predicate: (item: T) => boolean): T[] {
-  return array.filter((item) => !predicate(item));
-}
+// Canonical implementation lives in shared/tw/utils/array/manipulate.ts.
+// Re-exported so the original deep-import path keeps working unchanged.
+// Note: this now returns the REMOVED elements and mutates the array, matching
+// the name. The previous kept-elements behaviour is available as `reject`.
+export { remove } from "./array/manipulate";
 
 export function reverse<T>(array: T[]): T[] {
   return [...array].reverse();
@@ -349,17 +353,8 @@ export function uniqWith<T>(array: T[], comparator: (a: T, b: T) => boolean): T[
   return result;
 }
 
-export function unzip<T>(array: T[][]): T[][] {
-  const maxLen = Math.max(...array.map((a) => a.length));
-  const result: T[][] = [];
-  for (let i = 0; i < maxLen; i++) {
-    result.push(array.map((a) => a[i]));
-  }
-  return result;
-}
-
 export function unzipWith<T, R>(array: T[][], iteratee: (a: T, b: T) => R): R[] {
-  return unzip(array).map((group: any[]) => group.reduce((a: any, b: any) => iteratee(a, b))) as R[];
+  return unzipCanonical(array).map((group: any[]) => group.reduce((a: any, b: any) => iteratee(a, b))) as R[];
 }
 
 export function without<T>(array: T[], ...values: T[]): T[] {
@@ -398,15 +393,6 @@ export function xorWith<T>(...args: [...T[][], (a: T, b: T) => boolean]): T[] {
   return all.filter((item) => arrays.every((arr) => arr.filter((other) => comparator(item, other)).length <= 1));
 }
 
-export function zip<A, B>(array1: A[], array2: B[]): Array<[A, B]> {
-  const minLen = Math.min(array1.length, array2.length);
-  const result: Array<[A, B]> = [];
-  for (let i = 0; i < minLen; i++) {
-    result.push([array1[i], array2[i]]);
-  }
-  return result;
-}
-
 export function zipObject<K extends string, V>(keys: K[], values: V[]): Record<K, V> {
   const result = {} as Record<K, V>;
   for (let i = 0; i < keys.length; i++) {
@@ -427,15 +413,6 @@ export function zipObjectDeep(keys: string[], values: unknown[]): Record<string,
       current = current[parts[j]] as Record<string, unknown>;
     }
     current[parts[parts.length - 1]] = values[i];
-  }
-  return result;
-}
-
-export function zipWith<A, B, R>(array1: A[], array2: B[], iteratee: (a: A, b: B) => R): R[] {
-  const minLen = Math.min(array1.length, array2.length);
-  const result: R[] = [];
-  for (let i = 0; i < minLen; i++) {
-    result.push(iteratee(array1[i], array2[i]));
   }
   return result;
 }
@@ -793,18 +770,69 @@ export function mapValues<T extends Record<string, unknown>>(object: T, iteratee
   return result;
 }
 
-export function merge<T extends Record<string, unknown>>(object: T, ...sources: Record<string, unknown>[]): T {
-  const result = { ...object };
-  for (const source of sources) {
-    for (const key of Object.keys(source)) {
-      if (typeof result[key] === "object" && typeof source[key] === "object" && result[key] !== null && source[key] !== null) {
-        (result as any)[key] = merge(result[key] as Record<string, unknown>, source[key] as Record<string, unknown>) as unknown;
-      } else {
-        (result as any)[key] = source[key];
-      }
-    }
+/** Keys that must never be written through, so `Object.prototype` stays clean. */
+const UNSAFE_MERGE_KEYS = new Set(["__proto__", "constructor", "prototype"]);
+
+/**
+ * A value we recurse into: an object literal or a null-prototype object.
+ * Arrays, Dates, RegExps, Maps, Sets and class instances are NOT mergeable, so
+ * they replace the target value instead of being walked into and turned into a
+ * bare object.
+ */
+function isMergeableObject(value: unknown): value is Record<string, unknown> {
+  if (value === null || typeof value !== "object") return false;
+  const proto = Object.getPrototypeOf(value);
+  return proto === Object.prototype || proto === null;
+}
+
+function mergeInto(
+  target: Record<string, unknown>,
+  source: Record<string, unknown>,
+  seen: WeakSet<object>,
+): Record<string, unknown> {
+  if (seen.has(source)) {
+    throw new Error("merge: circular reference detected in a source object");
   }
-  return result;
+  seen.add(source);
+  for (const key of Object.keys(source)) {
+    if (UNSAFE_MERGE_KEYS.has(key)) continue;
+    const sourceValue = source[key];
+    const targetValue = target[key];
+    target[key] =
+      isMergeableObject(targetValue) && isMergeableObject(sourceValue)
+        ? mergeInto({ ...targetValue }, sourceValue, seen)
+        : sourceValue;
+  }
+  seen.delete(source);
+  return target;
+}
+
+/**
+ * Deep-merge plain objects. Canonical implementation; `utils/object/manipulate.ts`
+ * re-exports it.
+ *
+ * Contract:
+ *   - Nested plain objects merge recursively. Null-prototype objects count as plain.
+ *   - Arrays are REPLACED, never merged index by index.
+ *   - `null`, primitives, Dates, RegExps, Maps, Sets and class instances replace
+ *     the target value; they are never walked into and turned into `{}`.
+ *   - Only own enumerable keys are read, so inherited properties are not copied.
+ *   - `__proto__`, `constructor` and `prototype` keys are skipped, so a crafted
+ *     source cannot reach `Object.prototype`.
+ *   - Circular references have a defined policy: if the source value would need
+ *     to be recursed into (both sides are plain objects) the merge throws a named
+ *     error instead of overflowing the stack; if the target has no matching plain
+ *     object, the circular value is simply assigned by reference and no error is
+ *     raised.
+ *   - Neither input is mutated.
+ */
+export function merge<T extends object>(object: T, ...sources: Array<Partial<T> | Record<string, unknown>>): T {
+  const result: Record<string, unknown> = { ...(object as Record<string, unknown>) };
+  for (const source of sources) {
+    if (source === null || typeof source !== "object") continue;
+    mergeInto(result, source as Record<string, unknown>, new WeakSet());
+  }
+  return result as T;
 }
 
 export function mergeWith<T extends Record<string, unknown>>(object: T, source: Record<string, unknown>, customizer: (targetValue: unknown, sourceValue: unknown, key: string) => unknown): T {

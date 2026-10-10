@@ -2,6 +2,13 @@
 
 Every error the TW compiler, runtime, and CLI can produce, with explanations and fixes.
 
+> **Reserved codes.** A few codes in the registry are declared for future use and
+> are not emitted by any rule yet; they are marked `"reserved": true` in
+> `errors.json`. Everything else in this document is a diagnostic you can
+> actually hit. `tests/release-audit.test.ts` keeps the two lists honest — a
+> reserved code cannot be emitted, and every code the source emits must be
+> declared.
+
 ---
 
 ## How Errors Work

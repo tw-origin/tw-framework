@@ -52,7 +52,9 @@ export type ErrorCode =
   // Cache (TW090-TW093, docs/cache-tags.md)
   // Silent-garbage guards (TW094-TW096,)
   | "TW090" | "TW091" | "TW092" | "TW093"
-  | "TW094" | "TW095" | "TW096" | "TW097";
+  | "TW094" | "TW095" | "TW096" | "TW097"
+  // Declared for codes emitted outside the rule engine (see codes.ts)
+  | "TW303" | "TW000";
 
 
 export interface AutofixSuggestion {
