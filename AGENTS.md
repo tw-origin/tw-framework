@@ -3,8 +3,9 @@
 ## Naming & content rules (MUST FOLLOW — highest priority)
 
 1. **No internal iteration labels anywhere in the repository.** Never ship
-   names or text like `round 1/2/3`, `BUG 27`, `paste-1-18`, `body-parsing-diagnostics`,
-   `phase3`, `batch 16` in file names, test names, describe/test titles,
+   names or text that record *when* or *in which pass* something was done — a
+   pass number, a bug-list index, a paste id, a phase name or a batch number —
+   in file names, test names, describe/test titles,
    comments, docs or commit messages. They are internal bookkeeping and look
    unprofessional in a public framework.
 2. **Test files are named by area**, not by when they were written:
@@ -12,7 +13,8 @@
    `regressions-tooling.test.ts`, `signals.test.ts`, `docs-contract.test.ts`.
 3. **Comments explain the behaviour, not the history.** Write
    "Middleware rules with no condition blocks apply to every matching
-   request (fail-closed)." — never "round 4 (BUG 29): ...".
+   request (fail-closed)." — never a note that cites the pass or the
+   bug-list entry that produced the change.
 4. **No stale version numbers.** Source files and docs do not carry version
    tags. The README badge and release notes are the only place a version
    number belongs, and it must be the current one.
@@ -253,7 +255,7 @@ complete fixture app on a random port with raw node:http (NOT fetch -- the
 happy-dom bunfig preload enforces CORS on localhost). Conventions live in
 contributing/core-testing.md. The catalog:
 
-- `tests/adapters.test.ts`- `tests/cache-tags.test.ts`- `tests/codegen-deep.test.ts`- `tests/compiler-advanced.test.ts`- `tests/compiler.test.ts`- `tests/deep-behaviour.test.ts`- `tests/docs-claims.test.ts`- `tests/e2e-isolated-app.test.ts`- `tests/e2e.test.ts`- `tests/external-review.test.ts`- `tests/runtime-edge-cases.test.ts`- `tests/audit-regressions.test.ts`- `tests/image.test.ts`- `tests/interactivity-e2e.test.ts`- `tests/layout-params.test.ts`- `tests/lexer.test.ts`- `tests/link.test.ts`- `tests/middleware-rules.test.ts`- `tests/native.test.ts`- `tests/next-parity.test.ts`- `tests/node-bundle-css.test.ts`- `tests/optimizer-deep.test.ts`- `tests/parity.test.ts`- `tests/parser-deep.test.ts`- `tests/parser.test.ts`- `tests/runtime-scheduler-events.test.ts`- `tests/plugins-load.test.ts`- `tests/plugins.test.ts`- `tests/render-modes.test.ts`- `tests/runtime-new-2.test.ts`- `tests/runtime-new.test.ts`- `tests/runtime-server.test.ts`- `tests/runtime.test.ts`- `tests/scss.test.ts`- `tests/security-audit.test.ts`- `tests/security.test.ts`- `tests/self-audit.test.ts`- `tests/semantic-deep.test.ts`- `tests/shared.test.ts`- `tests/signal-stream.test.ts`- `tests/unit-aria.test.ts`- `tests/unit-css-matrix.test.ts`- `tests/unit-events.test.ts`- `tests/unit-html-attributes.test.ts`- `tests/unit-html-elements.test.ts`- `tests/unit-router-directives.test.ts`- `tests/unit-web-tables.test.ts`- `tests/wiring.test.ts`
+- `tests/adapters.test.ts`- `tests/cache-tags.test.ts`- `tests/codegen-deep.test.ts`- `tests/compiler-advanced.test.ts`- `tests/compiler.test.ts`- `tests/deep-behaviour.test.ts`- `tests/docs-claims.test.ts`- `tests/e2e-isolated-app.test.ts`- `tests/e2e.test.ts`- `tests/external-review.test.ts`- `tests/runtime-edge-cases.test.ts`- `tests/audit-regressions.test.ts`- `tests/image.test.ts`- `tests/interactivity-e2e.test.ts`- `tests/layout-params.test.ts`- `tests/lexer.test.ts`- `tests/link.test.ts`- `tests/middleware-rules.test.ts`- `tests/native.test.ts`- `tests/next-parity.test.ts`- `tests/node-bundle-css.test.ts`- `tests/optimizer-deep.test.ts`- `tests/parity.test.ts`- `tests/parser-deep.test.ts`- `tests/parser.test.ts`- `tests/runtime-scheduler-events.test.ts`- `tests/plugins-load.test.ts`- `tests/plugins.test.ts`- `tests/render-modes.test.ts`- `tests/runtime-ui.test.ts`- `tests/runtime-utilities.test.ts`- `tests/runtime-server.test.ts`- `tests/runtime.test.ts`- `tests/scss.test.ts`- `tests/security-audit.test.ts`- `tests/security.test.ts`- `tests/self-audit.test.ts`- `tests/semantic-deep.test.ts`- `tests/shared.test.ts`- `tests/signal-stream.test.ts`- `tests/unit-aria.test.ts`- `tests/unit-css-matrix.test.ts`- `tests/unit-events.test.ts`- `tests/unit-html-attributes.test.ts`- `tests/unit-html-elements.test.ts`- `tests/unit-router-directives.test.ts`- `tests/unit-web-tables.test.ts`- `tests/wiring.test.ts`
 
 ## 8. The eval harness
 
@@ -835,8 +837,8 @@ What each suite in tests/ actually locks (83 files, 3250 tests):
 - **tests/plugins-load.test.ts** -- Framework suite; see the describe blocks for the locked behavior (every suite follows contributing/core-testing.md).
 - **tests/plugins.test.ts** -- Framework suite; see the describe blocks for the locked behavior (every suite follows contributing/core-testing.md).
 - **tests/render-modes.test.ts** -- Framework suite; see the describe blocks for the locked behavior (every suite follows contributing/core-testing.md).
-- **tests/runtime-new-2.test.ts** -- Framework suite; see the describe blocks for the locked behavior (every suite follows contributing/core-testing.md).
-- **tests/runtime-new.test.ts** -- Framework suite; see the describe blocks for the locked behavior (every suite follows contributing/core-testing.md).
+- **tests/runtime-ui.test.ts** -- Framework suite; see the describe blocks for the locked behavior (every suite follows contributing/core-testing.md).
+- **tests/runtime-utilities.test.ts** -- Framework suite; see the describe blocks for the locked behavior (every suite follows contributing/core-testing.md).
 - **tests/runtime-server.test.ts** -- Framework suite; see the describe blocks for the locked behavior (every suite follows contributing/core-testing.md).
 - **tests/runtime.test.ts** -- Framework suite; see the describe blocks for the locked behavior (every suite follows contributing/core-testing.md).
 - **tests/scss.test.ts** -- Framework suite; see the describe blocks for the locked behavior (every suite follows contributing/core-testing.md).
@@ -1041,14 +1043,14 @@ same change, with a note (contributing/code-review.md makes silent bumps a
 blocker). The tolerance is 25% -- smaller dips are pod noise (decision
 log #6).
 
-## 41. "Hunt for bugs" -- the repeatable procedure
+## 41. "Find bugs" -- the repeatable procedure
 
-skills/bug-hunt is the packaged form. The loop:
+skills/bug-audit is the packaged form. The loop:
 Pick a surface -> generate adversarial inputs from the REAL tables
 -> predict expected behavior from docs/ first -> run -> classify (bug /
 quirk / harness artifact) -> re-verify at the deterministic layer -> fix +
 lock with a regression test. The scale and fuzz evals are the automated
-version of exactly this loop: run them first, hunt by hand second.
+version of exactly this loop: run them first, probe by hand second.
 
 ---
 
@@ -1154,7 +1156,7 @@ a string-aware state machine (' " ` modes, escape handling) used at all
 four comment-strip sites. Locked by tests/unit-twm-comment-strip.test.ts
 (10 cases, including the exact `new Map([["tw", "https://..."]])` repro).
 
-Lesson encoded for every future hunt: a 405 with a clean build means the
+Lesson encoded for every future audit: a 405 with a clean build means the
 module failed to EXECUTE, not to compile -- and the error was in the
 serve log all along (this one was found by finally NOT redirecting
 stderr to /dev/null).

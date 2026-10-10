@@ -7,7 +7,7 @@ The CANONICAL content lives elsewhere; this file points to it.
 
 | Tool | Location | Contents |
 |---|---|---|
-| Skills (canonical) | `/skills/*/SKILL.md` | add-example, release, add-diagnostic, write-docs, bug-hunt |
+| Skills (canonical) | `/skills/*/SKILL.md` | add-example, release, add-diagnostic, write-docs, bug-audit |
 | Skills index | `.agents/skills.json` | machine list of the five skills |
 | Slash commands | `.claude/commands/*.md` | test, bench, release, triage, new-diagnostic |
 | Command plugin | `.claude-plugin/plugin.json` + `marketplace.json` | the tw-dev command pack |

@@ -105,7 +105,7 @@ curl -s localhost:8000/__stats
 And watch the server console — every plugin prints on load:
 
 ```
-Plugin registered: hit-counter v1.0.0
+Plugin registered: hit-counter
 ```
 
 ---

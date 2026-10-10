@@ -1,10 +1,10 @@
 ---
-name: bug-hunt
-description: Systematically hunt real bugs in the framework using the tables, the docs, and adversarial inputs
+name: bug-audit
+description: Systematically find real bugs in the framework using the tables, the docs, and adversarial inputs
 version: 2.0.0
 ---
 
-# Skill: bug-hunt
+# Skill: bug-audit
 
 The process that found 50+ real bugs, including four missing ARIA
 attributes. It is mechanical on purpose: inspiration is not a
@@ -62,10 +62,10 @@ versions of this loop already exist -- run them first:
 
 ```sh
 bun evals/run.ts   # 322 cases: outcome, scale, invariant, 300 fuzz inputs
-bun test           # the matrix suites ARE a table-driven hunt, frozen
+bun test           # the matrix suites ARE a table-driven audit, frozen
 ```
 
-Then hunt by hand where the automation does not reach: new tables, new
+Then probe by hand where the automation does not reach: new tables, new
 seams, new syntax combinations.
 
 ## Lessons from past hunts

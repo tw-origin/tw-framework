@@ -35,7 +35,7 @@ bun run verify # the master gate before claiming anything works
 | Review bar | contributing/code-review.md |
 | Release steps | contributing/release-process.md |
 | Triage/classification | contributing/issue-triage.md |
-| Packaged procedures (add example, release, diagnostic, docs, bug-hunt) | skills/ |
+| Packaged procedures (add example, release, diagnostic, docs, bug-audit) | skills/ |
 | Slash commands | .claude/commands/ |
 | Eval harness (322 cases) | evals/README.md |
 | Benchmarks + gate | bench/README.md |
