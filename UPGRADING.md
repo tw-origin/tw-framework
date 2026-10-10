@@ -151,12 +151,44 @@ is unchanged.
 took rest args only, so `product([1,2,3,4])` was `NaN`/`null` — the array was
 treated as one value. `product(1,2,3,4)` and `product([1,2,3,4])` both work now.
 
-**Documented, not changed.** Names that are two contracts under one name are
-left as they are so neither call shape breaks — `zip`/`unzip`/`distinct`/
-`interleave` (eager array vs lazy `Iterable`), `median`/`mode` (element vs
-statistic), and the curried `map`/`filter`/`reduce`/`find`/`every`/`some` in
-`utils/functional.ts` versus the direct ones in `utils/array/manipulate.ts`.
+**Iterable variants get explicit names.** `utils/functional.ts`'s lazy,
+Iterable-shaped helpers no longer shadow the array-shaped ones:
+
+| old name (`utils/functional.ts`) | new name |
+|---|---|
+| `zip` | `zipIterable` |
+| `zipWith` | `zipWithIterable` |
+| `distinct` | `distinctIterable` |
+| `interleave` | `interleaveIterable` |
+
+Both contracts remain available — the array-shaped `zip` / `zipWith` / `unzip`
+(pad to the longer array) in `utils/array/manipulate`, and the lazy Iterable
+versions (stop at the shorter, never materialise, so an infinite sequence is
+fine). The import path no longer decides the behaviour silently.
+
+**Documented, not changed.** `median` / `mode` (an element from a generic
+`Iterable<T>` in `utils/functional.ts` versus a statistic in
+`utils/number/format` and `algorithms/sorting`), the curried `map` / `filter` /
+`reduce` / `find` / `every` / `some` in `utils/functional.ts` versus the direct
+ones in `utils/array/manipulate.ts`, and the lexer's two `isKeyword` functions
+(the JS/TS keyword set in `lexer/token-types` versus the `.tw` DSL keyword set
+in `lexer/tokens/types`) are intentionally distinct contracts under one name.
 Pick by import path.
+
+**Consolidated.** Duplicated exports whose bodies were byte-identical were
+reduced to one definition each, with the other paths re-exporting it:
+`utils/collection-utils` and `utils/array/manipulate` (`head`, `tail`,
+`initial`, `slice`, `uniq`, `uniqWith`, `zipObject`, `forEachRight`), `fs/sync`
+and `fs/async` (`readFileSync`, `writeFileSync`, `existsSync`, `statSync`,
+`removeSync`, `copyFileSync`, `renameSync`, `readdirSync`, `chmodSync`),
+`types/results` and `types/common` (`ok`, `err`, `unwrapOr`),
+`utils/string/transform` and `crypto/index` (`atbash`, `caesarCipher`, `rot13`),
+`utils/number/format` and `utils/date/format` (`formatDuration`),
+`utils/functional` and `utils/number/format` (`gcd`, `lerp`),
+`utils/functional` and `utils/function/index` (`identity`), and
+`fs/async` / `fs/glob` (`globMatch`). Behaviour is unchanged — verified by
+comparing every consolidated name against its original on a battery of inputs.
+
 
 ---
 

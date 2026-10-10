@@ -4,6 +4,7 @@
  */
 
 import { unzip as unzipCanonical } from "./array/manipulate";
+import { initial, slice } from "./array/manipulate";
 
 // Canonical implementations live in shared/tw/utils/array/manipulate.ts.
 // Re-exported so the original deep-import paths keep working unchanged.
@@ -101,17 +102,11 @@ export function fromPairs<T>(pairs: Array<[string, T]>): Record<string, T> {
   return result;
 }
 
-export function head<T>(array: T[]): T | undefined {
-  return array[0];
-}
+export { head } from "./array/manipulate";
 
-export function tail<T>(array: T[]): T[] {
-  return array.slice(1);
-}
+export { tail } from "./array/manipulate";
 
-export function initial<T>(array: T[]): T[] {
-  return array.slice(0, -1);
-}
+export { initial };
 
 export function last<T>(array: T[]): T | undefined {
   return array[array.length - 1];
@@ -188,9 +183,7 @@ export function reverse<T>(array: T[]): T[] {
   return [...array].reverse();
 }
 
-export function slice<T>(array: T[], start: number = 0, end: number = array.length): T[] {
-  return array.slice(start, end);
-}
+export { slice };
 
 export function sortedIndex<T>(array: T[], value: T): number {
   let low = 0;
@@ -329,9 +322,7 @@ export function unionWith<T>(...args: [...T[][], (a: T, b: T) => boolean]): T[] 
   return result;
 }
 
-export function uniq<T>(array: T[]): T[] {
-  return [...new Set(array)];
-}
+export { uniq } from "./array/manipulate";
 
 export function uniqBy<T>(array: T[], iteratee: (item: T) => unknown): T[] {
   const seen = new Set<unknown>();
@@ -346,15 +337,7 @@ export function uniqBy<T>(array: T[], iteratee: (item: T) => unknown): T[] {
   return result;
 }
 
-export function uniqWith<T>(array: T[], comparator: (a: T, b: T) => boolean): T[] {
-  const result: T[] = [];
-  for (const item of array) {
-    if (!result.some((existing) => comparator(existing, item))) {
-      result.push(item);
-    }
-  }
-  return result;
-}
+export { uniqWith } from "./array/manipulate";
 
 export function unzipWith<T, R>(array: T[][], iteratee: (a: T, b: T) => R): R[] {
   return unzipCanonical(array).map((group: any[]) => group.reduce((a: any, b: any) => iteratee(a, b))) as R[];
@@ -396,13 +379,7 @@ export function xorWith<T>(...args: [...T[][], (a: T, b: T) => boolean]): T[] {
   return all.filter((item) => arrays.every((arr) => arr.filter((other) => comparator(item, other)).length <= 1));
 }
 
-export function zipObject<K extends string, V>(keys: K[], values: V[]): Record<K, V> {
-  const result = {} as Record<K, V>;
-  for (let i = 0; i < keys.length; i++) {
-    result[keys[i]] = values[i];
-  }
-  return result;
-}
+export { zipObject } from "./array/manipulate";
 
 export function zipObjectDeep(keys: string[], values: unknown[]): Record<string, unknown> {
   const result: Record<string, unknown> = {};
@@ -460,11 +437,7 @@ export function forEach2<T>(array: T[], iteratee: (item: T, index: number) => vo
   array.forEach(iteratee);
 }
 
-export function forEachRight<T>(array: T[], iteratee: (item: T, index: number) => void): void {
-  for (let i = array.length - 1; i >= 0; i--) {
-    iteratee(array[i], i);
-  }
-}
+export { forEachRight } from "./array/manipulate";
 
 export function groupBy<T>(array: T[], iteratee: (item: T) => string): Record<string, T[]> {
   const result: Record<string, T[]> = {};

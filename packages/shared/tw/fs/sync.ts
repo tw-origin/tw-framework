@@ -4,6 +4,7 @@ import { join, dirname, extname } from "node:path";
 import { getFs } from "./runtime-compat";
 import { getFsPromises } from "./runtime-compat";
 import { globMatch } from "./async";
+import { copyFileSync, readFileSync, readdirSync, removeSync, renameSync, writeFileSync } from "./async";
 
 function safeJsonParse(json, fallback) {
   try { return JSON.parse(json); }
@@ -12,69 +13,28 @@ function safeJsonParse(json, fallback) {
 
 
 
-export function readFileSync(path: string): string {
-  const fs = getFs();
-  return fs.readFileSync(path, "utf-8");
-}
+export { readFileSync };
 
-export function writeFileSync(path: string, content: string | Uint8Array): void {
-  const fs = getFs();
-  fs.writeFileSync(path, content);
-}
+export { writeFileSync };
 
-export function existsSync(path: string): boolean {
-  const fs = getFs();
-  try {
-    return fs.existsSync(path);
-  } catch {
-    return false;
-  }
-}
+export { existsSync } from "./async";
 
-export function statSync(path: string): { size: number; mtime: number; isFile: boolean; isDir: boolean } {
-  const fs = getFs();
-  const stat = fs.statSync(path);
-  return {
-    size: stat.size,
-    mtime: stat.mtimeMs,
-    isFile: stat.isFile(),
-    isDir: stat.isDirectory(),
-  };
-}
+export { statSync } from "./async";
 
 export function mkdirSync(path: string, recursive: boolean = true): void {
   const fs = getFs();
   fs.mkdirSync(path, { recursive });
 }
 
-export function removeSync(path: string): void {
-  const fs = getFs();
-  try {
-    fs.rmSync(path, { recursive: true, force: true });
-  } catch {
-    // Already removed
-  }
-}
+export { removeSync };
 
-export function copyFileSync(src: string, dest: string): void {
-  const fs = getFs();
-  fs.copyFileSync(src, dest);
-}
+export { copyFileSync };
 
-export function renameSync(oldPath: string, newPath: string): void {
-  const fs = getFs();
-  fs.renameSync(oldPath, newPath);
-}
+export { renameSync };
 
-export function readdirSync(path: string): string[] {
-  const fs = getFs();
-  return fs.readdirSync(path);
-}
+export { readdirSync };
 
-export function chmodSync(path: string, mode: number): void {
-  const fs = getFs();
-  fs.chmodSync(path, mode);
-}
+export { chmodSync } from "./async";
 
 // --- Async Operations ---------------------------------------------------------
 

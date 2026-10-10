@@ -3,6 +3,7 @@
  * @module shared/utils/string
  */
 
+import { caesarCipher } from "../../crypto/index";
 export function capitalize(str: string): string {
   if (!str) return str;
   return str.charAt(0).toUpperCase() + str.slice(1);
@@ -752,23 +753,11 @@ export function rotate(str: string, n: number): string {
   return str.slice(shift) + str.slice(0, shift);
 }
 
-export function caesarCipher(str: string, shift: number): string {
-  return str.replace(/[a-zA-Z]/g, (char) => {
-    const base = char <= "Z" ? 65 : 97;
-    return String.fromCharCode(((char.charCodeAt(0) - base + shift) % 26 + 26) % 26 + base);
-  });
-}
+export { caesarCipher };
 
-export function rot13(str: string): string {
-  return caesarCipher(str, 13);
-}
+export { rot13 } from "../../crypto/index";
 
-export function atbash(str: string): string {
-  return str.replace(/[a-zA-Z]/g, (char) => {
-    const base = char <= "Z" ? 65 : 97;
-    return String.fromCharCode(25 - (char.charCodeAt(0) - base) + base);
-  });
-}
+export { atbash } from "../../crypto/index";
 
 export function countVowels(str: string): number {
   return (str.match(/[aeiouAEIOU]/g) || []).length;

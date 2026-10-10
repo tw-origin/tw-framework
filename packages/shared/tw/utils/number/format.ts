@@ -678,18 +678,7 @@ export function formatFileSize(bytes: number): string {
   return formatBytes(bytes);
 }
 
-export function formatDuration(ms: number): string {
-  if (ms < 0) return "-" + formatDuration(-ms);
-  if (ms < 1000) return `${ms}ms`;
-  const s = Math.floor(ms / 1000);
-  const m = Math.floor(s / 60);
-  const h = Math.floor(m / 60);
-  const d = Math.floor(h / 24);
-  if (d > 0) return `${d}d ${h % 24}h ${m % 60}m`;
-  if (h > 0) return `${h}h ${m % 60}m ${s % 60}s`;
-  if (m > 0) return `${m}m ${s % 60}s`;
-  return `${s}s`;
-}
+export { formatDuration } from "../date/format";
 
 export function formatFrequency(hz: number): string {
   if (hz < 1000) return `${hz.toFixed(2)} Hz`;

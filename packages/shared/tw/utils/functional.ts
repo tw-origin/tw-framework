@@ -3,6 +3,7 @@
  * @module shared/utils
  */
 
+import { gcd, lerp } from "./number/format";
 export type Function0<R> = () => R;
 export type Function1<T1, R> = (a: T1) => R;
 export type Function2<T1, T2, R> = (a: T1, b: T2) => R;
@@ -73,9 +74,7 @@ export function flip<T1, T2, R>(fn: (a: T1, b: T2) => R): (b: T2, a: T1) => R {
   return (b: T2, a: T1) => fn(a, b);
 }
 
-export function identity<T>(value: T): T {
-  return value;
-}
+export { identity } from "./function/index";
 
 export function always<T>(value: T): (...args: unknown[]) => T {
   return () => value;
@@ -481,7 +480,15 @@ export function chunk2<T>(size: number): (iterable: Iterable<T>) => T[][] {
   };
 }
 
-export function zip<A, B>(iterableA: Iterable<A>, iterableB: Iterable<B>): Array<[A, B]> {
+/**
+ * Lazy zip over two Iterables, stopping at the shorter. This is the ITERABLE
+ * contract: it has no length, so it cannot pad, and it never materialises the
+ * inputs (so an infinite sequence is fine). The eager, array-shaped `zip`
+ * (which pads to the longer array) lives in `utils/array/manipulate`; the two
+ * used to share the name `zip`, which made the import path decide the
+ * behaviour. Renamed so both contracts are usable and unambiguous.
+ */
+export function zipIterable<A, B>(iterableA: Iterable<A>, iterableB: Iterable<B>): Array<[A, B]> {
   const result: Array<[A, B]> = [];
   const iterA = iterableA[Symbol.iterator]();
   const iterB = iterableB[Symbol.iterator]();
@@ -494,7 +501,7 @@ export function zip<A, B>(iterableA: Iterable<A>, iterableB: Iterable<B>): Array
   return result;
 }
 
-export function zipWith<A, B, R>(iterableA: Iterable<A>, iterableB: Iterable<B>, fn: (a: A, b: B) => R): R[] {
+export function zipWithIterable<A, B, R>(iterableA: Iterable<A>, iterableB: Iterable<B>, fn: (a: A, b: B) => R): R[] {
   const result: R[] = [];
   const iterA = iterableA[Symbol.iterator]();
   const iterB = iterableB[Symbol.iterator]();
@@ -1267,7 +1274,7 @@ export function cycle<T>(iterable: Iterable<T>): Iterable<T> {
   };
 }
 
-export function interleave<A, B>(iterableA: Iterable<A>, iterableB: Iterable<B>): Iterable<A | B> {
+export function interleaveIterable<A, B>(iterableA: Iterable<A>, iterableB: Iterable<B>): Iterable<A | B> {
   return {
     [Symbol.iterator]: function* () {
       const iterA = iterableA[Symbol.iterator]();
@@ -1308,7 +1315,7 @@ export function concat2<T>(...iterables: Iterable<T>[]): Iterable<T> {
   };
 }
 
-export function distinct<T>(iterable: Iterable<T>): Iterable<T> {
+export function distinctIterable<T>(iterable: Iterable<T>): Iterable<T> {
   return {
     [Symbol.iterator]: function* () {
       const seen = new Set<T>();
@@ -2401,14 +2408,7 @@ export function stdDev(...values: number[]): number {
   return Math.sqrt(variance(...values));
 }
 
-export function gcd(a: number, b: number): number {
-  a = Math.abs(a);
-  b = Math.abs(b);
-  while (b > 0) {
-    [a, b] = [b, a % b];
-  }
-  return a;
-}
+export { gcd };
 
 export function lcm(a: number, b: number): number {
   return (a * b) / gcd(a, b);
@@ -2575,9 +2575,7 @@ export function normalizeAngle(angle: number): number {
   return ((angle % (2 * Math.PI)) + 2 * Math.PI) % (2 * Math.PI);
 }
 
-export function lerp(start: number, end: number, t: number): number {
-  return start + (end - start) * t;
-}
+export { lerp };
 
 export function inverseLerp(start: number, end: number, value: number): number {
   return (value - start) / (end - start);

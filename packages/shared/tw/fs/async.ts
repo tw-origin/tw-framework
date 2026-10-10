@@ -103,66 +103,7 @@ export async function atomicWrite(path: string, content: string | Uint8Array): P
   await fsp.rename(tmpPath, path);
 }
 
-export function globMatch(pattern: string, path: string): boolean {
-  // Convert glob to regex
-  let regex = "^";
-  let i = 0;
-
-  while (i < pattern.length) {
-    const ch = pattern[i];
-
-    if (ch === "*") {
-      if (pattern[i + 1] === "*") {
-        // ** -- match any path
-        regex += ".*";
-        i += 2;
-        if (pattern[i] === "/") i++;
-      } else {
-        // * -- match within a path segment
-        regex += "[^/]*";
-        i++;
-      }
-    } else if (ch === "?") {
-      regex += "[^/]";
-      i++;
-    } else if (ch === "[") {
-      // Character class
-      let classStr = "[";
-      i++;
-      while (i < pattern.length && pattern[i] !== "]") {
-        classStr += pattern[i];
-        i++;
-      }
-      classStr += "]";
-      regex += classStr;
-      i++;
-    } else if (ch === "{") {
-      // Alternation: {js,ts} -> (js|ts)
-      let alts: string[] = [];
-      let current = "";
-      i++;
-      while (i < pattern.length && pattern[i] !== "}") {
-        if (pattern[i] === ",") {
-          alts.push(current);
-          current = "";
-        } else {
-          current += pattern[i];
-        }
-        i++;
-      }
-      alts.push(current);
-      regex += `(${alts.join("|")})`;
-      i++;
-    } else {
-      const escaped = ch.replace(/[.+^${}()|[\]\\]/g, "\\$&");
-      regex += escaped;
-      i++;
-    }
-  }
-
-  regex += "$";
-  return new RegExp(escapeRegExp(regex)).test(path);
-}
+export { globMatch } from "./glob";
 
 export async function readJSON<T = any>(path: string): Promise<T> {
   const content = await readFile(path);

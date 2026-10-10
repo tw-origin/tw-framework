@@ -1,25 +1,20 @@
 /** Result types -- Ok/Err pattern for error handling. */
 
+import { err, ok } from "./common";
 export type Result<T, E = Error> =
   | { ok: true; value: T }
   | { ok: false; error: E };
 
-export function ok<T>(value: T): Result<T, never> {
-  return { ok: true, value };
-}
+export { ok };
 
-export function err<E>(error: E): Result<never, E> {
-  return { ok: false, error };
-}
+export { err };
 
 export function unwrap<T>(result: Result<T>): T {
   if (result.ok) return result.value;
   throw (result as any).error;
 }
 
-export function unwrapOr<T>(result: Result<T>, defaultValue: T): T {
-  return result.ok ? result.value : defaultValue;
-}
+export { unwrapOr } from "./common";
 
 export function unwrapOrElse<T, E>(result: Result<T, E>, fn: (err: E) => T): T {
   return result.ok ? result.value : fn((result as any).error);

@@ -108,3 +108,29 @@ describe("product / average / variance accept an array and rest args alike", () 
     expect(variance()).toBe(0);
   });
 });
+
+describe("Iterable helpers no longer shadow the array ones", () => {
+  test("functional.ts exports the Iterable variants under explicit names", async () => {
+    const f: any = await import("../packages/shared/tw/utils/functional.ts");
+    expect(typeof f.zipIterable).toBe("function");
+    expect(typeof f.zipWithIterable).toBe("function");
+    expect(typeof f.distinctIterable).toBe("function");
+    expect(typeof f.interleaveIterable).toBe("function");
+    // the old, ambiguous names are gone from this module
+    expect(f.zip).toBeUndefined();
+    expect(f.distinct).toBeUndefined();
+    expect(f.interleave).toBeUndefined();
+  });
+  test("the Iterable versions are lazy and stop at the shorter side", async () => {
+    const f: any = await import("../packages/shared/tw/utils/functional.ts");
+    expect(f.zipIterable([1, 2, 3], ["a", "b"])).toEqual([[1, "a"], [2, "b"]]);
+    expect([...f.distinctIterable([1, 1, 2, 3, 3])]).toEqual([1, 2, 3]);
+    // infinite generators are fine: it never materialises the input
+    function* nats() { let i = 0; while (true) yield i++; }
+    expect(f.zipIterable(nats(), ["a", "b", "c"])).toEqual([[0, "a"], [1, "b"], [2, "c"]]);
+  });
+  test("the array zip still pads to the longer array", async () => {
+    const arr: any = await import("../packages/shared/tw/utils/array/manipulate.ts");
+    expect(arr.zip([1, 2, 3], ["a"])).toEqual([[1, "a"], [2, undefined], [3, undefined]]);
+  });
+});
