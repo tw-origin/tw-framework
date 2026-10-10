@@ -248,7 +248,7 @@ comparing every consolidated name against its original on a battery of inputs.
 
 ## 1.0.4 -> 1.0.5
 
-The 50-bug hardening batch: ~50 real bugs found by the table-driven hunt
+A hardening pass: ~50 real bugs found by the table-driven suites
 (four missing ARIA attributes, the missing `table` role, email validator
 factory API, handlerBodyEnd depth bug, TW090 regex). No API changes.
 Upgrade = replace zip, rebuild.

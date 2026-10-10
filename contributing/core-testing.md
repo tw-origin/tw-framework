@@ -49,7 +49,7 @@ The rules that make this suite worth trusting:
 
 1. **Parameterize over the REAL tables.** Never copy-paste variants of a
    test; loop the constant. A table entry without coverage is a hole a
-   hunt will find later.
+   later pass will find.
 2. **Assert real output.** Compiled HTML, compiled CSS, resolved values,
    HTTP status and headers. Never internal state or "did not throw".
 3. **One behavior per test.** If the name needs "and", it is two tests.

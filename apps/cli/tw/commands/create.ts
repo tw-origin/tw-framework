@@ -345,7 +345,7 @@ async function createVercelJson(dir: string): Promise<void> {
 // --- Default Template --------------------------------------------------
 
 async function createDefaultProject(dir: string, name: string): Promise<void> {
-  // v1.0.8: T() used to be an identity stub -- every `${name}`
+  // T() used to be an identity stub -- every `${name}`
   // placeholder in the templates below shipped LITERALLY into the
   // scaffolded project (bug report: `a.brand { href "/" "${name}" }`
   // rendered a bogus <href> element and `app: "${name}"` in the API

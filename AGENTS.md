@@ -949,7 +949,7 @@ suspense ids (PPR hole fills depend on this).
    by revalidate.ts) and drops every entry in the family.
 
 Legacy `revalidate N` pages skip the explicit-cache path entirely and keep
-the v1.05 infinite-SWR behavior -- a dedicated regression test proves the
+the legacy infinite-SWR behavior -- a dedicated regression test proves the
 byte-identical semantics.
 
 ## 35. The .twm loader and `fn cached`

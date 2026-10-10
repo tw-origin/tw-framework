@@ -224,8 +224,8 @@ export class TWServer {
             redirectDropped = true;
             return null;
           }
-          // preserve object identity for already-clean entries (deep-round
-          // config normalization test relies on pass-through)
+          // preserve object identity for already-clean entries, so config
+          // normalization passes clean values through untouched
           return touched ? mapped : r;
         }).filter((x: any) => x !== null || (redirectDropped = true));
         // keep the ORIGINAL array reference when nothing changed at all

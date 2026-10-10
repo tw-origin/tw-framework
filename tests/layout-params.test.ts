@@ -7,7 +7,7 @@ describe("dynamic route params: both {slug} and {params.slug}", () => {
     expect(r.html).toContain("Post: abc");
   });
 
-  test("docs form params.slug renders (v25 fix)", () => {
+  test("docs form params.slug renders", () => {
     const r = compileSync('div { h1 "Post: {params.slug}" }', {
       stateVars: { slug: "abc", params: { slug: "abc" } },
     } as any);
@@ -22,7 +22,7 @@ describe("dynamic route params: both {slug} and {params.slug}", () => {
   });
 });
 
-describe("layout slot handling (v25 fix: no-slot layouts must not drop content)", () => {
+describe("layout slot handling (no-slot layouts must not drop content)", () => {
   const page = compileSync('div.page { h1 "PAGE CONTENT" }');
   const pageProgram = (page as any).ast ?? (page as any).program;
 

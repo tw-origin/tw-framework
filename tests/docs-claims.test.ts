@@ -1,5 +1,5 @@
 /**
- * TW Framework -- docs deep-check round (v32): the 50 reference docs'
+ * TW Framework -- docs contract checks: the 50 reference docs'
  * claims verified against code; regressions for the fixes this round:
  *   - route handlers may return { html } or { text } bodies (were silently {})
  *   - lib/ imports are server-only in pages regardless of extension
@@ -30,7 +30,7 @@ const plainRequest = (url: string, method = "GET") => ({
   json: async () => ({}),
 });
 
-describe("docs round: response bodies", () => {
+describe("docs: response bodies", () => {
   test("html responses carry their html through the loader", async () => {
     const p = file("html-route.twm", `export function get(request) {
   return { status: 200, html: "<h1>Hi</h1>" };
@@ -62,7 +62,7 @@ describe("docs round: response bodies", () => {
   });
 });
 
-describe("docs round: TW1007 server-only boundary", () => {
+describe("docs: TW1007 server-only boundary", () => {
   test('bare "lib/x" import in a page is flagged', () => {
     expect(findServerOnlyViolations('import { greet } from "lib/greet"\ndiv { "x" }'))
       .toEqual(["lib/greet"]);
@@ -79,7 +79,7 @@ describe("docs round: TW1007 server-only boundary", () => {
   });
 });
 
-describe("docs round: runtime API shapes", () => {
+describe("docs: runtime API shapes", () => {
   test("schedule returns a job id that cancel() accepts", () => {
     const id = schedule(() => {});
     expect(typeof cancel(id)).toBe("boolean");

@@ -40,7 +40,7 @@ follow this shape -- the reader can rely on it, so do not break it.
 
 1. Read the two or three existing pages closest to the topic -- match
    their depth and voice (docs/cache-tags.md is the current gold
-   standard, written with the v1.0.6 design doc).
+   standard, written with the design doc).
 2. Write the page.
 3. Run every command and compile every snippet in it.
 4. Update cross-references in related pages that mention the topic.

@@ -6,8 +6,8 @@ version: 2.0.0
 
 # Skill: bug-hunt
 
-The process that found 50+ real bugs for v1.0.5 and four missing ARIA
-attributes for v1.0.6. It is mechanical on purpose: inspiration is not a
+The process that found 50+ real bugs, including four missing ARIA
+attributes. It is mechanical on purpose: inspiration is not a
 strategy.
 
 ## 1. Pick a surface

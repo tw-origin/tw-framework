@@ -1,7 +1,7 @@
 /**
  * Cache tags round (docs/cache-tags.md): `cache { }` directive, cacheLife
  * profiles, tag invalidation, canonical query keys, and `fn cached`
- * handler purity — the v1.0.6 explicit cache layer.
+ * handler purity — the explicit cache layer.
  */
 import { describe, expect, test } from "bun:test";
 import { mkdtempSync, mkdirSync, writeFileSync, readFileSync } from "node:fs";
@@ -199,7 +199,7 @@ describe("routes.json cache manifest (build)", () => {
     const profiles = { product: { stale: 2, revalidate: 3, expire: 8 } };
     const shop = resolveCache(extractCacheDirective('page { cache { life "product", tag "products" } }')!, profiles);
     expect(shop).toEqual({ revalidate: 3, stale: 2, expire: 8, tag: "products" });
-    // legacy desugaring (render-pipeline path): infinite SWR, v1.0.5 exact
+    // legacy desugaring (render-pipeline path): infinite SWR, exact
     const legacy = resolveCache({ revalidate: 60 }, {}, { legacy: true });
     expect(legacy).toEqual({ revalidate: 60, stale: 0, expire: Infinity, tag: undefined });
     // a plain explicit block instead defaults expire to revalidate

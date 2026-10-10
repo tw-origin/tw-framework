@@ -1,6 +1,5 @@
 /**
- * — regressions.
- * body parsing, compile diagnostics,
+ * Body parsing, compile diagnostics,
  * .twm syntax validation, derivedSignal+publicSignal.
  */
 import { describe, expect, test } from "bun:test";

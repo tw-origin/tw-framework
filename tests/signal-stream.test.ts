@@ -118,7 +118,7 @@ describe("signal hub", () => {
     const from1 = hub.connectPayloads(1, declared);
     expect(from1.length).toBe(1);
     expect(JSON.parse(from1[0]).updates).toEqual([["price", 2]]);
-    // v1.0.8 signals v2: a fresh client (since=0) gets ONE snapshot frame
+    // signals: a fresh client (since=0) gets ONE snapshot frame
     // instead of the full history replay
     const from0 = hub.connectPayloads(0, declared);
     expect(from0.length).toBe(1);

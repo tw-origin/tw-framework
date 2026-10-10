@@ -3,12 +3,12 @@
  * `@client:visible` download deferral -- and the three gaps a unit-only test
  * missed, all of which lived in the same-name fix itself.
  *
- * BUG 1 -- same name, different files. The registry was keyed by name alone, so
+ * Same name, different files. The registry was keyed by name alone, so
  *   two components that both default-export `Counter` in different folders
  *   collapsed to one entry: the second page rendered the first page's
  *   component. Silent wrong output.
  *
- * BUG 2 -- stale SSR render. `loadSsrRenderer` stamped its built module by
+ * Stale SSR render. `loadSsrRenderer` stamped its built module by
  *   path+engine and then `import()`ed it. `import()` caches by URL, so after a
  *   component was edited the old render kept being served for the rest of the
  *   process -- exactly a `tw dev` session.
@@ -44,7 +44,7 @@ import {
 
 const repoNodeModules = join(resolve(import.meta.dir, ".."), "node_modules");
 
-describe("BUG 1: same name, different files", () => {
+describe("same name, different files", () => {
   test("the registry tells them apart by specifier", () => {
     clearForeignComponents();
     registerForeignComponent("Counter", "@./a/Counter.tsx", { engine: "react", source: "/a/Counter.tsx", render: () => "A" });
@@ -135,7 +135,7 @@ describe("BUG 1: same name, different files", () => {
   });
 });
 
-describe("BUG 2: an edited component renders fresh", () => {
+describe("an edited component renders fresh", () => {
   let root: string;
   let file: string;
 

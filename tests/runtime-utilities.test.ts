@@ -1,5 +1,5 @@
 /**
- * Tests for new runtime modules -- hardened v14.
+ * Tests for the runtime utility modules.
  * Tests run with Bun test runner.
  */
 

@@ -1,5 +1,5 @@
 /**
- * Tests for new runtime modules -- hardened v14 (part 2).
+ * Tests for the runtime UI modules (store, event bus, media query, forms, theme).
  */
 
 import { test, expect, describe } from "bun:test";

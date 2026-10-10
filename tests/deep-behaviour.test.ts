@@ -7,7 +7,7 @@ import { join } from "node:path";
 
 const BOM = String.fromCharCode(0xfeff);
 
-describe("compiler BOM handling (v26 fix)", () => {
+describe("compiler BOM handling", () => {
   test("UTF-8 BOM is stripped, page compiles clean", () => {
     const r = compileSync(BOM + 'div { h1 "bom works" }');
     const errors = (r.diagnostics as any[]).filter((d) => d.severity === "error");
@@ -22,7 +22,7 @@ describe("compiler BOM handling (v26 fix)", () => {
   });
 });
 
-describe("image engine fallback safety (v26 fix)", () => {
+describe("image engine fallback safety", () => {
   test("passthrough never caches original bytes under a format name", async () => {
     const dir = mkdtempSync(join(tmpdir(), "tw-img-"));
     mkdirSync(join(dir, "public"));
@@ -64,7 +64,7 @@ describe("malformed input never corrupts output silently (fuzz regression)", () 
   });
 });
 
-describe("tw.config.ts shape normalization (v27 fix: docs object form)", () => {
+describe("tw.config.ts shape normalization (docs object form)", () => {
   test("object-form redirects/headers normalize to array form in TWServer", async () => {
     const { TWServer } = await import("@tw/server");
     const s: any = new TWServer({

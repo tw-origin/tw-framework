@@ -311,7 +311,7 @@ export class JSBundleBuilder {
     if (!this.options.includeRuntime) return "";
 
     return [
-      "// TW Framework Runtime v0.0.1",
+      "// TW Framework Runtime",
       this.options.minify ? "// (minified)" : "",
       "",
       this.generateHyperscript(),

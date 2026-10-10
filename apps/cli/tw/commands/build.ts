@@ -759,7 +759,7 @@ export async function buildCommand(): Promise<void> {
   }
 
   let pageCount = 0;
-  // Minor (v1.0.8): request-time-rendered pages were invisible in the
+  // Minor: request-time-rendered pages were invisible in the
   // summary -- "Pages: 1" while the site had many SSR routes looked broken.
   let requestRenderedCount = 0;
   let apiCount = 0;
@@ -877,7 +877,7 @@ export async function buildCommand(): Promise<void> {
     {
       // Cache manifest (docs/cache-tags.md): a `cache { }` directive
       // resolves against tw.config.ts profiles into absolute seconds;
-      // the legacy `revalidate N` form stays a bare number (v1.0.5 shape).
+      // the legacy `revalidate N` form stays a bare number.
       const pageSrc = readFileSync(pageFile, "utf-8");
       const { extractCacheDirective, resolveCache } = await import("@tw/shared");
       const cacheMeta = extractCacheDirective(pageSrc);

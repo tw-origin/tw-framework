@@ -1062,7 +1062,7 @@ async function ensureDevClientBundle(rootDir: string, pageSource: string, layout
         });
       }
     }
-    // Signal Streaming (v2): `tw dev` had NO /_tw/stream endpoint at all,
+    // Signal Streaming: `tw dev` had NO /_tw/stream endpoint at all,
     // so `render signalStream` pages were dead in development. Wire the
     // SAME shared handler `tw serve` uses, plus the client-writes POST.
     {

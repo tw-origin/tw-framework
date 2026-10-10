@@ -1,5 +1,5 @@
 /**
- * TW Framework -- external bug-hunt round regressions (v35):
+ * TW Framework -- external review regressions:
  * bugs reported by an outside review, verified against the code and fixed.
  *   - computed() unsubscribes from signals it no longer reads
  *   - scheduler reports deduped jobs as jobsSkipped
@@ -37,7 +37,7 @@ const plainRequest = (url: string, method = "GET") => ({
   json: async () => ({}),
 });
 
-describe("external hunt: reactivity", () => {
+describe("reactivity", () => {
   test("computed unsubscribes from signals it stops reading", () => {
     const flag = signal(true);
     const a = signal(1);
@@ -61,7 +61,7 @@ describe("external hunt: reactivity", () => {
   });
 });
 
-describe("external hunt: scheduler stats", () => {
+describe("scheduler stats", () => {
   test("id-deduped jobs are reported as jobsSkipped", () => {
     schedule(() => {}, "normal", "dup-id");
     schedule(() => {}, "normal", "dup-id");   // replaces + counts as skipped
@@ -72,7 +72,7 @@ describe("external hunt: scheduler stats", () => {
   });
 });
 
-describe("external hunt: server middlewares", () => {
+describe("server middlewares", () => {
   test("rateLimitMiddleware answers 429 when the limit is crossed", async () => {
     const mw = rateLimitMiddleware({ max: 1, windowMs: 60_000 });
     const okCtx: any = { headers: { "x-forwarded-for": "9.9.9.9" } };
@@ -99,7 +99,7 @@ describe("external hunt: server middlewares", () => {
   });
 });
 
-describe("external hunt: twm DSL", () => {
+describe("twm DSL", () => {
   test("JS delete operator works inside a handler body", async () => {
     const p = file("delete-op.twm", `fn post(request) {
   const obj = { a: 1, b: 2 }
@@ -114,7 +114,7 @@ describe("external hunt: twm DSL", () => {
   });
 });
 
-describe("external hunt: JWT", () => {
+describe("JWT", () => {
   test("large payloads sign and verify (no spread overflow)", async () => {
     const jwt = createJWTManager({ secret: "s" });
     const big = "x".repeat(100_000);

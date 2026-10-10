@@ -90,7 +90,7 @@ export function parseCacheBody(body: string): CacheDirectiveMeta {
 export function extractCacheDirective(source: string): CacheDirectiveMeta | null {
   // Mask strings + comments first: a docs page that SHOWS `cache { ... }`
   // inside a quoted example must not register a cache window (same class
-  // as the .twm comment-strip bug fixed in v1.0.6).
+  // as a past .twm comment-strip bug).
   const masked = maskSourceStringsAndComments(source);
   // page { ... cache { ... } ... } -- the cache block contains no nested
   // braces, so [^}] captures exactly its body. The match runs on the MASKED
@@ -119,7 +119,7 @@ export function cacheMetaIsUsable(meta: CacheDirectiveMeta | null): boolean {
  *
  * Semantics (docs/cache-tags.md):
  *   - `revalidate N` alone (the legacy ISR form) desugars to
- *     { revalidate: N, stale: 0, expire: Infinity } -- the v1.0.5
+ *     { revalidate: N, stale: 0, expire: Infinity } -- the legacy
  *     behavior exactly: fresh for N seconds, then stale-while-revalidate
  *     forever, never a blocking MISS.
  *   - An explicit `cache { }` block defaults expire to revalidate (no SWR
@@ -154,7 +154,7 @@ export function resolveCache(
   if (revalidate == null || !Number.isFinite(revalidate) || revalidate <= 0) return null;
 
   if (expire == null || !Number.isFinite(expire)) {
-    // legacy `revalidate N` (desugared, no cache block): v1.0.5 ISR --
+    // legacy `revalidate N` (desugared, no cache block): legacy ISR --
     // stale-while-revalidate forever. Explicit cache { } defaults to a
     // strict window (expire == revalidate) unless a value/profile gave one.
     expire = opts?.legacy ? Infinity : revalidate;

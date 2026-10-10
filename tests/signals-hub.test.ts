@@ -13,7 +13,7 @@ function flush(hub: any) {
   (hub as any).flush();
 }
 
-describe("signals v2: validation + hygiene", () => {
+describe("signals: validation + hygiene", () => {
   test("bad signal name is rejected and the hub stays untouched", () => {
     const hub = new SignalHub() as any;
     const r1 = hub.setSignal("bad name!", 1);
@@ -42,7 +42,7 @@ describe("signals v2: validation + hygiene", () => {
   });
 });
 
-describe("signals v2: stats + caps + shutdown", () => {
+describe("signals: stats + caps + shutdown", () => {
   test("getStats exposes counters", () => {
     const hub = new SignalHub() as any;
     hub.setSignal("a", 1);
@@ -82,7 +82,7 @@ describe("signals v2: stats + caps + shutdown", () => {
   });
 });
 
-describe("signals v2: SSE id frames (Last-Event-ID)", () => {
+describe("signals: SSE id frames (Last-Event-ID)", () => {
   test("frames carry id: + data: lines with the seq", () => {
     const f = sseFrameWithId('{"v":1,"seq":42,"updates":[["price",1]]}');
     expect(f).toBe('id: 42\ndata: {"v":1,"seq":42,"updates":[["price",1]]}\n\n');
@@ -94,7 +94,7 @@ describe("signals v2: SSE id frames (Last-Event-ID)", () => {
   });
 });
 
-describe("signals v2: batching still coalesces (no regression)", () => {
+describe("signals: batching still coalesces", () => {
   test("same-signal writes in one window collapse to the last value", () => {
     const hub = new SignalHub() as any;
     const got: string[] = [];
@@ -122,7 +122,7 @@ describe("signals v2: batching still coalesces (no regression)", () => {
   });
 });
 
-describe("signals v2: singleton hub", () => {
+describe("signals: singleton hub", () => {
   test("getSignalHub returns the same hub", () => {
     expect(getSignalHub()).toBe(getSignalHub());
   });

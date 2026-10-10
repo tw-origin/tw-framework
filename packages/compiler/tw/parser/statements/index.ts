@@ -327,7 +327,7 @@ function checkIsAttrBlock(cursor: TokenCursor): boolean {
 // --- TW Selector Parser (CSS-like syntax: div.container { ... }) --------------
 
 // Attribute names allowed to open a `name "value"` pair inside a mixed
-// element body (v1.0.8): `a { href "/" "Read more" }` must parse href as
+// element body: `a { href "/" "Read more" }` must parse href as
 // an attribute and "Read more" as the text child -- previously the whole
 // block fell back to children and produced a bogus <href> element. Only
 // REAL HTML attribute names enter the pair loop, so child elements like
@@ -685,7 +685,7 @@ function parseTWSelector(
         }
         cursor.consumeIf("RBRACE");
       } else {
-        // v1.0.8 mixed body: leading `name "value"` pairs are attributes,
+        // mixed body: leading `name "value"` pairs are attributes,
         // the remainder of the block is children. `a { href "/" "Read" }`
         // used to render a bogus <href> child element here.
         for (;;) {

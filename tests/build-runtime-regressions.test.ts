@@ -3,7 +3,7 @@
  *
  * (urlencoded) is covered by the strict-body parsing tests.
  * (scaffold vercel) is a create/build-tooling change -- verified live.
- * (doubled ETag) is not reproducible in the v1.0.8 state.
+ * (doubled ETag) is not reproducible.
  */
 import { describe, test, expect } from "bun:test";
 import { mkdtempSync, writeFileSync, rmSync, mkdirSync } from "node:fs";

@@ -4,7 +4,7 @@ A stream-mode page with a setSignal endpoint: the shell renders first, named val
 
 This example is part of the TW Framework example matrix -- every app here
 builds with `tw build` and serves with `tw serve`, and CI builds all of
-them on every push. It demonstrates the v1.0.3 signal streaming surface in the smallest honest way.
+them on every push. It demonstrates the signal streaming surface in the smallest honest way.
 
 ## Quick start
 

@@ -90,7 +90,7 @@ export class RenderPipeline {
   private sourceCache: Map<string, string> = new Map();
   /**
    * Render cache (docs/cache-tags.md). Entry fields:
-   *   expiresAt -- v1.0.5 compat: fresh-until timestamp (same as freshUntil)
+   *   expiresAt -- legacy compat: fresh-until timestamp (same as freshUntil)
    *   freshUntil -- age < freshUntil -> HIT (zero work)
    *   expireAt -- freshUntil <= age < expireAt -> STALE + background
    *               refresh; age >= expireAt -> dropped (blocking MISS)
@@ -179,7 +179,7 @@ export class RenderPipeline {
       const cached = this.renderCache.get(cacheKey);
       const now = Date.now();
       // Freshness windows (docs/cache-tags.md). Plain TTL entries (no
-      // cache directive) only set expiresAt -> HIT then miss, as in v1.0.5.
+      // cache directive) only set expiresAt -> HIT then miss, as in the legacy shape.
       const freshUntil = cached ? (cached.freshUntil ?? cached.expiresAt) : 0;
       const expireAt = cached ? (cached.expireAt ?? freshUntil) : 0;
       if (cached && now < freshUntil) {
@@ -831,7 +831,7 @@ export class RenderPipeline {
    * Cache config (docs/cache-tags.md): resolve a page's `cache { }`
    * directive against tw.config.ts cache.profiles, falling back to the
    * legacy `revalidate N` ISR form. The legacy form desugars to
-   * { revalidate: N, stale: 0, expire: Infinity } -- the exact v1.0.5
+   * { revalidate: N, stale: 0, expire: Infinity } -- the exact legacy
    * behavior (fresh for N seconds, then stale-while-revalidate forever).
    */
   private extractCacheConfig(file: RouteFile): ResolvedCache | null {

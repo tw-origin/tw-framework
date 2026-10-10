@@ -1,5 +1,5 @@
 /**
- * TW Framework -- self-directed bug-hunt round (no external report):
+ * TW Framework -- self-audit regressions:
  *   - CSRF token store grew past its 10000 cap when every stored token was
  *     still fresh (evictExpired frees nothing) -> oldest-entry eviction now
  *     enforces a hard cap
@@ -20,7 +20,7 @@ import { join } from "node:path";
 
 const hdr = (h: Record<string, string>) => ({ get: (k: string) => h[k] ?? null });
 
-describe("self-hunt: CSRF token store cap", () => {
+describe("CSRF token store cap", () => {
   test("store never exceeds maxTokens even when every token is fresh", async () => {
     const m = createCSRFManager({ secret: "s", ttl: 3_600_000, maxTokens: 50 });
     for (let i = 0; i < 80; i++) await m.generate();
@@ -28,7 +28,7 @@ describe("self-hunt: CSRF token store cap", () => {
   });
 });
 
-describe("self-hunt: CSRF same-origin check", () => {
+describe("CSRF same-origin check", () => {
   test("headerless POST (no Origin/Referer, no token) is rejected", async () => {
     const mw = new CSRFMiddleware({ manager: createCSRFManager({ secret: "s" }) });
     const req = { method: "POST", url: "http://x/api/transfer", headers: hdr({ host: "x" }) } as any;
@@ -60,7 +60,7 @@ describe("self-hunt: CSRF same-origin check", () => {
   });
 });
 
-describe("self-hunt: image handler", () => {
+describe("image handler", () => {
   test("malformed percent-encoding answers 404, not a URIError crash", async () => {
     const root = mkdtempSync(join(tmpdir(), "twself-"));
     mkdirSync(join(root, "public"), { recursive: true });

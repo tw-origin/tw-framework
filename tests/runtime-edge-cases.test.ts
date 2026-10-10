@@ -1,5 +1,5 @@
 /**
- * TW Framework -- bug-hunt round regressions (v30):
+ * TW Framework -- runtime edge-case regressions:
  *   - async route handlers return their result (were silently {})
  *   - patch handlers load (module wrapper dropped them)
  *   - uppercase verb exports (GET/POST/...) work like lowercase
@@ -19,7 +19,7 @@ import {
 } from "../packages/server/tw/routing/twm-loader";
 import { parseRules, corsHeadersFor } from "../packages/server/tw/routing/twm-rules";
 
-const tmp = mkdtempSync(join(tmpdir(), "tw-hunt-"));
+const tmp = mkdtempSync(join(tmpdir(), "tw-edge-"));
 const file = (name: string, code: string): string => {
   const p = join(tmp, name);
   writeFileSync(p, code);
@@ -32,7 +32,7 @@ const plainRequest = (url: string, method = "GET", headers: Record<string, strin
   json: async () => ({}),
 });
 
-describe("bug-hunt round: route handlers", () => {
+describe("route handlers", () => {
   test("async route handler result is used (was silently {})", async () => {
     const p = file("async-route.twm", `export async function get(request) {
   return { status: 200, json: { form: "async" } };
@@ -105,7 +105,7 @@ describe("bug-hunt round: route handlers", () => {
   });
 });
 
-describe("bug-hunt round: CORS allow-side", () => {
+describe("CORS allow-side", () => {
   const CORS_MW = `rule "api-cors" {
   match "/api/**"
   methods ["GET", "POST", "OPTIONS"]
@@ -158,7 +158,7 @@ afterAll(() => {
   try { rmSync(tmp, { recursive: true, force: true }); } catch { /* ignore */ }
 });
 
-describe("deep-check round: render modes + conditional requests", () => {
+describe("render modes + conditional requests", () => {
   test("render island compiles (syntax-page-config, render-modes and guide-blog document it as core)", async () => {
     const { compile } = await import("@tw/compiler");
     const r = await compile('page { title "T" render island }\n\ndiv.x { p "hi" }\n');

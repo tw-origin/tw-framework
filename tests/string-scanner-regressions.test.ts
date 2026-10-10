@@ -1,5 +1,5 @@
 /**
- * v1.0.7 regression round — the string-aware scanner fixes:
+ * The string-aware scanner fixes:
  *
  *   1. maskSourceStringsAndComments: same-length source masking.
  *   2. extractRenderMode / extractCacheDirective / revalidate window:
@@ -323,9 +323,9 @@ describe("glob semantics + runtime", () => {
   });
 });
 
-// --- 7. v1.0.8 bug-report regressions ----------------------------------------
+// --- 7. bug-report regressions ----------------------------------------
 
-describe("v1.0.8 bug report: parser + layout composition", () => {
+describe("parser + layout composition", () => {
   const getCompiler = async () => await import("../packages/compiler/tw/index.ts");
 
  test("mixed attr + text body -- a.brand { href \"/\"\"Name\"}", async () => {

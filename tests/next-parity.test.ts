@@ -1,5 +1,5 @@
 /**
- * TW Framework -- Next.js parity round (v42):
+ * TW Framework -- Next.js parity:
  *   - Rewrites config (exact / :param / glob)
  *   - Server actions (POST ?_action=, named actions, fail-closed same-origin)
  *   - request.cookies helper in .twm handlers
