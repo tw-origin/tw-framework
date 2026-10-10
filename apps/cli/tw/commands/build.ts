@@ -621,19 +621,49 @@ export async function buildCommand(): Promise<void> {
 
   // Foreign components (React/Preact .tsx / .jsx): render each to HTML at
   // build time and register the renderer, so the compiler emits an island.
+  //
+  // The engine is read from each component's OWN imports, so one project can mix
+  // React and Preact; `render.engine` is the fallback for a component that
+  // imports neither. Each component's `@client:*` directive decides when it
+  // hydrates -- `@server` ships no JavaScript at all.
   if (renderEngine === "react" || renderEngine === "preact") {
     const ib: any = await import("./island-bundle.ts");
+    // Start from a clean slate: the intermediate module directory grows by one
+    // file per edit, and a build regenerates everything it needs anyway.
+    ib.pruneIslandCache(rootDir);
     const foreign = ib.scanForeignImports(rootDir, ib.collectTwFiles(rootDir));
     if (foreign.length > 0) {
+      const plan = foreign.map((fi: any) => {
+        let src = "";
+        try { src = readFileSync(fi.absPath, "utf-8"); } catch { /* fall back to the configured engine */ }
+        return { fi, engine: ib.detectEngine(src, renderEngine), ...ib.parseClientStrategy(src) };
+      });
+
+      // Any engine a component pulled in on its own must be installed too.
+      const { ensureRenderEngine } = await import("@tw/shared");
+      const extra = [...new Set(plan.map((p: any) => p.engine))].filter((e: any) => e !== renderEngine);
+      for (const engine of extra) {
+        const res = await ensureRenderEngine(rootDir, engine as string);
+        if (!res.ok) {
+          console.log("\n  \x1b[31m\u2717 Build failed \u2014 render.engine=" + engine + "\x1b[0m");
+          console.log("    " + (res.message ?? "render engine not available"));
+          process.exit(3);
+        }
+        if (res.installed) console.log("  \x1b[32mOK\x1b[0m " + engine + " installed");
+      }
+
       const reg = (_compilerMod as any).registerForeignComponent;
-      for (const fi of foreign) {
+      for (const p of plan) {
         try {
-          const url = ib.buildIslandChunk(rootDir, fi.absPath, fi.name, true, renderEngine);
-          const render = await ib.loadSsrRenderer(rootDir, fi.absPath, renderEngine);
-          reg(fi.name, { engine: renderEngine, source: fi.absPath, chunkUrl: url ? "/" + url : undefined, render });
-          console.log("  \x1b[36m\u26A1\x1b[0m island: " + fi.name + " (" + renderEngine + ")");
+          const render = await ib.loadSsrRenderer(rootDir, p.fi.absPath, p.engine);
+          const url = p.kind === "server"
+            ? null
+            : ib.buildIslandChunk(rootDir, p.fi.absPath, p.fi.name, true, p.engine, p.strategy);
+          reg(p.fi.name, p.fi.specifier, { engine: p.engine, source: p.fi.absPath, chunkUrl: url ? "/" + url : undefined, strategy: p.kind === "server" ? undefined : p.strategy, render });
+          const how = p.kind === "server" ? "server" : p.strategy;
+          console.log("  \x1b[36m\u26A1\x1b[0m island: " + p.fi.name + " (" + p.engine + ", " + how + ")");
         } catch (err: any) {
-          console.log("\n  \x1b[31m\u2717 Build failed \u2014 island " + fi.name + "\x1b[0m");
+          console.log("\n  \x1b[31m\u2717 Build failed \u2014 island " + p.fi.name + "\x1b[0m");
           console.log("    " + (err?.message ?? String(err)));
           process.exit(1);
         }
@@ -1276,8 +1306,10 @@ export async function buildCommand(): Promise<void> {
   // -- 6b. Islands: hydrate chunks for foreign components ----------------------
   {
     const urls = new Set<string>();
+    let deferred = 0;
     for (const out of htmlOutputs) {
       for (const m of out.html.matchAll(/data-tw-src="([^"]+)"/g)) urls.add(m[1]);
+      for (const _ of out.html.matchAll(/data-tw-defer-src="[^"]+"/g)) deferred++;
     }
     if (urls.size > 0) {
       const tags = [...urls].map((u) => '<script defer src="' + u + '"></script>').join("\n");
@@ -1286,6 +1318,24 @@ export async function buildCommand(): Promise<void> {
         else out.html += tags;
       }
       console.log("  \x1b[36m\u26A1\x1b[0m islands: " + urls.size + " hydrate chunk" + (urls.size === 1 ? "" : "s"));
+    }
+    // @client:visible islands get no script tag. A loader fetches each chunk
+    // when that island scrolls into view, so the bytes are never downloaded for
+    // a part of the page the visitor does not reach.
+    if (deferred > 0) {
+      const loader = '<script>(function(){' +
+        'var n=document.querySelectorAll("tw-island[data-tw-defer-src]");if(!n.length)return;' +
+        'function go(el){var u=el.getAttribute("data-tw-defer-src");if(!u||el.__twLoaded)return;el.__twLoaded=1;' +
+        'var s=document.createElement("script");s.src=u;document.head.appendChild(s);}' +
+        'if(!("IntersectionObserver" in window)){for(var i=0;i<n.length;i++)go(n[i]);return;}' +
+        'var io=new IntersectionObserver(function(es){for(var i=0;i<es.length;i++){if(es[i].isIntersecting){go(es[i].target);io.unobserve(es[i].target);}}});' +
+        'for(var i=0;i<n.length;i++)io.observe(n[i]);})();</script>';
+      for (const out of htmlOutputs) {
+        if (!out.html.includes("data-tw-defer-src")) continue;
+        if (out.html.includes("</body>")) out.html = out.html.replace("</body>", loader + "\n</body>");
+        else out.html += loader;
+      }
+      console.log("  \x1b[36m\u26A1\x1b[0m islands: " + deferred + " deferred until visible");
     }
   }
 

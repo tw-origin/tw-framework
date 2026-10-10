@@ -29,6 +29,12 @@ export interface CodegenContext {
   renderMode?: string;
   chunks: string[];
   currentChunk: string;
+  /**
+   * Local import name -> the specifier it came from, for foreign (.tsx/.jsx)
+   * components. Two components can share a default-export name, so the specifier
+   * is what tells them apart when looking one up.
+   */
+  foreignSpecifiers?: Record<string, string>;
 }
 
 

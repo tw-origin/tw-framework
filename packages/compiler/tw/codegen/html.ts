@@ -2,6 +2,7 @@ import { createContext } from "./types";
 import { TW_GENERATOR_META } from "./version.js";
 import { collectBuiltinImports, generateBuiltinTag, generateImageTag, resolveBuiltin } from "./builtin-components";
 import { resolveForeignComponent, islandWrapper } from "./foreign-components";
+import { collectImports } from "../ast/walkers";
 import { evaluate, isTruthy as evalTruthy } from "../eval";
 import { compileTSS, validatePlainCss as _validatePlainCss } from "./tss";
 import { compileSCSS } from "./scss";
@@ -296,6 +297,19 @@ export function generateHTML(program: Program, ctx?: CodegenContext): string {
 
   // Import-driven styles: import "@./style/global.tss"
   collectTssImports([program], ctx);
+
+  // Foreign component lookups: map each local import name to the specifier it
+  // came from, so two components that share a default-export name are told
+  // apart by which file this page actually imported.
+  // `program.body` holds only body ELEMENTS; the imports live on
+  // `program.directives`, so walking the body left this map empty and every
+  // lookup silently fell back to the name-only entry. `collectImports` reads
+  // the directives, which is where the ImportDirective nodes actually are.
+  for (const node of collectImports(program)) {
+    if (node.defaultImport && typeof node.source === "string") {
+      (ctx.foreignSpecifiers ??= {})[node.defaultImport] = node.source;
+    }
+  }
 
   // DOCTYPE
   parts.push("<!DOCTYPE html>");
@@ -613,7 +627,7 @@ function generateElement(el: ElementNode, ctx: CodegenContext): string {
     !["Link", "Suspense"].includes(tag) &&
     !componentRegistry.has(tag) &&
     !resolveBuiltin(tag, activeBuiltinImports) &&
-    !resolveForeignComponent(tag)
+    !resolveForeignComponent(tag, ctx.foreignSpecifiers?.[tag])
   ) {
     console.warn("[tw] unknown component <" + tag + "> (" + el.line + ":" + el.col + ") -- no import resolves it; nothing was rendered");
     return "<!-- TW: unknown component '" + tag + "' -- check the import -->";
@@ -661,7 +675,7 @@ function generateElement(el: ElementNode, ctx: CodegenContext): string {
   // hydrate. Props come from the same places a builtin's do -- attributes,
   // `prop "value"` children, and bare words; anything else is slot content.
   {
-    const foreign = resolveForeignComponent(tag);
+    const foreign = resolveForeignComponent(tag, ctx.foreignSpecifiers?.[tag]);
     if (foreign) {
       const props: Record<string, string> = {};
       let childHtml = "";
@@ -690,7 +704,7 @@ function generateElement(el: ElementNode, ctx: CodegenContext): string {
       } catch (err: any) {
         return `<!-- TW: ${tag} failed to render (${foreign.engine}): ${String(err?.message ?? err)} -->`;
       }
-      return islandWrapper(tag, JSON.stringify(props), rendered, foreign.chunkUrl);
+      return islandWrapper(tag, JSON.stringify(props), rendered, foreign.chunkUrl, foreign.strategy === "visible");
     }
   }
 

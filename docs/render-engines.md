@@ -87,6 +87,76 @@ are reusing already depend on it, or on a React-only library.
 
 ---
 
+## Mixing React and Preact in one project
+
+You do not have to choose one engine for the whole project. Each foreign
+component is assigned the engine **its own imports** name:
+
+```tsx
+// components/RChart.tsx
+import { useEffect } from "react";        // -> react
+
+// components/PToggle.tsx
+import { useState } from "preact/hooks";  // -> preact
+```
+
+```tw
+import RChart from "@./components/RChart.tsx"
+import PToggle from "@./components/PToggle.tsx"
+
+page { title "Dashboard" render static }
+
+div {
+  RChart { series "a,b,c" }
+  PToggle { on true }
+}
+```
+
+```
+  ⚡ island: RChart (react, eager)
+  ⚡ island: PToggle (preact, eager)
+```
+
+`render.engine` is only the **fallback**, used when a component imports neither
+framework of its own. Both packages must be installed; the build checks the ones
+that are actually used and installs a missing one (or fails with the command).
+
+---
+
+## When an island hydrates
+
+A foreign component's `@client:*` directive decides *when* its island becomes
+interactive. The default is eager, which is what every island did before this
+existed.
+
+| Directive | Hydrates |
+|---|---|
+| *(none)* or `@client` or `@client:eager` | on `DOMContentLoaded` |
+| `@client:lazy` | when the browser is idle (`requestIdleCallback`, `setTimeout` fallback) |
+| `@client:visible` | when the island scrolls into view (`IntersectionObserver`) |
+| `@server` | never — **no JavaScript is shipped at all** |
+
+```tsx
+// components/HeavyChart.tsx
+// @client:visible
+import { useEffect } from "react";
+export default function HeavyChart({ series }) { /* ... */ }
+```
+
+The server-rendered markup is on screen from the first paint either way. What
+differs is when the island's JavaScript arrives:
+
+- `@client:lazy` — the chunk loads with the page and hydrates when the browser
+  is idle.
+- `@client:visible` — the chunk is **not downloaded at all** until the island
+  scrolls into view, so bytes are never fetched for a part of the page the
+  visitor does not reach. The build emits a small loader instead of a script tag.
+
+Put `@client:visible` on anything below the fold and `@client:lazy` on anything
+that is not needed for the first interaction.
+
+---
+
 ## `none` — static HTML only
 
 No client renderer is shipped. Pages render to HTML and stay that way;
