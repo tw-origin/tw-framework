@@ -1,0 +1,9 @@
+import { allPosts } from "db.server"
+
+fn get(request) {
+  const page = Math.max(1, Number(request.query?.page ?? "1") || 1)
+  const per = 2
+  const all = allPosts()
+  const start = (page - 1) * per
+  return { status: 200, json: { page: page, posts: all.slice(start, start + per) } }
+}

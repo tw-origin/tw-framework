@@ -10,10 +10,11 @@ import type {
   SectionDirective, LayoutDirective, LoadDirective, StateDirective,
   StateDeclaration, RenderDirective, RevalidateDirective, RedirectDirective,
   RewriteDirective, ImportDirective, ExportDirective, DefineDirective,
-  ConfigDirective, MiddlewareDirective, MetaDirective, ASTNode,
+  ConfigDirective, MiddlewareDirective, MetaDirective, ServerBlock, ASTNode,
 } from "../../ast/nodes";
 import { TokenCursor } from "../expressions";
-import { RENDER_MODES } from "@tw/shared";
+import { analyzeServerBody } from "../server-body";
+import { RENDER_MODES, findBalancedBraceEnd } from "@tw/shared";
 
 const DIRECTIVE_KEYWORDS = new Set([
   "page", "head", "body", "section", "layout",
@@ -1127,4 +1128,94 @@ function parseBlockBody(cursor: TokenCursor, parseBody: (c: TokenCursor) => ASTN
     return body;
   }
   return [];
+}
+
+/**
+ * Parse a top-level `server { }` (or `server:defer { }`) block.
+ *
+ * Called with the cursor positioned just past the `server` keyword. The body
+ * is raw TypeScript, taken verbatim from the source; the block records its
+ * imports and top-level declared names. It is a directive, so the code that
+ * turns a program into client output never sees its body.
+ */
+export function parseServerDirective(cursor: TokenCursor, keywordToken: Token): ServerBlock {
+  cursor.skipWhitespace();
+  let deferred = false;
+
+  // Optional `:defer` modifier -- the same `name:modifier` shape as `on:event`.
+  if (cursor.peek() && cursor.peek()!.type === "COLON") {
+    cursor.advance(); // ':'
+    cursor.skipWhitespace();
+    const mod = cursor.peek();
+    const modName = mod ? mod.value : "";
+    if (modName === "defer") {
+      deferred = true;
+    } else {
+      cursor.errors.add({
+        type: "error",
+        message: `Unknown server modifier ':${modName}' (only ':defer' is supported)`,
+        line: mod?.pos.line ?? keywordToken.pos.line,
+        col: mod?.pos.col ?? keywordToken.pos.col,
+        code: "TW099",
+        severity: "error",
+      } as any);
+    }
+    if (mod) cursor.advance(); // consume the modifier token (known or not)
+    cursor.skipWhitespace();
+  }
+
+  const open = cursor.peek();
+  if (!open || open.type !== "LBRACE") {
+    cursor.errors.add({
+      type: "error",
+      message: "Expected '{' after 'server'",
+      line: open?.pos.line ?? keywordToken.pos.line,
+      col: open?.pos.col ?? keywordToken.pos.col,
+      code: "TW100",
+      severity: "error",
+    } as any);
+    return { type: "ServerBlock", deferred, source: "", imports: [], declaredNames: [], line: keywordToken.pos.line, col: keywordToken.pos.col, startOffset: keywordToken.pos.offset, endOffset: keywordToken.pos.offset };
+  }
+
+  // The body is the source between this '{' and its matching '}', taken
+  // verbatim (string/comment/template-aware) so formatting is preserved.
+  const src = cursor.source ?? "";
+  const bodyStart = open.end.offset;
+  const end = findBalancedBraceEnd(src, open.pos.offset);
+  const body = src.slice(bodyStart, end);
+
+  if (src.length > 0 && end >= src.length) {
+    cursor.errors.add({
+      type: "error",
+      message: "Unclosed server block -- a '}' never closes the 'server {'",
+      line: open.pos.line,
+      col: open.pos.col,
+      code: "TW101",
+      severity: "error",
+    } as any);
+  }
+
+  // Advance the token stream past the matching '}' so parsing resumes after
+  // the block.
+  while (!cursor.done) {
+    const t = cursor.peek();
+    if (!t || t.pos.offset > end) break;
+    cursor.advance();
+  }
+
+  const { imports, declaredNames } = analyzeServerBody(body);
+
+  return {
+    type: "ServerBlock",
+    deferred,
+    source: body,
+    imports,
+    declaredNames,
+    line: keywordToken.pos.line,
+    col: keywordToken.pos.col,
+    endLine: open.end.line,
+    endCol: open.end.col,
+    startOffset: keywordToken.pos.offset,
+    endOffset: end >= src.length ? src.length : end + 1,
+  };
 }

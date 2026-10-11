@@ -1,0 +1,19 @@
+page {
+  title "Dashboard"
+  render ssr
+}
+
+server {
+  import { postsByAuthor } from "../../lib/db.server.ts"
+  const me = requireUser()
+  const name = me.name
+  const mine = postsByAuthor(me.id)
+}
+
+div.dashboard {
+  h1 "Welcome {name}"
+  p "Your posts"
+  for post in mine {
+    article { h2 "{post.title}" }
+  }
+}

@@ -1,0 +1,22 @@
+page {
+  title "User"
+  render ssr
+}
+
+server {
+  import { getUser, postsByAuthor } from "../../../lib/db.server.ts"
+  const me = getSession()
+  if (!me) redirect("/login")
+  const id = params.id
+  if (id !== me.id) notFound()
+  const user = getUser(id)
+  const name = user.name
+  const mine = postsByAuthor(id)
+}
+
+div.profile {
+  h1 "{name}"
+  for post in mine {
+    article { h2 "{post.title}" }
+  }
+}

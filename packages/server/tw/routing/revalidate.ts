@@ -7,6 +7,7 @@
  * the live caches.
  */
 import type { RenderPipeline } from "./render-pipeline";
+import { invalidateFetchTag } from "@tw/compiler";
 
 let activePipeline: RenderPipeline | null = null;
 
@@ -52,5 +53,8 @@ export function revalidateTag(tag: string): number {
   let dropped = 0;
   if (activePipeline) dropped += activePipeline.revalidateTag(tag);
   if (twmTagInvalidator) dropped += twmTagInvalidator(tag);
+  // One invalidation model: the per-fetch cache registers its entries under the
+  // same tags, so revalidateTag drops them too.
+  try { dropped += invalidateFetchTag(tag); } catch { /* no fetch cache */ }
   return dropped;
 }

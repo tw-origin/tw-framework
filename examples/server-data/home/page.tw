@@ -1,0 +1,14 @@
+page {
+  title "server-data"
+  render ssr
+}
+
+div.home {
+  h1 "server-data example"
+  p "A sample app for server blocks."
+  ul {
+    li { a "Posts" { href "/posts" } }
+    li { a "Dashboard" { href "/dashboard" } }
+    li { a "Docs intro" { href "/docs/intro" } }
+  }
+}

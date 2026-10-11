@@ -25,7 +25,7 @@
 
 import { readFileSync, existsSync } from "node:fs";
 import { dirname } from "node:path";
-import { compileSync, registerComponentTemplate, type CompileResult } from "@tw/compiler";
+import { compileSync, registerComponentTemplate, collectServerBlocks, encodeServerValues, executeServerBlocks, resolveServerImports, isServerRedirect, isServerNotFound, createServerFetch, wrapJsonErrors, SERVER_FETCH_BUILD_ID, extractVary, varyQuery, canonicalVaryQuery, parsePageCache, collectReferencedNames, secretEnvValues, type CompileResult } from "@tw/compiler";
 import { maskSourceStringsAndComments, sha256, extractCacheDirective, resolveCache, readCacheProfilesSync, type ResolvedCache } from "@tw/shared";
 import { executeRouteHandler } from "./twm-loader";
 import type {
@@ -79,6 +79,18 @@ export class RenderPipeline {
   /** ISR: paths currently re-rendering in the background (stampede guard). */
   private pendingRefresh = new Set<string>();
   private dev: boolean;
+  /** experimental.serverBlocks (from config): off by default. */
+  private serverBlocksFlag: boolean;
+  /** server.loginPath (default "/login") for requireUser(). */
+  private loginPath: string;
+  /** server.fetchTimeoutMs / fetchCacheMaxBytes / cacheInDev (config threading). */
+  private fetchTimeoutMs?: number;
+  private fetchCacheMaxBytes?: number;
+  private cacheInDev?: boolean;
+  private pageCacheMaxEntries?: number;
+  /** True when any middleware rule can match a route (F-0d). */
+  private middlewareActive = false;
+  private maxPayloadBytes = 128 * 1024;
   private routeTree: RouteNode | null = null;
   private compiledCache: Map<string, CompiledFileEntry> = new Map();
   /**
@@ -118,6 +130,14 @@ export class RenderPipeline {
     this.enableCache = opts.enableCache ?? true;
     this.cacheTTL = opts.cacheTTL ?? 60000;
     this.dev = opts.dev ?? false;
+    this.serverBlocksFlag = (opts as any).serverBlocks === true;
+    this.loginPath = (opts as any).loginPath ?? "/login";
+    this.fetchTimeoutMs = (opts as any).fetchTimeoutMs;
+    this.fetchCacheMaxBytes = (opts as any).fetchCacheMaxBytes;
+    this.cacheInDev = (opts as any).cacheInDev;
+    this.pageCacheMaxEntries = (opts as any).pageCacheMaxEntries;
+    this.middlewareActive = (opts as any).middlewareActive === true;
+    if (typeof (opts as any).maxPayloadBytes === "number") this.maxPayloadBytes = (opts as any).maxPayloadBytes;
     this.hydrationMode = opts.hydrationMode ?? "auto";
   }
 
@@ -162,7 +182,188 @@ export class RenderPipeline {
    * @param stateVars -- Optional state variables for SSR
    * @returns RouteRenderResult with complete HTML
    */
-  render(pathname: string, stateVars?: Record<string, string>): RouteRenderResult {
+  async renderWithServerBlocks(pathname: string, request: Request): Promise<RouteRenderResult> {
+    if (!this.serverBlocksFlag) return this.render(pathname);
+    const tree = this.getRouteTree();
+    const match = tree ? matchRoute(tree, pathname) : null;
+    const ctx: any = match ? resolveLayoutChain(match) : null;
+    const pageFile: string | undefined = ctx?.page?.absolutePath;
+    if (!pageFile) return this.render(pathname);
+
+    let blocks: any[] = [];
+    let src = "";
+    try {
+      src = this.readSource(ctx.page);
+      const { parseWithDetails } = await import("@tw/compiler");
+      const program = parseWithDetails(src, { filePath: pageFile, cache: false, experimental: { serverBlocks: true } } as any).program;
+      blocks = collectServerBlocks(program);
+    } catch {
+      return this.render(pathname);
+    }
+    if (!blocks.length) return this.render(pathname);
+
+    let url: URL;
+    try { url = new URL(request.url); } catch { url = new URL("http://localhost" + pathname); }
+    const query: Record<string, string> = {};
+    for (const [k, v] of url.searchParams) query[k] = v;
+    const headers: Record<string, string> = {};
+    try { (request.headers as any)?.forEach?.((v: string, k: string) => { headers[k] = v; }); } catch { /* no headers */ }
+    const cookies: Record<string, string> = {};
+    for (const part of (headers["cookie"] ?? "").split(";")) {
+      const eq = part.indexOf("=");
+      if (eq > 0) cookies[part.slice(0, eq).trim()] = part.slice(eq + 1).trim();
+    }
+
+    // --- Cached page: server block + page { cache { } } -----------------
+    const pageCache = parsePageCache(src);
+    if (pageCache && /cache\s*\{/.test(src)) {
+      const vary = extractVary(src);
+      const vq = varyQuery(query, vary);
+      const nav = (this as any).navRequest ? "nav" : "";
+      const cacheKey = sha256(`${pathname}:${canonicalVaryQuery(vq)}:${JSON.stringify(match!.params ?? {})}:${nav}:${SERVER_FETCH_BUILD_ID}`);
+      const now = Date.now();
+      const hit = this.renderCache.get(cacheKey);
+      if (hit && now < (hit.freshUntil ?? 0)) {
+        // True LRU: a HIT refreshes recency.
+        this.renderCache.delete(cacheKey);
+        this.renderCache.set(cacheKey, hit);
+        // HIT: per-request headers are generated fresh -- never replayed.
+        return { ...hit.result, fromCache: true, durationMs: 0, headers: this.cachedPageHeaders({ "Content-Type": "text/html; charset=utf-8" }, hit, now, "HIT"), serverBlocks: true } as RouteRenderResult;
+      }
+      const cachedContext = { params: match!.params ?? {}, query: vq, env: (process.env as Record<string, string>) ?? {}, loginPath: this.loginPath };
+      const imports: Record<string, unknown> = {};
+      for (const b of blocks) Object.assign(imports, await resolveServerImports(b, pageFile, { dev: this.dev }));
+      const sfetch = createServerFetch({
+        buildId: SERVER_FETCH_BUILD_ID, timeoutMs: this.fetchTimeoutMs, maxBytes: this.fetchCacheMaxBytes,
+        cacheEnabled: this.dev ? !!this.cacheInDev : true, log: this.dev ? (l: string) => console.log(l) : undefined,
+      });
+      const fetchShim = (u: any, i?: any) => sfetch(u, i).then(wrapJsonErrors);
+      try {
+        // The context trap: only params + vary query + env. headers/cookies/
+        // getSession/requireUser are throwing stand-ins (a runtime guarantee).
+        const values = await executeServerBlocks(blocks, {
+          context: cachedContext, imports, fetch: fetchShim,
+          omit: ["headers", "cookies"], omitRuntime: ["getSession", "requireUser"],
+          trapCode: "TW111", label: pageFile,
+          referenced: collectReferencedNames(src), maxPayloadBytes: this.maxPayloadBytes, secrets: secretEnvValues(process.env),
+        });
+        const merged = { ...(match!.params ?? {}), params: match!.params ?? {}, ...encodeServerValues(values) };
+        (this as any).__bypassCompileCache = true;
+        let result: RouteRenderResult;
+        try { result = this.render(pathname, merged as any, { bypassCache: true }); }
+        finally { (this as any).__bypassCompileCache = false; }
+        // Store ONLY safe parts -- never Set-Cookie / per-request headers.
+        const safeHeaders: Record<string, string> = {};
+        for (const h of ["content-type", "content-language"]) {
+          const v = (result.headers ?? {})[h] ?? (result.headers ?? {})[h[0].toUpperCase() + h.slice(1)];
+          if (v) safeHeaders[h] = v;
+        }
+        const entry: any = {
+          result: { html: result.html, css: result.css, js: result.js, status: result.status, headers: safeHeaders },
+          freshUntil: now + pageCache.revalidate * 1000,
+          expireAt: now + pageCache.expire * 1000,
+          cache: pageCache, createdAt: now, pathname,
+        };
+        const maxEntries = this.pageCacheMaxEntries ?? 500;
+        // Max entry size 1 MB (skip + log when larger).
+        if (result.html && result.html.length > 1_000_000) {
+          console.log(`[tw] cached page ${pathname}: body over 1MB, not cached`);
+        } else {
+          while (this.renderCache.size >= maxEntries) {
+            const oldest = this.renderCache.keys().next().value as string | undefined;
+            if (oldest === undefined) break;
+            this.renderCache.delete(oldest);
+          }
+          this.renderCache.set(cacheKey, entry);
+        }
+        return { ...result, headers: this.cachedPageHeaders(safeHeaders, entry, now, "MISS"), serverBlocks: true } as RouteRenderResult;
+      } catch (err: any) {
+        if (isServerRedirect(err)) {
+          return { html: "", css: "", js: "", status: 302, headers: { Location: err.target, "Cache-Control": "private, no-store" }, fromCache: false, durationMs: 0, serverBlocks: true } as RouteRenderResult;
+        }
+        if (isServerNotFound(err)) {
+          // A 404 MAY be cached -- store it under the same key.
+          const nf: RouteRenderResult = { html: "<!DOCTYPE html><html><head><title>Not Found</title></head><body><h1>404 Not Found</h1></body></html>", css: "", js: "", status: 404, headers: { "Content-Type": "text/html; charset=utf-8" }, fromCache: false, durationMs: 0, serverBlocks: true };
+          const entry: any = { result: { html: nf.html, css: "", js: "", status: 404, headers: { "content-type": "text/html; charset=utf-8" } }, freshUntil: now + pageCache.revalidate * 1000, expireAt: now + pageCache.expire * 1000, cache: pageCache, createdAt: now, pathname };
+          this.renderCache.set(cacheKey, entry);
+          return { ...nf, headers: this.stampCacheHeaders({ "Content-Type": "text/html; charset=utf-8" }, entry, now, "MISS") } as RouteRenderResult;
+        }
+        // trap / throw / timeout -> 500, never cached.
+        console.error(`[tw] cached page block failed for ${pageFile}: ${err?.message ?? err}`);
+        return { html: "<!DOCTYPE html><html><head><title>Server Error</title></head><body><h1>Internal Server Error</h1></body></html>", css: "", js: "", status: 500, headers: { "Content-Type": "text/html; charset=utf-8", "Cache-Control": "private, no-store" }, fromCache: false, durationMs: 0, serverBlocks: true } as RouteRenderResult;
+      }
+    }
+
+    const context = { params: match!.params ?? {}, query, headers, cookies, env: (process.env as Record<string, string>) ?? {}, session: (request as any).session ?? null, loginPath: this.loginPath };
+
+    try {
+      const imports: Record<string, unknown> = {};
+      for (const b of blocks) Object.assign(imports, await resolveServerImports(b, pageFile, { dev: this.dev }));
+      // serverFetch: request-scoped dedupe; the cache is bypassed in dev unless
+      // server.cacheInDev. Non-2xx stays a normal Response; .json() is typed.
+      const sfetch = createServerFetch({
+        buildId: SERVER_FETCH_BUILD_ID,
+        timeoutMs: this.fetchTimeoutMs,
+        maxBytes: this.fetchCacheMaxBytes,
+        cacheEnabled: this.dev ? !!this.cacheInDev : true,
+        log: this.dev ? (l: string) => console.log(l) : undefined,
+      });
+      const fetchShim = (u: any, i?: any) => sfetch(u, i).then(wrapJsonErrors);
+      const values = await executeServerBlocks(blocks, { context, imports, fetch: fetchShim, referenced: collectReferencedNames(src), maxPayloadBytes: this.maxPayloadBytes, secrets: secretEnvValues(process.env) });
+      const merged = { ...(match!.params ?? {}), params: match!.params ?? {}, ...encodeServerValues(values) };
+      // Bypass BOTH caches: per-request data would grow them without bound.
+      (this as any).__bypassCompileCache = true;
+      let result: RouteRenderResult;
+      try { result = this.render(pathname, merged as any, { bypassCache: true }); }
+      finally { (this as any).__bypassCompileCache = false; }
+      const outHeaders = { ...(result.headers ?? {}), "Cache-Control": "private, no-store" } as Record<string, string>;
+      delete outHeaders["x-tw-cache-age"];
+      return { ...result, headers: outHeaders, serverBlocks: true } as RouteRenderResult;
+    } catch (err: any) {
+      // redirect()/notFound() are typed, branded exceptions the runner recognises
+      // even through Promise.all. Both are private and never cached.
+      if (isServerRedirect(err)) {
+        return {
+          html: "", css: "", js: "", status: 302,
+          headers: { Location: err.target, "Cache-Control": "private, no-store" },
+          fromCache: false, durationMs: 0, serverBlocks: true,
+        } as RouteRenderResult;
+      }
+      if (isServerNotFound(err)) {
+        let html = "<!DOCTYPE html><html><head><title>Not Found</title></head><body><h1>404 Not Found</h1></body></html>";
+        const rootNotFound = findRootNotFound(tree!);
+        if (rootNotFound) {
+          try {
+            const compiled = this.compileFile(rootNotFound);
+            let nf = String(compiled.html || "");
+            const nfm = nf.match(/<body[^>]*>([\s\S]*)<\/body>/i);
+            nf = (nfm ? nfm[1] : nf).replace(/<\/?html[^>]*>/gi, "").replace(/<\/?body[^>]*>/gi, "");
+            html = this.assembleHTML(nf, compiled.css, "", "Not Found");
+          } catch { /* keep the generic 404 */ }
+        }
+        return {
+          html, css: "", js: "", status: 404,
+          headers: { "Content-Type": "text/html; charset=utf-8", "Cache-Control": "private, no-store" },
+          fromCache: false, durationMs: 0, serverBlocks: true,
+        } as RouteRenderResult;
+      }
+      // Detail stays in the server log; the body is generic.
+      console.error(`[tw] server block failed for ${pageFile}: ${err?.message ?? err}`);
+      return {
+        html: "<!DOCTYPE html><html><head><title>Server Error</title></head><body><h1>Internal Server Error</h1></body></html>",
+        css: "",
+        js: "",
+        status: 500,
+        headers: { "Content-Type": "text/html; charset=utf-8", "Cache-Control": "private, no-store" },
+        fromCache: false,
+        durationMs: 0,
+        serverBlocks: true,
+      } as RouteRenderResult;
+    }
+  }
+
+  render(pathname: string, stateVars?: Record<string, string>, opts?: { bypassCache?: boolean }): RouteRenderResult {
+    const bypassCache = opts?.bypassCache === true;
     // Unicode routes: the request pathname arrives percent-encoded (browsers
     // always encode non-ASCII); the route tree stores decoded segments.
     // Decode each segment so Hindi/emoji route folders match.
@@ -175,7 +376,7 @@ export class RenderPipeline {
     // SPA navigations render `(.)page.tw` interceptors -- a different result
       // than a direct visit, so the nav flag must be part of the cache key.
       const cacheKey = sha256(`${pathname}:${JSON.stringify(stateVars ?? {})}:${(this as any).navRequest ? "nav" : ""}`);
-    if (this.enableCache) {
+    if (this.enableCache && !bypassCache) {
       const cached = this.renderCache.get(cacheKey);
       const now = Date.now();
       // Freshness windows (docs/cache-tags.md). Plain TTL entries (no
@@ -519,7 +720,7 @@ export class RenderPipeline {
       // page's resolved cache config overrides the global cacheTTL for
       // this entry and enables stale-while-revalidate.
       const pageCache = this.extractCacheConfig(ctx.page);
-      if (this.enableCache) {
+      if (this.enableCache && !bypassCache) {
         if (this.renderCache.size >= 100) {
           const oldest = this.renderCache.keys().next().value;
           if (oldest) this.renderCache.delete(oldest);
@@ -597,7 +798,7 @@ export class RenderPipeline {
     // compile the same file with different param values.
     const cacheKey = file.absolutePath + ":" + JSON.stringify(stateVars ?? {});
     const cached = this.compiledCache.get(cacheKey);
-    if (cached && !this.dev) {
+    if (cached && !this.dev && !(this as any).__bypassCompileCache) {
       return {
         ast: {} as CompileResult["ast"],
         html: cached.html,
@@ -633,12 +834,14 @@ export class RenderPipeline {
       diagnostics: false,
       transforms: true,
       stateVars,
+      // Only when the feature is configured on; off = original parse.
+      ...(this.serverBlocksFlag ? { experimental: { serverBlocks: true } } : {}),
     });
 
     // For .twm files (route, middleware), JS is used for server-side execution
     // For .tw files, everything goes through the full pipeline
     const isServerModule = file.extension === ".twm";
-    this.compiledCache.set(cacheKey, {
+    if (!(this as any).__bypassCompileCache) this.compiledCache.set(cacheKey, {
       html: result.html,
       css: isServerModule ? "" : result.css,
       js: isServerModule ? "" : result.js,
@@ -788,6 +991,17 @@ export class RenderPipeline {
    *     only when `stale > 0` -- the client-side hint. The server
    *     render-cache never reads `stale`.
    */
+  /**
+   * Cache headers for a cached page. When any middleware rule can match the
+   * route, a downstream shared cache must not serve it: emit
+   * `private, max-age=0, must-revalidate` (the origin cache still works).
+   */
+  private cachedPageHeaders(headers: Record<string, string> | undefined, entry: any, now: number, verdict: "HIT" | "STALE" | "MISS"): Record<string, string> {
+    const out = this.stampCacheHeaders(headers, entry, now, verdict);
+    if (this.middlewareActive) out["Cache-Control"] = "private, max-age=0, must-revalidate";
+    return out;
+  }
+
   private stampCacheHeaders(
     headers: Record<string, string> | undefined,
     entry: { cache?: ResolvedCache | null; createdAt?: number } | null | undefined,

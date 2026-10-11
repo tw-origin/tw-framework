@@ -1176,6 +1176,13 @@ export class TWServer {
                 homeDir,
                 enableCache: true, hydrationMode: (this.options as any).config?.strategies?.hydration?.mode,
                 dev: false,
+                serverBlocks: (this.options as any).config?.experimental?.serverBlocks === true,
+                loginPath: (this.options as any).config?.server?.loginPath,
+                fetchTimeoutMs: (this.options as any).config?.server?.fetchTimeoutMs,
+                fetchCacheMaxBytes: (this.options as any).config?.server?.fetchCacheMaxBytes,
+                cacheInDev: (this.options as any).config?.server?.cacheInDev,
+                pageCacheMaxEntries: (this.options as any).config?.server?.pageCacheMaxEntries,
+                middlewareActive: (this as any).middlewarePath !== null,
               });
               setActivePipeline(this.renderPipeline);
             }
@@ -1186,7 +1193,14 @@ export class TWServer {
             // SPA navigation signal (client runtime link fetch): lets the
             // render pipeline serve `(.)page.tw` interceptors (modals).
             (renderPipeline as any).navRequest = request.headers.get("x-tw-navigate") === "1";
-            const result: any = renderPipeline.render(pathname);
+            const result: any = await renderPipeline.renderWithServerBlocks(pathname, request);
+            // A .twm route (no page file) comes back as a stub carrying the
+            // route file; execute it through renderRoute so its status and
+            // headers (Set-Cookie, custom status) are honored, instead of
+            // returning the stub's placeholder body.
+            if (result && result.routeFile) {
+              return await renderPipeline.renderRoute(pathname, request.method, request);
+            }
             if (result && result.html) {
               // `render stream`: shell first, Suspense holes as streamed chunks
               if (result.renderMode === "stream") {
@@ -1205,7 +1219,7 @@ export class TWServer {
                 const rvSecs = typeof rv === "number" ? rv
                   : (rv && typeof rv === "object" ? Number((rv as any).revalidate) || 0 : 0);
                 const window = rvSecs || Number(result.revalidate) || 0;
-                if (mode !== "isr" || !outHeaders["Cache-Control"]) {
+                if (!result.serverBlocks && (mode !== "isr" || !outHeaders["Cache-Control"])) {
                   outHeaders["Cache-Control"] = this.cacheControlForRoute(window);
                 }
               }
@@ -1219,6 +1233,16 @@ export class TWServer {
               return new Response(outHtml, {
                 status: result.status ?? 200,
                 headers: outHeaders,
+              });
+            }
+            // A server-block page can resolve to a body-less result: a
+            // redirect (requireUser()/redirect()) or a notFound()/error status
+            // carries no HTML. Return it as-is instead of falling through to a
+            // 404, which would turn a real redirect into "not found".
+            if (result && !result.html && typeof result.status === "number" && result.status >= 300) {
+              return new Response(null, {
+                status: result.status,
+                headers: result.headers ?? {},
               });
             }
           }
@@ -1244,12 +1268,16 @@ export class TWServer {
 
         // If handler returned data, convert to JSON
         if (response !== undefined && response !== null) {
-          return new Response(JSON.stringify(response), {
-            headers: {
-              "Content-Type": "application/json",
-              // Response headers -- do NOT spread ctx.headers (request headers) into response
-            },
-          });
+          const r: any = response;
+          // Honor a route result's status and headers (a .twm handler returns
+          // { status, json, headers }) -- dropping them lost Set-Cookie and
+          // any custom status a route set.
+          const headers: Record<string, string> = { "Content-Type": "application/json" };
+          if (r.headers && typeof r.headers === "object") {
+            for (const [k, v] of Object.entries(r.headers)) headers[k] = String(v);
+          }
+          const status = typeof r.status === "number" ? r.status : 200;
+          return new Response(JSON.stringify(r.json ?? r), { status, headers });
         }
 
         // If ctx has response set by middleware

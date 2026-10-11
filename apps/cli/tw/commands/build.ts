@@ -355,8 +355,20 @@ function autoprefixCss(css: string, targets: string[] = []): string {
   return out.join("\n");
 }
 
+/** Strip `server { }` regions from source before a raw client-import scan. */
+function stripServerRegionsForScan(source: string): string {
+  try {
+    const { parseWithDetails, collectServerBlocks, stripServerBlockRegions } = _compilerMod as any;
+    if (!parseWithDetails || !collectServerBlocks || !stripServerBlockRegions) return source;
+    const prog = parseWithDetails(source, { filePath: "<scan>", cache: false, experimental: { serverBlocks: true } }).program;
+    const blocks = collectServerBlocks(prog);
+    return blocks.length ? stripServerBlockRegions(source, blocks) : source;
+  } catch { return source; }
+}
+
 export async function buildCommand(): Promise<void> {
   const rootDir = process.cwd();
+  let errorCount = 0;
   // --profile: emit a stage-by-stage timing report (docs/build-profiler.md)
   const profile = process.argv.slice(2).includes("--profile");
   const P = _compilerMod as any;
@@ -474,6 +486,12 @@ export async function buildCommand(): Promise<void> {
   // compiler.* -> the compile passes. `optimization` maps to optimize
   // (none = off); the rest pass straight through to the compiler so each
   // fine-grained field reaches the pass it names.
+  let serverBlocksOn = false;
+  let serverOnlyPackages: string[] = [];
+  let loginPath = "/login";
+  let fetchTimeoutMs: number | undefined;
+  let fetchCacheMaxBytes: number | undefined;
+  let maxPayloadBytes = 128 * 1024;
   const compilePassOpts = (): any =>
     compilerOpts
       ? {
@@ -499,8 +517,9 @@ export async function buildCommand(): Promise<void> {
             preserveComments: compilerOpts.preserveComments,
             looseDiagnostics: compilerOpts.strict === false,
           },
+          experimental: serverBlocksOn ? { serverBlocks: true } : undefined,
         }
-      : {};
+      : { experimental: serverBlocksOn ? { serverBlocks: true } : undefined };
   // Plugins (docs/plugins.md): load from plugins/ per tw.config.ts and fire the
   // build hooks. A broken plugin never fails the build -- the loader isolates it.
   let pluginManager: any = null;
@@ -521,6 +540,19 @@ export async function buildCommand(): Promise<void> {
       const { twImportTs } = await import("@tw/shared/tw/node-import");
       const cfgMod: any = await twImportTs(cfgPath);
       const cfg = cfgMod.default ?? cfgMod;
+      serverBlocksOn = cfg?.experimental?.serverBlocks === true;
+      serverOnlyPackages = Array.isArray(cfg?.server?.onlyPackages) ? cfg.server.onlyPackages : [];
+      fetchTimeoutMs = cfg?.server?.fetchTimeoutMs;
+      fetchCacheMaxBytes = cfg?.server?.fetchCacheMaxBytes;
+      if (typeof cfg?.server?.maxPayloadBytes === "number") maxPayloadBytes = cfg.server.maxPayloadBytes;
+      if (cfg?.server?.loginPath !== undefined) {
+        const { isValidRedirectTarget } = _compilerMod as any;
+        loginPath = String(cfg.server.loginPath);
+        if (!isValidRedirectTarget?.(loginPath)) {
+          console.error("  \x1b[31m\u2717\x1b[0m tw.config.ts server.loginPath is not a same-origin internal path: " + JSON.stringify(loginPath));
+          errorCount++;
+        }
+      }
       // Plugins load here so the config is already resolved when setup() runs.
       try {
         const { loadPlugins } = await import("@tw/plugins");
@@ -763,7 +795,6 @@ export async function buildCommand(): Promise<void> {
   // summary -- "Pages: 1" while the site had many SSR routes looked broken.
   let requestRenderedCount = 0;
   let apiCount = 0;
-  let errorCount = 0;
   const isrRoutes = new Map<string, number | Record<string, any>>();
 
   // -- 1. Compile all page.tw files to HTML --------------------------------
@@ -819,7 +850,9 @@ export async function buildCommand(): Promise<void> {
           const { loadTWMModule } = await import("../../../../packages/server/tw/routing/twm-loader.ts");
           const pmod: any = await loadTWMModule(paramsTwm, rootDir);
           if (typeof pmod.generate === "function") {
-            const arr = pmod.generate();
+            // `fn generate()` compiles to an async function, so its result is a
+            // Promise; awaiting it also works for a plain synchronous function.
+            const arr = await pmod.generate();
             if (Array.isArray(arr) && arr.length > 0) {
               // the DOCS form returns plain values
               // (`return ["one", "two", "three"]` next to a [item]/page.tw).
@@ -921,6 +954,24 @@ export async function buildCommand(): Promise<void> {
       console.log("  \x1b[36m~\x1b[0m " + routePath + " [" + renderMode + ": rendered at request time]");
       try {
         const src = readFileSync(pageFile, "utf-8");
+        // Server blocks are checked at build time for every page, not only
+        // static ones -- a non-serializable or env-reading block must fail the
+        // build regardless of render mode.
+        if (serverBlocksOn) {
+          try {
+            const { parseWithDetails, collectServerBlocks, checkServerBlocks, collectReferencedNames, extractVary } = _compilerMod as any;
+            const prog = parseWithDetails(src, { filePath: pageFile, cache: false, experimental: { serverBlocks: true } }).program;
+            const sb = collectServerBlocks(prog);
+            if (sb.length) {
+              const problems = checkServerBlocks(prog, {
+                mode: renderMode, paramNames: Object.keys(paramSets[0] ?? {}), hasEnumeratedParams: hasExplicitParams,
+                cachedPage: /cache\s*\{/.test(src), hasVary: extractVary(src).length > 0, referenced: collectReferencedNames(src),
+              });
+              for (const p of problems) console.error("  \x1b[31m\u2717\x1b[0m " + pageFile.replace(rootDir + "/", "") + ":" + p.line + "  " + p.code + "  " + p.message);
+              if (problems.length) errorCount++;
+            }
+          } catch { /* server-block checks are best-effort here */ }
+        }
         const r = _compileSync(src, { filePath: pageFile, ...compilePassOpts() });
         const errs = (r.diagnostics || []).filter((d: any) => d.severity === "error");
         if (errs.length > 0) {
@@ -973,7 +1024,46 @@ export async function buildCommand(): Promise<void> {
       const source = readFileSync(pageFile, "utf-8");
       // Route params are exposed BOTH flat ({slug}) and as an object
       // ({params.slug}) -- docs/project-tree.md documents params.slug.
-      const scopeVars = { ...paramSet, params: paramSet };
+      // Server blocks (experimental.serverBlocks): run at build time, once per
+      // param set, then merge the encoded values into a COPY of the state.
+      let serverVars: Record<string, string> = {};
+      if (serverBlocksOn) {
+        const { parseWithDetails, collectServerBlocks, checkServerBlocks, executeServerBlocks, encodeServerValues, collectReferencedNames, extractVary, secretEnvValues, resolveServerImports } = _compilerMod as any;
+        const prog = parseWithDetails(source, { filePath: pageFile, cache: false, experimental: { serverBlocks: true } }).program;
+        const sb = collectServerBlocks(prog);
+        if (sb.length) {
+          const referenced = collectReferencedNames(source);
+          const problems = checkServerBlocks(prog, {
+            mode: renderMode, paramNames: Object.keys(paramSet), hasEnumeratedParams: hasExplicitParams,
+            cachedPage: /cache\s*\{/.test(source), hasVary: extractVary(source).length > 0, referenced,
+          });
+          if (problems.length) {
+            for (const p of problems) console.error("  \x1b[31m\u2717\x1b[0m " + pageFile.replace(rootDir + "/", "") + ":" + p.line + "  " + p.code + "  " + p.message);
+            errorCount++;
+            continue;
+          }
+          // A static block must not see headers/cookies/query (nor params
+          // without enumerated params) -- bind them to a throwing stand-in.
+          const omit = ["headers", "cookies", "query"];
+          if (!hasExplicitParams) omit.push("params");
+          // Resolve the block's imports the same way the SSR path does; without
+          // this a static block that imports a helper ran with the name unbound.
+          const imports: Record<string, unknown> = {};
+          for (const b of sb) Object.assign(imports, await resolveServerImports(b, pageFile, { dev: false }));
+          try {
+            const { createServerFetch, wrapJsonErrors, SERVER_FETCH_BUILD_ID } = _compilerMod as any;
+            const sfetch = createServerFetch({ buildId: SERVER_FETCH_BUILD_ID, timeoutMs: fetchTimeoutMs, maxBytes: fetchCacheMaxBytes });
+            const fetchShim = (u: any, i?: any) => sfetch(u, i).then(wrapJsonErrors);
+            const vals = await executeServerBlocks(sb, { context: { params: paramSet, env: process.env as Record<string, string>, loginPath }, imports, omit, omitRuntime: ["getSession", "requireUser", "redirect", "notFound"], label: pageFile, fetch: fetchShim, referenced, maxPayloadBytes, secrets: secretEnvValues(process.env) });
+            serverVars = encodeServerValues(vals);
+          } catch (e: any) {
+            console.error("  \x1b[31m\u2717\x1b[0m " + pageFile.replace(rootDir + "/", "") + "  server block failed: " + (e?.message ?? e));
+            errorCount++;
+            continue;
+          }
+        }
+      }
+      const scopeVars = { ...paramSet, params: paramSet, ...serverVars };
       const result = _compileSync(source, { filePath: pageFile, stateVars: scopeVars, ...compilePassOpts() } as any);
       {
         const used = new Set<string>();
@@ -1005,6 +1095,12 @@ export async function buildCommand(): Promise<void> {
         const layoutPrograms = layoutChain.map(lp => {
           const ls = readFileSync(lp, "utf-8");
           const lr = _compileSync(ls, { filePath: lp, ...compilePassOpts() });
+          if (serverBlocksOn) {
+            const { checkServerBlocks } = _compilerMod as any;
+            const probs = checkServerBlocks(lr.ast, { isLayout: true });
+            for (const p of probs) console.error("  \x1b[31m\u2717\x1b[0m " + lp.replace(rootDir + "/", "") + ":" + p.line + "  " + p.code + "  " + p.message);
+            if (probs.length) errorCount++;
+          }
           return lr.ast;
         }).filter(Boolean);
         if (layoutPrograms.length > 0 && _generateWithLayoutChain) {
@@ -1078,12 +1174,24 @@ export async function buildCommand(): Promise<void> {
           const own = new Set<string>();
           const deps = new Set<string>();
           const { collectClientImportsFromSource, findServerOnlyViolations } = await import("./client-bundle");
-          for (const l of collectClientImportsFromSource(source)) own.add(l);
-          for (const v of findServerOnlyViolations(source)) tw1007.push({ file: pageFile, spec: v });
+          const scanSrc = serverBlocksOn ? stripServerRegionsForScan(source) : source;
+          for (const l of collectClientImportsFromSource(scanSrc)) own.add(l);
+          if (serverBlocksOn) {
+            // transitive walk with the TS parser, chains included.
+            const { walkClientGraph, formatChain } = await import("./server-boundary");
+            const viols = walkClientGraph([pageFile, ...chainFiles], {
+              onlyPackages: serverOnlyPackages,
+              stripServerRegions: stripServerRegionsForScan,
+              rootDir,
+            });
+            for (const v of viols) tw1007.push({ file: pageFile, spec: `${v.layer}:${v.specifier}  [${formatChain(v)}]` });
+          } else {
+            for (const v of findServerOnlyViolations(source)) tw1007.push({ file: pageFile, spec: v });
+          }
           for (const lf of chainFiles) {
             const ls = readFileSync(lf, "utf-8");
             for (const l of collectClientImportsFromSource(ls)) deps.add(l);
-            for (const v of findServerOnlyViolations(ls)) tw1007.push({ file: lf, spec: v });
+            if (!serverBlocksOn) for (const v of findServerOnlyViolations(ls)) tw1007.push({ file: lf, spec: v });
           }
           for (const l of own) deps.add(l);
           pageMods = { deps: [...deps], own: [...own] };

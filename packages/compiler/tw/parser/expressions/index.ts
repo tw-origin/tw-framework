@@ -80,10 +80,13 @@ const RIGHT_ASSOCIATIVE = new Set([
 export class TokenCursor {
   private stream: TokenStream;
   public errors: ErrorCollector;
+  /** The source the tokens came from, when known (used for raw-source extraction). */
+  public source?: string;
 
-  constructor(tokens: Token[], errors?: ErrorCollector) {
+  constructor(tokens: Token[], errors?: ErrorCollector, source?: string) {
     this.stream = new TokenStream(tokens);
     this.errors = errors ?? new ErrorCollector();
+    this.source = source;
   }
 
   get position(): number { return this.stream.position; }

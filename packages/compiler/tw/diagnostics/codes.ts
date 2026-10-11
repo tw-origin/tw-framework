@@ -115,6 +115,27 @@ export const ERROR_CODES: Record<ErrorCode, { message: string; severity: Diagnos
   TW095: { message: "Invalid for-loop iterable -- use {varName} or a valid comma-separated literal", severity: "error", category: "syntax" },
   TW096: { message: "Unknown state variable in interpolation (renders empty)", severity: "warning", category: "semantic" },
   TW097: { message: "while with a comparison renders its body ONCE at build time (state cannot mutate during SSR) -- use for loops for repetition", severity: "warning", category: "semantic" },
+  // Server blocks (TW099-TW101)
+  TW099: { message: "Unknown server modifier (only ':defer' is supported)", severity: "error", category: "syntax" },
+  TW100: { message: "Expected '{' after 'server'", severity: "error", category: "syntax" },
+  TW101: { message: "Unclosed server block -- a '}' never closes the 'server {'", severity: "error", category: "syntax" },
+  // Server blocks, semantic (TW102-TW105)
+  TW102: { message: "Server block declares a name that collides with state { } or a route param", severity: "error", category: "semantic" },
+  TW103: { message: "A static page's server block cannot read headers, cookies or query", severity: "error", category: "semantic" },
+  TW104: { message: "A static page's server block cannot read params without enumerated params (add params.twm / fn generate())", severity: "error", category: "semantic" },
+  TW105: { message: "Server blocks in layouts are not supported yet", severity: "error", category: "semantic" },
+  TW106: { message: "Request context (headers/cookies/query/params) is not available in a static server block", severity: "error", category: "semantic" },
+  TW107: { message: "getSession()/requireUser() are not available in a static page's server block", severity: "error", category: "semantic" },
+  TW108: { message: "redirect()/notFound() are not available in a static page's server block", severity: "error", category: "semantic" },
+  TW109: { message: "redirect() target must be a same-origin internal path", severity: "error", category: "semantic" },
+  TW110: { message: "A cached fetch must not set an Authorization, Proxy-Authorization or Cookie header", severity: "error", category: "semantic" },
+  TW111: { message: "A cached page's server block cannot read headers, cookies, getSession() or requireUser()", severity: "error", category: "semantic" },
+  TW112: { message: "cache { vary } is only valid on an ssr page (not static)", severity: "error", category: "semantic" },
+  TW113: { message: "A server-block value is not serializable (function/Map/Set/Date-class/cycle/...)", severity: "error", category: "semantic" },
+  TW114: { message: "The server-block payload exceeds server.maxPayloadBytes", severity: "error", category: "semantic" },
+  TW115: { message: "A server-block value reads env (possible secret leak into markup)", severity: "error", category: "semantic" },
+  TW116: { message: "SQL-looking template literal interpolates request data (lint)", severity: "warning", category: "semantic" },
+  TW117: { message: "fetch() with a request-derived URL (SSRF lint)", severity: "warning", category: "semantic" },
   // Codes thrown outside the rule engine. TW303 comes from the stylesheet
   // parser (codegen/tss.ts); TW000 is the generic fallback used when an error
   // carries no code of its own.

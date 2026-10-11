@@ -943,6 +943,13 @@ async function ensureDevClientBundle(rootDir: string, pageSource: string, layout
             const _clockSrc = existsSync(resolved.file) ? readFileSync(resolved.file, "utf-8") : "";
             devClientTag = await ensureDevClientBundle(rootDir, _clockSrc, chain);
           } catch { /* ignore */ }
+          // Transitive server-only boundary walk, same as build. In dev it is
+          // non-fatal: a violation is logged, never a hard failure.
+          try {
+            const { devServerOnlyBoundary } = await import("./server-boundary");
+            const msgs = await devServerOnlyBoundary(rootDir, [resolved.file, ...chain]);
+            for (const m of msgs) console.error("  [tw] TW1007 (dev): " + m);
+          } catch { /* boundary walk is best-effort in dev */ }
           // dev.hmr: subscribe to the live-reload channel and refresh on change.
           // dev.fastRefresh: a soft body swap by default; a full reload when off.
           if (devOpts?.hmr) {

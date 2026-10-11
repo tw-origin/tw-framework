@@ -1,0 +1,13 @@
+{
+  "name": "@tw/server-only",
+  "private": true,
+  "version": "2.0.0",
+  "description": "TW Framework server-only marker \u2014 importing this module marks the importer as server-only",
+  "type": "module",
+  "main": "./tw/index.ts",
+  "dependencies": {},
+  "license": "MIT",
+  "exports": {
+    ".": "./tw/index.ts"
+  }
+}

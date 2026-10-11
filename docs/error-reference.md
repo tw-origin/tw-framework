@@ -733,6 +733,182 @@ client-side handler where state can actually mutate.
 
 ---
 
+## Server Blocks (TW099–TW117)
+
+> Experimental — behind `experimental.serverBlocks`. The feature model is in
+> [Server Data](./server-data.md).
+
+### TW099 — Unknown Server Modifier
+
+```
+Error TW099: Unknown server modifier (only ':defer' is supported)
+```
+**Cause:** `server:foo { }` — only `server { }` and `server:defer { }` exist. **Fix:** drop the modifier.
+
+---
+
+### TW100 — Expected `{` After `server`
+
+```
+Error TW100: Expected '{' after 'server'
+```
+**Cause:** a top-level `server` not followed by `{` (or `:ident {`). **Fix:** open the block, or use the `server` keyword as intended.
+
+---
+
+### TW101 — Unclosed Server Block
+
+```
+Error TW101: Unclosed server block -- a '}' never closes the 'server {'
+```
+**Cause:** the block's `{` is never closed. **Fix:** add the closing `}`.
+
+---
+
+### TW102 — Server Block Name Collision
+
+```
+Error TW102: Server block declares a name that collides with state { } or a route param
+```
+**Cause:** a declared name is also in `state { }` or equals a route param. **Fix:** rename it.
+
+---
+
+### TW103 — Static Block Read Headers/Cookies/Query
+
+```
+Error TW103: A static page's server block cannot read headers, cookies or query
+```
+**Cause:** a `render static` block read a per-request value. **Fix:** make the page `render ssr`, or remove the read.
+
+---
+
+### TW104 — Static Block Read Params Without Enumeration
+
+```
+Error TW104: A static page's server block cannot read params without enumerated params
+```
+**Cause:** a static dynamic route reads `params` with no `params.twm` / `fn generate()`. **Fix:** add `params.twm`.
+
+---
+
+### TW105 — Server Block in a Layout
+
+```
+Error TW105: Server blocks in layouts are not supported yet
+```
+**Cause:** a `server { }` block in a layout file. **Fix:** move it into the page.
+
+---
+
+### TW106 — Request Context Unavailable in a Static Block
+
+```
+Error TW106: Request context (headers/cookies/query/params) is not available in a static server block
+```
+**Cause:** the runtime trap fired — a static block reached a per-request value (directly, via an alias, or via destructuring). **Fix:** see TW103/TW104.
+
+---
+
+### TW107 — `getSession()`/`requireUser()` in a Static Block
+
+```
+Error TW107: getSession()/requireUser() are not available in a static page's server block
+```
+**Fix:** make the page `render ssr`.
+
+---
+
+### TW108 — `redirect()`/`notFound()` in a Static Block
+
+```
+Error TW108: redirect()/notFound() are not available in a static page's server block
+```
+**Fix:** make the page `render ssr`.
+
+---
+
+### TW109 — Unsafe `redirect()` Target
+
+```
+Error TW109: redirect() target must be a same-origin internal path
+```
+**Cause:** an absolute URL, protocol-relative `//`, or a control character. **Fix:** use an internal path such as `/login`.
+
+---
+
+### TW110 — Credential Header on a Cached Fetch
+
+```
+Error TW110: A cached fetch must not set an Authorization, Proxy-Authorization or Cookie header
+```
+**Cause:** a `fetch(..., { cache })` set a credential header (literal → build; computed → runtime). **Fix:** drop the cache, or the header.
+
+---
+
+### TW111 — Cached Page Read a Per-Request Value
+
+```
+Error TW111: A cached page's server block cannot read headers, cookies, getSession() or requireUser()
+```
+**Cause:** the cached-page context trap fired. **Fix:** read only `params`, the `vary` query and `env`.
+
+---
+
+### TW112 — `vary` on a Static Page
+
+```
+Error TW112: cache { vary } is only valid on an ssr page (not static)
+```
+**Fix:** make the page `render ssr`, or drop `vary`.
+
+---
+
+### TW113 — Non-Serializable Server-Block Value
+
+```
+Error TW113: A server-block value is not serializable (function/Map/Set/Date-class/cycle/...)
+```
+**Cause:** a referenced value is a function, symbol, bigint, `NaN`/`Infinity`, `Map`, `Set`, `WeakMap`, `Promise`, a class instance, a buffer/typed array, a cycle, or deeper than 20. **Fix:** map it to a plain object (a `Prisma.Decimal` → a number/string).
+
+---
+
+### TW114 — Payload Over the Cap
+
+```
+Error TW114: The server-block payload exceeds server.maxPayloadBytes
+```
+**Fix:** send less data, or raise `server.maxPayloadBytes`.
+
+---
+
+### TW115 — `env` Read Into Markup
+
+```
+Error TW115: A server-block value reads env (possible secret leak into markup)
+```
+**Cause:** a referenced value reads `env`. **Fix:** do not interpolate secrets; only the variable name appears in the message.
+
+---
+
+### TW116 — SQL Lint (warning)
+
+```
+Warning TW116: SQL-looking template literal interpolates request data (lint)
+```
+A heuristic. **Fix:** use parameterized queries.
+
+---
+
+### TW117 — SSRF Lint (warning)
+
+```
+Warning TW117: fetch() with a request-derived URL (SSRF lint)
+```
+A heuristic. **Fix:** build the URL from an allow-list, not from request data.
+
+---
+
 ## Error Recovery
 
 The TW compiler has built-in error recovery:
@@ -774,10 +950,14 @@ Every error carries a code, a file position and a fix. The general workflow:
 | Range | System |
 |-------|--------|
 | TW001–TW020 | Syntax — parsing `.tw` files |
-| TW100–TW120 | Routing — paths, route files, page placement |
-| TW200–TW210 | Render modes — interactivity rules |
-| TW300–TW310 | Extensions — wrong file type or syntax for the extension |
+| TW090–TW097 | Cache, state and loop semantics |
+| TW099–TW117 | Server blocks — see [Server Data](./server-data.md) |
+| TW303 | Stylesheets — unbalanced braces |
 | TW1007 | The server boundary — server-only import in a page/layout |
+
+The wider numeric ranges below (routing, render modes, extensions, …) are a
+reserved convention and are **not** in the live registry (`errors.json`) yet;
+the registry is authoritative.
 
 ## TW1007 — The Most Important Build Error
 

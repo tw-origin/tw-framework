@@ -1,0 +1,3 @@
+fn generate() {
+  return [{ slug: "intro" }, { slug: "setup" }]
+}

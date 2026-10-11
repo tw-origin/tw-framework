@@ -17,6 +17,12 @@ const banner = [
   // undefined, so provide it via createRequire.
   "import { createRequire } from \"node:module\";",
   "const require = createRequire(import.meta.url);",
+  // CJS globals for bundled deps (e.g. typescript) that reference __filename /
+  // __dirname: in an ESM bundle they are undefined, which makes the module
+  // import throw and the CLI fall back to loading a .ts source at run time.
+  "import { fileURLToPath as __twFileURLToPath } from \"node:url\";",
+  "const __filename = __twFileURLToPath(import.meta.url);",
+  "const __dirname = __filename.slice(0, __filename.lastIndexOf(\"/\"));",
 ].join("\n");
 
 const out = join(cliDir, "dist", "tw.mjs");

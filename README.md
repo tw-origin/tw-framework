@@ -299,7 +299,6 @@ Developers: Aslam Alam · Rohit Kumar · Badal Kumar · TW Mlkraj
 TW Framework has been in development for 8–12 months, from the first line of the parser to the
 current 2.0.0 release — compiler, VDOM, styling engine, server and toolchain all built in-house.
 
-Debugging support during development: Indus (Sarvam AI), Claude Max, ChatGPT Terra 4, DeepSeek v4 Coder.
 
 ## Security
 

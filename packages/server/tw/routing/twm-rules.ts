@@ -41,6 +41,15 @@ export interface AuthCond {
   jwtSecretEnv?: string;
 }
 
+/**
+ * Requires a session cookie to be present. The rule layer has no access to the
+ * session store, so this is a fail-closed presence check -- the page or route
+ * that runs afterwards performs the real validation.
+ */
+export interface SessionCond {
+  cookie?: string;
+}
+
 export interface RateLimitCond {
   requests?: number;
   window?: number;
@@ -58,6 +67,8 @@ export interface RuleResponse {
   json?: any;
   html?: string;
   text?: string;
+  /** Redirect to this location (defaults the status to 302). */
+  redirect?: string;
 }
 
 export interface MiddlewareRule {
@@ -66,6 +77,7 @@ export interface MiddlewareRule {
   userAgent?: UserAgentCond;
   path?: PathCond;
   auth?: AuthCond;
+  session?: SessionCond;
   rateLimit?: RateLimitCond;
   origin?: OriginCond;
   methods?: string[];
@@ -276,6 +288,11 @@ class Parser {
             rule.auth = { cookie: f.cookie, jwtSecretEnv: f.jwt_secret_env };
             break;
           }
+          case "session": {
+            const f = this.fields();
+            rule.session = { cookie: f.cookie };
+            break;
+          }
           case "rate_limit": {
             const f = this.fields();
             rule.rateLimit = {
@@ -305,8 +322,9 @@ class Parser {
               throw new Error(`${this.file}: rule "${name}" response has multiple body forms (json/html/text) — pick one`);
             }
             rule.response = {
-              status: status ?? 403,
+              status: status ?? (f.redirect !== undefined ? 302 : 403),
               json: f.json, html: f.html, text: f.text,
+              redirect: f.redirect,
             };
             break;
           }
@@ -415,7 +433,7 @@ function ruleBlocked(rule: MiddlewareRule, request: Request, pathname: string): 
   // trip on, so an unconditional exact-path guard was silently inactive.
   // Match alone is a valid condition: the rule's response applies.
   const hasCondition =
-    rule.userAgent || rule.path || rule.auth || rule.rateLimit ||
+    rule.userAgent || rule.path || rule.auth || rule.session || rule.rateLimit ||
     rule.origin || (rule.methods && rule.methods.length > 0);
   if (!hasCondition) return true;
 
@@ -450,6 +468,18 @@ function ruleBlocked(rule: MiddlewareRule, request: Request, pathname: string): 
     const token = m ? m[1].trim() : "";
     const secret = rule.auth.jwtSecretEnv ? (process.env[rule.auth.jwtSecretEnv] ?? "") : "";
     if (!token || !secret || !verifyJwt_hs256(token, secret)) return true;
+  }
+
+  // session: a session cookie must be present (fail-closed presence check;
+  // the route/page validates the session itself).
+  if (rule.session) {
+    const cookieName = rule.session.cookie ?? "tw.sid";
+    const cookieHeader = headers.get("cookie") ?? "";
+    const present = cookieHeader.split(";").some((part) => {
+      const i = part.indexOf("=");
+      return i !== -1 && part.slice(0, i).trim() === cookieName && part.slice(i + 1).trim() !== "";
+    });
+    if (!present) return true;
   }
 
   // rate_limit: fixed window, per identity bucket
@@ -549,6 +579,7 @@ export function evaluateRules(rules: MiddlewareRule[], request: Request): Respon
 
     const r = rule.response!;
     const headers: Record<string, string> = { "X-TW-Middleware": rule.name };
+    if (r.redirect !== undefined) headers["Location"] = r.redirect;
     if (!Number.isFinite(r.status) || r.status < 100 || r.status > 599) {
       console.error(`[twm-rules] rule "${rule.name}" has invalid status ${r.status}; using 500`);
     }
