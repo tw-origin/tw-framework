@@ -59,6 +59,7 @@ export type ErrorCode =
   | "TW106"
   | "TW107" | "TW108" | "TW109"
   | "TW110"
+  | "TW111" | "TW112"
   // Declared for codes emitted outside the rule engine (see codes.ts)
   | "TW303" | "TW000";
 

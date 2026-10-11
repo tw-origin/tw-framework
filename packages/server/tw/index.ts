@@ -1178,6 +1178,9 @@ export class TWServer {
                 dev: false,
                 serverBlocks: (this.options as any).config?.experimental?.serverBlocks === true,
                 loginPath: (this.options as any).config?.server?.loginPath,
+                fetchTimeoutMs: (this.options as any).config?.server?.fetchTimeoutMs,
+                fetchCacheMaxBytes: (this.options as any).config?.server?.fetchCacheMaxBytes,
+                cacheInDev: (this.options as any).config?.server?.cacheInDev,
               });
               setActivePipeline(this.renderPipeline);
             }

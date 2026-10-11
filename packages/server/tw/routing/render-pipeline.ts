@@ -25,7 +25,7 @@
 
 import { readFileSync, existsSync } from "node:fs";
 import { dirname } from "node:path";
-import { compileSync, registerComponentTemplate, collectServerBlocks, encodeServerValues, executeServerBlocks, resolveServerImports, isServerRedirect, isServerNotFound, createServerFetch, wrapJsonErrors, SERVER_FETCH_BUILD_ID, type CompileResult } from "@tw/compiler";
+import { compileSync, registerComponentTemplate, collectServerBlocks, encodeServerValues, executeServerBlocks, resolveServerImports, isServerRedirect, isServerNotFound, createServerFetch, wrapJsonErrors, SERVER_FETCH_BUILD_ID, extractVary, varyQuery, canonicalVaryQuery, parsePageCache, type CompileResult } from "@tw/compiler";
 import { maskSourceStringsAndComments, sha256, extractCacheDirective, resolveCache, readCacheProfilesSync, type ResolvedCache } from "@tw/shared";
 import { executeRouteHandler } from "./twm-loader";
 import type {
@@ -83,6 +83,11 @@ export class RenderPipeline {
   private serverBlocksFlag: boolean;
   /** server.loginPath (default "/login") for requireUser(). */
   private loginPath: string;
+  /** server.fetchTimeoutMs / fetchCacheMaxBytes / cacheInDev (E2b-0). */
+  private fetchTimeoutMs?: number;
+  private fetchCacheMaxBytes?: number;
+  private cacheInDev?: boolean;
+  private pageCacheMaxEntries?: number;
   private routeTree: RouteNode | null = null;
   private compiledCache: Map<string, CompiledFileEntry> = new Map();
   /**
@@ -124,6 +129,10 @@ export class RenderPipeline {
     this.dev = opts.dev ?? false;
     this.serverBlocksFlag = (opts as any).serverBlocks === true;
     this.loginPath = (opts as any).loginPath ?? "/login";
+    this.fetchTimeoutMs = (opts as any).fetchTimeoutMs;
+    this.fetchCacheMaxBytes = (opts as any).fetchCacheMaxBytes;
+    this.cacheInDev = (opts as any).cacheInDev;
+    this.pageCacheMaxEntries = (opts as any).pageCacheMaxEntries;
     this.hydrationMode = opts.hydrationMode ?? "auto";
   }
 
@@ -177,8 +186,9 @@ export class RenderPipeline {
     if (!pageFile) return this.render(pathname);
 
     let blocks: any[] = [];
+    let src = "";
     try {
-      const src = this.readSource(ctx.page);
+      src = this.readSource(ctx.page);
       const { parseWithDetails } = await import("@tw/compiler");
       const program = parseWithDetails(src, { filePath: pageFile, cache: false, experimental: { serverBlocks: true } } as any).program;
       blocks = collectServerBlocks(program);
@@ -198,6 +208,78 @@ export class RenderPipeline {
       const eq = part.indexOf("=");
       if (eq > 0) cookies[part.slice(0, eq).trim()] = part.slice(eq + 1).trim();
     }
+
+    // --- Cached page (E2b): server block + page { cache { } } -----------------
+    const pageCache = parsePageCache(src);
+    if (pageCache && /cache\s*\{/.test(src)) {
+      const vary = extractVary(src);
+      const vq = varyQuery(query, vary);
+      const nav = (this as any).navRequest ? "nav" : "";
+      const cacheKey = sha256(`${pathname}:${canonicalVaryQuery(vq)}:${JSON.stringify(match!.params ?? {})}:${nav}:${SERVER_FETCH_BUILD_ID}`);
+      const now = Date.now();
+      const hit = this.renderCache.get(cacheKey);
+      if (hit && now < (hit.freshUntil ?? 0)) {
+        // HIT: per-request headers are generated fresh -- never replayed.
+        return { ...hit.result, fromCache: true, durationMs: 0, headers: this.stampCacheHeaders({ "Content-Type": "text/html; charset=utf-8" }, hit, now, "HIT"), serverBlocks: true } as RouteRenderResult;
+      }
+      const cachedContext = { params: match!.params ?? {}, query: vq, env: (process.env as Record<string, string>) ?? {}, loginPath: this.loginPath };
+      const imports: Record<string, unknown> = {};
+      for (const b of blocks) Object.assign(imports, await resolveServerImports(b, pageFile, { dev: this.dev }));
+      const sfetch = createServerFetch({
+        buildId: SERVER_FETCH_BUILD_ID, timeoutMs: this.fetchTimeoutMs, maxBytes: this.fetchCacheMaxBytes,
+        cacheEnabled: this.dev ? !!this.cacheInDev : true, log: this.dev ? (l: string) => console.log(l) : undefined,
+      });
+      const fetchShim = (u: any, i?: any) => sfetch(u, i).then(wrapJsonErrors);
+      try {
+        // The context trap: only params + vary query + env. headers/cookies/
+        // getSession/requireUser are throwing stand-ins (a runtime guarantee).
+        const values = await executeServerBlocks(blocks, {
+          context: cachedContext, imports, fetch: fetchShim,
+          omit: ["headers", "cookies"], omitRuntime: ["getSession", "requireUser"],
+          trapCode: "TW111", label: pageFile,
+        });
+        const merged = { ...(match!.params ?? {}), params: match!.params ?? {}, ...encodeServerValues(values) };
+        (this as any).__bypassCompileCache = true;
+        let result: RouteRenderResult;
+        try { result = this.render(pathname, merged, { bypassCache: true }); }
+        finally { (this as any).__bypassCompileCache = false; }
+        // Store ONLY safe parts -- never Set-Cookie / per-request headers.
+        const safeHeaders: Record<string, string> = {};
+        for (const h of ["content-type", "content-language"]) {
+          const v = (result.headers ?? {})[h] ?? (result.headers ?? {})[h[0].toUpperCase() + h.slice(1)];
+          if (v) safeHeaders[h] = v;
+        }
+        const entry: any = {
+          result: { html: result.html, css: result.css, js: result.js, status: result.status, headers: safeHeaders },
+          freshUntil: now + pageCache.revalidate * 1000,
+          expireAt: now + pageCache.expire * 1000,
+          cache: pageCache, createdAt: now, pathname,
+        };
+        const maxEntries = (this as any).pageCacheMaxEntries ?? 500;
+        while (this.renderCache.size >= maxEntries) {
+          const oldest = this.renderCache.keys().next().value as string | undefined;
+          if (oldest === undefined) break;
+          this.renderCache.delete(oldest);
+        }
+        this.renderCache.set(cacheKey, entry);
+        return { ...result, headers: this.stampCacheHeaders(safeHeaders, entry, now, "MISS"), serverBlocks: true } as RouteRenderResult;
+      } catch (err: any) {
+        if (isServerRedirect(err)) {
+          return { html: "", css: "", js: "", status: 302, headers: { Location: err.target, "Cache-Control": "private, no-store" }, fromCache: false, durationMs: 0, serverBlocks: true } as RouteRenderResult;
+        }
+        if (isServerNotFound(err)) {
+          // A 404 MAY be cached -- store it under the same key.
+          const nf: RouteRenderResult = { html: "<!DOCTYPE html><html><head><title>Not Found</title></head><body><h1>404 Not Found</h1></body></html>", css: "", js: "", status: 404, headers: { "Content-Type": "text/html; charset=utf-8" }, fromCache: false, durationMs: 0, serverBlocks: true };
+          const entry: any = { result: { html: nf.html, css: "", js: "", status: 404, headers: { "content-type": "text/html; charset=utf-8" } }, freshUntil: now + pageCache.revalidate * 1000, expireAt: now + pageCache.expire * 1000, cache: pageCache, createdAt: now, pathname };
+          this.renderCache.set(cacheKey, entry);
+          return { ...nf, headers: this.stampCacheHeaders({ "Content-Type": "text/html; charset=utf-8" }, entry, now, "MISS") } as RouteRenderResult;
+        }
+        // trap / throw / timeout -> 500, never cached.
+        console.error(`[tw] cached page block failed for ${pageFile}: ${err?.message ?? err}`);
+        return { html: "<!DOCTYPE html><html><head><title>Server Error</title></head><body><h1>Internal Server Error</h1></body></html>", css: "", js: "", status: 500, headers: { "Content-Type": "text/html; charset=utf-8", "Cache-Control": "private, no-store" }, fromCache: false, durationMs: 0, serverBlocks: true } as RouteRenderResult;
+      }
+    }
+
     const context = { params: match!.params ?? {}, query, headers, cookies, env: (process.env as Record<string, string>) ?? {}, session: (request as any).session ?? null, loginPath: this.loginPath };
 
     try {
@@ -207,7 +289,9 @@ export class RenderPipeline {
       // server.cacheInDev. Non-2xx stays a normal Response; .json() is typed.
       const sfetch = createServerFetch({
         buildId: SERVER_FETCH_BUILD_ID,
-        cacheEnabled: this.dev ? !!(this as any).cacheInDev : true,
+        timeoutMs: this.fetchTimeoutMs,
+        maxBytes: this.fetchCacheMaxBytes,
+        cacheEnabled: this.dev ? !!this.cacheInDev : true,
         log: this.dev ? (l: string) => console.log(l) : undefined,
       });
       const fetchShim = (u: any, i?: any) => sfetch(u, i).then(wrapJsonErrors);

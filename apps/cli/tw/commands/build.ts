@@ -488,6 +488,8 @@ export async function buildCommand(): Promise<void> {
   let serverBlocksOn = false;
   let serverOnlyPackages: string[] = [];
   let loginPath = "/login";
+  let fetchTimeoutMs: number | undefined;
+  let fetchCacheMaxBytes: number | undefined;
   const compilePassOpts = (): any =>
     compilerOpts
       ? {
@@ -538,6 +540,8 @@ export async function buildCommand(): Promise<void> {
       const cfg = cfgMod.default ?? cfgMod;
       serverBlocksOn = cfg?.experimental?.serverBlocks === true;
       serverOnlyPackages = Array.isArray(cfg?.server?.onlyPackages) ? cfg.server.onlyPackages : [];
+      fetchTimeoutMs = cfg?.server?.fetchTimeoutMs;
+      fetchCacheMaxBytes = cfg?.server?.fetchCacheMaxBytes;
       if (cfg?.server?.loginPath !== undefined) {
         const { isValidRedirectTarget } = _compilerMod as any;
         loginPath = String(cfg.server.loginPath);
@@ -1018,7 +1022,7 @@ export async function buildCommand(): Promise<void> {
           if (!hasExplicitParams) omit.push("params");
           try {
             const { createServerFetch, wrapJsonErrors, SERVER_FETCH_BUILD_ID } = _compilerMod as any;
-            const sfetch = createServerFetch({ buildId: SERVER_FETCH_BUILD_ID });
+            const sfetch = createServerFetch({ buildId: SERVER_FETCH_BUILD_ID, timeoutMs: fetchTimeoutMs, maxBytes: fetchCacheMaxBytes });
             const fetchShim = (u: any, i?: any) => sfetch(u, i).then(wrapJsonErrors);
             const vals = await executeServerBlocks(sb, { context: { params: paramSet, env: process.env as Record<string, string>, loginPath }, omit, omitRuntime: ["getSession", "requireUser", "redirect", "notFound"], label: pageFile, fetch: fetchShim });
             serverVars = encodeServerValues(vals);

@@ -164,7 +164,7 @@ function runOne(block: ServerBlock, bindings: Record<string, unknown>): Promise<
  */
 export async function executeServerBlock(
   block: ServerBlock,
-  opts: { context?: ServerRequestContext; imports?: Record<string, unknown>; scope?: Record<string, unknown>; omit?: string[]; omitRuntime?: string[]; label?: string; signal?: RedirectSignal; fetch?: any } = {},
+  opts: { context?: ServerRequestContext; imports?: Record<string, unknown>; scope?: Record<string, unknown>; omit?: string[]; omitRuntime?: string[]; label?: string; signal?: RedirectSignal; fetch?: any; trapCode?: string } = {},
 ): Promise<Record<string, unknown>> {
   const ctx = Object.freeze({
     params: Object.freeze({ ...(opts.context?.params ?? {}) }),
@@ -194,8 +194,8 @@ export async function executeServerBlock(
   // A static page's block must not see headers/cookies/query (or params without
   // enumerated params): bind them to a value that throws a named error on any
   // access, so aliasing/destructuring is caught at build time too.
-  for (const name of opts.omit ?? []) bindings[name] = unavailable(name, opts.label);
-  for (const name of opts.omitRuntime ?? []) bindings[name] = unavailableHelper(name, opts.label);
+  for (const name of opts.omit ?? []) bindings[name] = unavailable(name, opts.label, opts.trapCode);
+  for (const name of opts.omitRuntime ?? []) bindings[name] = unavailableHelper(name, opts.label, opts.trapCode);
 
   // A redirect/notFound recorded at throw time is honoured even if user code
   // caught the exception.
@@ -213,16 +213,16 @@ export async function executeServerBlock(
 }
 
 /** A stand-in for an unavailable context name: any access throws TW106. */
-function unavailable(name: string, label?: string): any {
-  const msg = `TW106: '${name}' is not available in a static server block${label ? ` (${label})` : ""}`;
+function unavailable(name: string, label?: string, code = "TW106"): any {
+  const msg = `${code}: '${name}' is not available in this server block${label ? ` (${label})` : ""}`;
   const boom = (): never => { throw new Error(msg); };
   return new Proxy({}, { get: boom, has: boom, ownKeys: boom, getOwnPropertyDescriptor: boom });
 }
 
 /** A stand-in for a runtime helper unavailable in a static block (TW107/TW108). */
-function unavailableHelper(name: string, label?: string): any {
-  const code = name === "getSession" || name === "requireUser" ? "TW107" : "TW108";
-  const msg = `${code}: ${name}() is not available in a static server block${label ? ` (${label})` : ""}`;
+function unavailableHelper(name: string, label?: string, codeOverride?: string): any {
+  const code = codeOverride ?? (name === "getSession" || name === "requireUser" ? "TW107" : "TW108");
+  const msg = `${code}: ${name}() is not available in this server block${label ? ` (${label})` : ""}`;
   return (..._a: any[]): never => { throw new Error(msg); };
 }
 
@@ -231,14 +231,14 @@ function unavailableHelper(name: string, label?: string): any {
  * does not cancel the running block. */
 export async function executeServerBlocks(
   blocks: ServerBlock[],
-  opts: { context?: ServerRequestContext; imports?: Record<string, unknown>; timeoutMs?: number; omit?: string[]; omitRuntime?: string[]; label?: string; signal?: RedirectSignal; fetch?: any } = {},
+  opts: { context?: ServerRequestContext; imports?: Record<string, unknown>; timeoutMs?: number; omit?: string[]; omitRuntime?: string[]; label?: string; signal?: RedirectSignal; fetch?: any; trapCode?: string } = {},
 ): Promise<Record<string, unknown>> {
   const scope: Record<string, unknown> = {};
   const ms = opts.timeoutMs ?? DEFAULT_SERVER_BLOCK_TIMEOUT_MS;
   const signal = opts.signal ?? {};
   for (const b of blocks) {
     const vals = await withTimeout(
-      executeServerBlock(b, { context: opts.context, imports: opts.imports, scope, omit: opts.omit, omitRuntime: opts.omitRuntime, label: opts.label, signal, fetch: opts.fetch }),
+      executeServerBlock(b, { context: opts.context, imports: opts.imports, scope, omit: opts.omit, omitRuntime: opts.omitRuntime, label: opts.label, signal, fetch: opts.fetch, trapCode: opts.trapCode }),
       ms,
       `block at line ${b.line}`,
     );
@@ -401,6 +401,10 @@ export interface ServerBlockCheckOptions {
   isLayout?: boolean;
   /** True when the dynamic route has enumerated params (params.twm / fn generate()). */
   hasEnumeratedParams?: boolean;
+  /** True when the page is a cached page (server block + page { cache { } }). */
+  cachedPage?: boolean;
+  /** True when the page declares cache { vary: [...] }. */
+  hasVary?: boolean;
 }
 
 export interface ServerBlockProblem {
@@ -463,6 +467,19 @@ export function checkServerBlocks(program: Program, opts: ServerBlockCheckOption
     }
   }
 
+  // Cached page (server block + page { cache { } }): direct reads are a lint error.
+  if (opts.cachedPage) {
+    for (const b of blocks) {
+      for (const a of cachedPageDirectReads(b.source)) {
+        push("TW111", `a cached page's server block cannot read '${a}'`, b.line, b.col);
+      }
+    }
+  }
+  // vary on a static page is a compile error.
+  if (opts.mode === "static" && opts.hasVary) {
+    for (const b of blocks) push("TW112", "cache { vary } is only valid on an ssr page (not static)", b.line, b.col);
+  }
+
   return out;
 }
 
@@ -516,4 +533,69 @@ export function scanCachedCredentialHeaders(body: string): string[] {
   };
   visit(sf);
   return out;
+}
+
+// --- Cached pages (E2b) ------------------------------------------------------
+
+/** The `vary` list from a page's `cache { ... }` (lowercased, sorted, unique). */
+export function extractVary(source: string): string[] {
+  const m = /cache\s*\{([\s\S]*?)\}/.exec(source);
+  if (!m) return [];
+  const body = m[1];
+  const arr = /vary\s*:\s*\[([^\]]*)\]/.exec(body) || /vary\s*\[([^\]]*)\]/.exec(body);
+  const names: string[] = [];
+  if (arr) {
+    for (const part of arr[1].split(",")) {
+      const t = part.trim().replace(/^["']|["']$/g, "").toLowerCase();
+      if (t) names.push(t);
+    }
+  } else {
+    const single = /vary\s+["']([^"']+)["']/.exec(body);
+    if (single) names.push(single[1].toLowerCase());
+  }
+  // lowercased, sorted, unique; first occurrence wins
+  const seen = new Set<string>();
+  const out: string[] = [];
+  for (const n of names) if (!seen.has(n)) { seen.add(n); out.push(n); }
+  return out.sort();
+}
+
+/** Build the visible/limited query for a cached page (vary keys only). */
+export function varyQuery(query: Record<string, string>, vary: string[]): Record<string, string> {
+  const out: Record<string, string> = {};
+  for (const k of vary) {
+    const v = query[k] ?? query[k.toLowerCase()];
+    if (v !== undefined) out[k] = String(v).trim().slice(0, 200);
+  }
+  return out;
+}
+
+/** Canonical vary-query string for the cache key (sorted, empty dropped). */
+export function canonicalVaryQuery(vq: Record<string, string>): string {
+  return Object.keys(vq).sort().filter((k) => vq[k] !== "").map((k) => `${k}=${vq[k]}`).join("&");
+}
+
+/** Direct reads of the request context inside a cached page's block (lint). */
+export function cachedPageDirectReads(body: string): string[] {
+  const used = scanRequestAccess(body);
+  const calls = scanRuntimeCalls(body);
+  const out: string[] = [];
+  for (const n of ["headers", "cookies"]) if (used.has(n)) out.push(n);
+  if (calls.getSession) out.push("getSession");
+  if (calls.requireUser) out.push("requireUser");
+  return out;
+}
+
+/** A page's own cache window (revalidate/expire/tag), tolerant of `vary`. */
+export function parsePageCache(source: string): { revalidate: number; expire: number; tag?: string } | null {
+  const m = /cache\s*\{([\s\S]*?)\}/.exec(source);
+  if (!m) return null;
+  const body = m[1];
+  const num = (k: string) => { const r = new RegExp(`\\b${k}\\s*:?\\s*(\\d+)`).exec(body); return r ? Number(r[1]) : undefined; };
+  const revalidate = num("revalidate");
+  const expire = num("expire");
+  const tagM = /\btag\s*:?\s*["']([^"']+)["']/.exec(body);
+  if (revalidate === undefined && expire === undefined) return null;
+  const rv = revalidate ?? 60;
+  return { revalidate: rv, expire: expire ?? rv, tag: tagM ? tagM[1] : undefined };
 }
