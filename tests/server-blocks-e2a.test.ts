@@ -165,8 +165,9 @@ describe("E2a: server blocks get the fetch shim", () => {
     const m = mock(() => ok("{}"));
     const sf = createServerFetch({ buildId: "b1", platformFetch: m.f });
     const blocks = collectServerBlocks(parseWithDetails('server {\n  const r = await fetch("http://x/y", { cache: { revalidate: 60 } })\n  const j = await r.json()\n  const out = j === null ? "n" : "o"\n}\np "x"\n', SB).program);
-    await executeServerBlocks(blocks, { context: { params: {} }, fetch: sf });
-    await executeServerBlocks(blocks, { context: { params: {} }, fetch: sf });
+    const referenced = new Set(["out"]);
+    await executeServerBlocks(blocks, { context: { params: {} }, fetch: sf, referenced });
+    await executeServerBlocks(blocks, { context: { params: {} }, fetch: sf, referenced });
     expect(m.calls.length).toBe(1);
   });
 

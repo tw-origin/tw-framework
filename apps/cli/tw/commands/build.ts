@@ -490,6 +490,7 @@ export async function buildCommand(): Promise<void> {
   let loginPath = "/login";
   let fetchTimeoutMs: number | undefined;
   let fetchCacheMaxBytes: number | undefined;
+  let maxPayloadBytes = 128 * 1024;
   const compilePassOpts = (): any =>
     compilerOpts
       ? {
@@ -542,6 +543,7 @@ export async function buildCommand(): Promise<void> {
       serverOnlyPackages = Array.isArray(cfg?.server?.onlyPackages) ? cfg.server.onlyPackages : [];
       fetchTimeoutMs = cfg?.server?.fetchTimeoutMs;
       fetchCacheMaxBytes = cfg?.server?.fetchCacheMaxBytes;
+      if (typeof cfg?.server?.maxPayloadBytes === "number") maxPayloadBytes = cfg.server.maxPayloadBytes;
       if (cfg?.server?.loginPath !== undefined) {
         const { isValidRedirectTarget } = _compilerMod as any;
         loginPath = String(cfg.server.loginPath);
@@ -1006,11 +1008,15 @@ export async function buildCommand(): Promise<void> {
       // param set, then merge the encoded values into a COPY of the state.
       let serverVars: Record<string, string> = {};
       if (serverBlocksOn) {
-        const { parseWithDetails, collectServerBlocks, checkServerBlocks, executeServerBlocks, encodeServerValues } = _compilerMod as any;
+        const { parseWithDetails, collectServerBlocks, checkServerBlocks, executeServerBlocks, encodeServerValues, collectReferencedNames, extractVary, secretEnvValues } = _compilerMod as any;
         const prog = parseWithDetails(source, { filePath: pageFile, cache: false, experimental: { serverBlocks: true } }).program;
         const sb = collectServerBlocks(prog);
         if (sb.length) {
-          const problems = checkServerBlocks(prog, { mode: renderMode, paramNames: Object.keys(paramSet), hasEnumeratedParams: hasExplicitParams });
+          const referenced = collectReferencedNames(source);
+          const problems = checkServerBlocks(prog, {
+            mode: renderMode, paramNames: Object.keys(paramSet), hasEnumeratedParams: hasExplicitParams,
+            cachedPage: /cache\s*\{/.test(source), hasVary: extractVary(source).length > 0, referenced,
+          });
           if (problems.length) {
             for (const p of problems) console.error("  \x1b[31m\u2717\x1b[0m " + pageFile.replace(rootDir + "/", "") + ":" + p.line + "  " + p.code + "  " + p.message);
             errorCount++;
@@ -1024,7 +1030,7 @@ export async function buildCommand(): Promise<void> {
             const { createServerFetch, wrapJsonErrors, SERVER_FETCH_BUILD_ID } = _compilerMod as any;
             const sfetch = createServerFetch({ buildId: SERVER_FETCH_BUILD_ID, timeoutMs: fetchTimeoutMs, maxBytes: fetchCacheMaxBytes });
             const fetchShim = (u: any, i?: any) => sfetch(u, i).then(wrapJsonErrors);
-            const vals = await executeServerBlocks(sb, { context: { params: paramSet, env: process.env as Record<string, string>, loginPath }, omit, omitRuntime: ["getSession", "requireUser", "redirect", "notFound"], label: pageFile, fetch: fetchShim });
+            const vals = await executeServerBlocks(sb, { context: { params: paramSet, env: process.env as Record<string, string>, loginPath }, omit, omitRuntime: ["getSession", "requireUser", "redirect", "notFound"], label: pageFile, fetch: fetchShim, referenced, maxPayloadBytes, secrets: secretEnvValues(process.env) });
             serverVars = encodeServerValues(vals);
           } catch (e: any) {
             console.error("  \x1b[31m\u2717\x1b[0m " + pageFile.replace(rootDir + "/", "") + "  server block failed: " + (e?.message ?? e));

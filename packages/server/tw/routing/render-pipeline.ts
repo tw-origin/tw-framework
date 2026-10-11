@@ -25,7 +25,7 @@
 
 import { readFileSync, existsSync } from "node:fs";
 import { dirname } from "node:path";
-import { compileSync, registerComponentTemplate, collectServerBlocks, encodeServerValues, executeServerBlocks, resolveServerImports, isServerRedirect, isServerNotFound, createServerFetch, wrapJsonErrors, SERVER_FETCH_BUILD_ID, extractVary, varyQuery, canonicalVaryQuery, parsePageCache, type CompileResult } from "@tw/compiler";
+import { compileSync, registerComponentTemplate, collectServerBlocks, encodeServerValues, executeServerBlocks, resolveServerImports, isServerRedirect, isServerNotFound, createServerFetch, wrapJsonErrors, SERVER_FETCH_BUILD_ID, extractVary, varyQuery, canonicalVaryQuery, parsePageCache, collectReferencedNames, secretEnvValues, type CompileResult } from "@tw/compiler";
 import { maskSourceStringsAndComments, sha256, extractCacheDirective, resolveCache, readCacheProfilesSync, type ResolvedCache } from "@tw/shared";
 import { executeRouteHandler } from "./twm-loader";
 import type {
@@ -88,6 +88,9 @@ export class RenderPipeline {
   private fetchCacheMaxBytes?: number;
   private cacheInDev?: boolean;
   private pageCacheMaxEntries?: number;
+  /** True when any middleware rule can match a route (F-0d). */
+  private middlewareActive = false;
+  private maxPayloadBytes = 128 * 1024;
   private routeTree: RouteNode | null = null;
   private compiledCache: Map<string, CompiledFileEntry> = new Map();
   /**
@@ -133,6 +136,8 @@ export class RenderPipeline {
     this.fetchCacheMaxBytes = (opts as any).fetchCacheMaxBytes;
     this.cacheInDev = (opts as any).cacheInDev;
     this.pageCacheMaxEntries = (opts as any).pageCacheMaxEntries;
+    this.middlewareActive = (opts as any).middlewareActive === true;
+    if (typeof (opts as any).maxPayloadBytes === "number") this.maxPayloadBytes = (opts as any).maxPayloadBytes;
     this.hydrationMode = opts.hydrationMode ?? "auto";
   }
 
@@ -219,8 +224,11 @@ export class RenderPipeline {
       const now = Date.now();
       const hit = this.renderCache.get(cacheKey);
       if (hit && now < (hit.freshUntil ?? 0)) {
+        // True LRU: a HIT refreshes recency.
+        this.renderCache.delete(cacheKey);
+        this.renderCache.set(cacheKey, hit);
         // HIT: per-request headers are generated fresh -- never replayed.
-        return { ...hit.result, fromCache: true, durationMs: 0, headers: this.stampCacheHeaders({ "Content-Type": "text/html; charset=utf-8" }, hit, now, "HIT"), serverBlocks: true } as RouteRenderResult;
+        return { ...hit.result, fromCache: true, durationMs: 0, headers: this.cachedPageHeaders({ "Content-Type": "text/html; charset=utf-8" }, hit, now, "HIT"), serverBlocks: true } as RouteRenderResult;
       }
       const cachedContext = { params: match!.params ?? {}, query: vq, env: (process.env as Record<string, string>) ?? {}, loginPath: this.loginPath };
       const imports: Record<string, unknown> = {};
@@ -237,6 +245,7 @@ export class RenderPipeline {
           context: cachedContext, imports, fetch: fetchShim,
           omit: ["headers", "cookies"], omitRuntime: ["getSession", "requireUser"],
           trapCode: "TW111", label: pageFile,
+          referenced: collectReferencedNames(src), maxPayloadBytes: this.maxPayloadBytes, secrets: secretEnvValues(process.env),
         });
         const merged = { ...(match!.params ?? {}), params: match!.params ?? {}, ...encodeServerValues(values) };
         (this as any).__bypassCompileCache = true;
@@ -255,14 +264,19 @@ export class RenderPipeline {
           expireAt: now + pageCache.expire * 1000,
           cache: pageCache, createdAt: now, pathname,
         };
-        const maxEntries = (this as any).pageCacheMaxEntries ?? 500;
-        while (this.renderCache.size >= maxEntries) {
-          const oldest = this.renderCache.keys().next().value as string | undefined;
-          if (oldest === undefined) break;
-          this.renderCache.delete(oldest);
+        const maxEntries = this.pageCacheMaxEntries ?? 500;
+        // Max entry size 1 MB (skip + log when larger).
+        if (result.html && result.html.length > 1_000_000) {
+          console.log(`[tw] cached page ${pathname}: body over 1MB, not cached`);
+        } else {
+          while (this.renderCache.size >= maxEntries) {
+            const oldest = this.renderCache.keys().next().value as string | undefined;
+            if (oldest === undefined) break;
+            this.renderCache.delete(oldest);
+          }
+          this.renderCache.set(cacheKey, entry);
         }
-        this.renderCache.set(cacheKey, entry);
-        return { ...result, headers: this.stampCacheHeaders(safeHeaders, entry, now, "MISS"), serverBlocks: true } as RouteRenderResult;
+        return { ...result, headers: this.cachedPageHeaders(safeHeaders, entry, now, "MISS"), serverBlocks: true } as RouteRenderResult;
       } catch (err: any) {
         if (isServerRedirect(err)) {
           return { html: "", css: "", js: "", status: 302, headers: { Location: err.target, "Cache-Control": "private, no-store" }, fromCache: false, durationMs: 0, serverBlocks: true } as RouteRenderResult;
@@ -295,7 +309,7 @@ export class RenderPipeline {
         log: this.dev ? (l: string) => console.log(l) : undefined,
       });
       const fetchShim = (u: any, i?: any) => sfetch(u, i).then(wrapJsonErrors);
-      const values = await executeServerBlocks(blocks, { context, imports, fetch: fetchShim });
+      const values = await executeServerBlocks(blocks, { context, imports, fetch: fetchShim, referenced: collectReferencedNames(src), maxPayloadBytes: this.maxPayloadBytes, secrets: secretEnvValues(process.env) });
       const merged = { ...(match!.params ?? {}), params: match!.params ?? {}, ...encodeServerValues(values) };
       // Bypass BOTH caches: per-request data would grow them without bound.
       (this as any).__bypassCompileCache = true;
@@ -977,6 +991,17 @@ export class RenderPipeline {
    *     only when `stale > 0` -- the client-side hint. The server
    *     render-cache never reads `stale`.
    */
+  /**
+   * Cache headers for a cached page. When any middleware rule can match the
+   * route, a downstream shared cache must not serve it: emit
+   * `private, max-age=0, must-revalidate` (the origin cache still works).
+   */
+  private cachedPageHeaders(headers: Record<string, string> | undefined, entry: any, now: number, verdict: "HIT" | "STALE" | "MISS"): Record<string, string> {
+    const out = this.stampCacheHeaders(headers, entry, now, verdict);
+    if (this.middlewareActive) out["Cache-Control"] = "private, max-age=0, must-revalidate";
+    return out;
+  }
+
   private stampCacheHeaders(
     headers: Record<string, string> | undefined,
     entry: { cache?: ResolvedCache | null; createdAt?: number } | null | undefined,

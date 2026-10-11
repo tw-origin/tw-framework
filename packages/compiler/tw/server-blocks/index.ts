@@ -7,6 +7,7 @@
  * asks for it (build / ssr).
  */
 
+import { validateSerializable, containsSecret, toJsonSafe, ServerSerializationError, scanNonSerializableInitializers, scanEnvInMarkup, lintSql, lintSsrf, collectReferencedNames, secretEnvValues } from "./serialize";
 import * as ts from "typescript";
 import type { Program, ServerBlock } from "../ast/nodes";
 
@@ -231,18 +232,34 @@ function unavailableHelper(name: string, label?: string, codeOverride?: string):
  * does not cancel the running block. */
 export async function executeServerBlocks(
   blocks: ServerBlock[],
-  opts: { context?: ServerRequestContext; imports?: Record<string, unknown>; timeoutMs?: number; omit?: string[]; omitRuntime?: string[]; label?: string; signal?: RedirectSignal; fetch?: any; trapCode?: string } = {},
+  opts: { context?: ServerRequestContext; imports?: Record<string, unknown>; timeoutMs?: number; omit?: string[]; omitRuntime?: string[]; label?: string; signal?: RedirectSignal; fetch?: any; trapCode?: string; referenced?: Set<string>; maxPayloadBytes?: number; secrets?: { name: string; value: string }[] } = {},
 ): Promise<Record<string, unknown>> {
   const scope: Record<string, unknown> = {};
   const ms = opts.timeoutMs ?? DEFAULT_SERVER_BLOCK_TIMEOUT_MS;
   const signal = opts.signal ?? {};
+  const secrets = opts.secrets ?? [];
   for (const b of blocks) {
     const vals = await withTimeout(
       executeServerBlock(b, { context: opts.context, imports: opts.imports, scope, omit: opts.omit, omitRuntime: opts.omitRuntime, label: opts.label, signal, fetch: opts.fetch, trapCode: opts.trapCode }),
       ms,
       `block at line ${b.line}`,
     );
-    Object.assign(scope, vals);
+    // Only referenced declared names cross; each is validated, checked for
+    // secrets and counted toward the size cap.
+    for (const [k, v] of Object.entries(vals)) {
+      if (opts.referenced && !opts.referenced.has(k)) continue;
+      validateSerializable(v, opts.label ?? "<block>", k);
+      const sec = containsSecret(v, secrets);
+      if (sec) throw new ServerSerializationError("class-instance", opts.label ?? "<block>", k, "");
+      scope[k] = v;
+    }
+  }
+  if (opts.maxPayloadBytes && opts.maxPayloadBytes > 0) {
+    let bytes = 0;
+    for (const v of Object.values(scope)) bytes += toJsonSafe(v).length;
+    if (bytes > opts.maxPayloadBytes) {
+      throw new Error(`TW114: server-block payload is ${bytes} bytes, over the ${opts.maxPayloadBytes}-byte cap${opts.label ? ` [${opts.label}]` : ""}`);
+    }
   }
   return scope;
 }
@@ -405,6 +422,8 @@ export interface ServerBlockCheckOptions {
   cachedPage?: boolean;
   /** True when the page declares cache { vary: [...] }. */
   hasVary?: boolean;
+  /** Identifiers referenced by the page template (for the serialization checks). */
+  referenced?: Set<string>;
 }
 
 export interface ServerBlockProblem {
@@ -478,6 +497,20 @@ export function checkServerBlocks(program: Program, opts: ServerBlockCheckOption
   // vary on a static page is a compile error.
   if (opts.mode === "static" && opts.hasVary) {
     for (const b of blocks) push("TW112", "cache { vary } is only valid on an ssr page (not static)", b.line, b.col);
+  }
+
+  // Compile-time serialization + env checks (only for referenced names) + lints.
+  for (const b of blocks) {
+    if (opts.referenced && opts.referenced.size) {
+      for (const x of scanNonSerializableInitializers(b.source, opts.referenced)) {
+        push("TW113", `'${x.name}' is not serializable (${x.kind})`, b.line, b.col);
+      }
+      for (const n of scanEnvInMarkup(b.source, opts.referenced)) {
+        push("TW115", `'${n}' reads env and would cross to markup`, b.line, b.col);
+      }
+    }
+    for (const _ of lintSql(b.source)) push("TW116", "SQL-looking template literal interpolates request data", b.line, b.col);
+    for (const _ of lintSsrf(b.source)) push("TW117", "fetch() with a request-derived URL (SSRF)", b.line, b.col);
   }
 
   return out;

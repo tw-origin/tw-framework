@@ -1181,6 +1181,8 @@ export class TWServer {
                 fetchTimeoutMs: (this.options as any).config?.server?.fetchTimeoutMs,
                 fetchCacheMaxBytes: (this.options as any).config?.server?.fetchCacheMaxBytes,
                 cacheInDev: (this.options as any).config?.server?.cacheInDev,
+                pageCacheMaxEntries: (this.options as any).config?.server?.pageCacheMaxEntries,
+                middlewareActive: (this as any).middlewarePath !== null,
               });
               setActivePipeline(this.renderPipeline);
             }
