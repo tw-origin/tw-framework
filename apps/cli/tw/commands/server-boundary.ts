@@ -177,3 +177,27 @@ export function walkClientGraph(entryFiles: string[], opts: WalkOptions = {}): B
 export function formatChain(v: BoundaryViolation): string {
   return v.chain.join(" -> ");
 }
+
+/**
+ * The dev-mode server-only boundary check: the same transitive walk build uses,
+ * returned as formatted messages so the caller can log them non-fatally.
+ * Server-block regions are stripped first so a block's own imports are never
+ * mistaken for client imports.
+ */
+export async function devServerOnlyBoundary(rootDir: string, entryFiles: string[], onlyPackages?: string[]): Promise<string[]> {
+  let strip: ((src: string) => string) | undefined;
+  try {
+    const compiler: any = await import("@tw/compiler");
+    if (compiler?.parseWithDetails && compiler?.collectServerBlocks && compiler?.stripServerBlockRegions) {
+      strip = (src: string) => {
+        try {
+          const prog = compiler.parseWithDetails(src, { filePath: "<scan>", cache: false, experimental: { serverBlocks: true } }).program;
+          const blocks = compiler.collectServerBlocks(prog);
+          return blocks.length ? compiler.stripServerBlockRegions(src, blocks) : src;
+        } catch { return src; }
+      };
+    }
+  } catch { /* compiler unavailable in this context */ }
+  const viols = walkClientGraph(entryFiles, { rootDir, onlyPackages, stripServerRegions: strip });
+  return viols.map((v) => `${v.layer}:${v.specifier}  [${formatChain(v)}]`);
+}

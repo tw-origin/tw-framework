@@ -105,6 +105,8 @@ export interface RouteRenderResult {
   headers: Record<string, string>;
   /** Whether this was a cached response. */
   fromCache: boolean;
+  /** Set when the page ran a server block (private/no-store handling). */
+  serverBlocks?: boolean;
   /** ISR: served stale while a background re-render refreshes the cache. */
   stale?: boolean;
   /** Render time in milliseconds. */
@@ -131,6 +133,19 @@ export interface RenderPipelineOptions {
    *   "none"    -> never ship client JS
    */
   hydrationMode?: "auto" | "full" | "islands" | "none";
+  /** experimental.serverBlocks: run server { } blocks. Off by default. */
+  serverBlocks?: boolean;
+  /** server.loginPath — target of requireUser()'s redirect. */
+  loginPath?: string;
+  /** server.fetchTimeoutMs / fetchCacheMaxBytes / cacheInDev / pageCacheMaxEntries. */
+  fetchTimeoutMs?: number;
+  fetchCacheMaxBytes?: number;
+  cacheInDev?: boolean;
+  pageCacheMaxEntries?: number;
+  /** server.maxPayloadBytes — cap on the serialized block payload. */
+  maxPayloadBytes?: number;
+  /** Whether a root middleware.twm can match a route (guards cached-page headers). */
+  middlewareActive?: boolean;
 }
 
 /** Internal compiled file cache entry. */

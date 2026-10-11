@@ -250,7 +250,7 @@ export class RenderPipeline {
         const merged = { ...(match!.params ?? {}), params: match!.params ?? {}, ...encodeServerValues(values) };
         (this as any).__bypassCompileCache = true;
         let result: RouteRenderResult;
-        try { result = this.render(pathname, merged, { bypassCache: true }); }
+        try { result = this.render(pathname, merged as any, { bypassCache: true }); }
         finally { (this as any).__bypassCompileCache = false; }
         // Store ONLY safe parts -- never Set-Cookie / per-request headers.
         const safeHeaders: Record<string, string> = {};
@@ -314,7 +314,7 @@ export class RenderPipeline {
       // Bypass BOTH caches: per-request data would grow them without bound.
       (this as any).__bypassCompileCache = true;
       let result: RouteRenderResult;
-      try { result = this.render(pathname, merged, { bypassCache: true }); }
+      try { result = this.render(pathname, merged as any, { bypassCache: true }); }
       finally { (this as any).__bypassCompileCache = false; }
       const outHeaders = { ...(result.headers ?? {}), "Cache-Control": "private, no-store" } as Record<string, string>;
       delete outHeaders["x-tw-cache-age"];

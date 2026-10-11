@@ -569,6 +569,14 @@ export function checkLoopIterables(program: Program, filePath: string, diags: Di
 export function checkUnknownStateVars(program: Program, filePath: string, diags: Diagnostic[]): void {
   const known = new Set<string>();
   for (const decl of collectStateDecls(program)) known.add(decl.name);
+  // Names a server block declares become template state at render time, so an
+  // interpolation of one is not an unknown variable (the values are provided
+  // by the block at build or request time).
+  for (const d of ((program as any).directives ?? [])) {
+    if (d && d.type === "ServerBlock" && Array.isArray(d.declaredNames)) {
+      for (const n of d.declaredNames) known.add(n);
+    }
+  }
   // One walk collects both the `for` bindings and the text nodes. The old code
   // walked the whole tree twice (once for bindings, once for text).
   const texts: any[] = [];

@@ -77,6 +77,13 @@ export function collectReferencedNames(templateSource: string): Set<string> {
   while ((m = brace.exec(src))) exprs.push(m[1]);
   const quoted = /"([^"]*)"/g;
   while ((m = quoted.exec(src))) exprs.push(m[1]);
+  // A name can be referenced without sitting inside braces or quotes: the
+  // iterable of `for x in <expr>` and the condition of `if <expr>`. Without
+  // these, a block value used only as a loop source never crossed.
+  const forRe = /\bfor\s+[A-Za-z_$][A-Za-z0-9_$]*\s+in\s+([^\n{}]+)/g;
+  while ((m = forRe.exec(src))) exprs.push(m[1]);
+  const ifRe = /\bif\s+([^\n{}]+)/g;
+  while ((m = ifRe.exec(src))) exprs.push(m[1]);
   for (const e of exprs) {
     const id = /[A-Za-z_$][A-Za-z0-9_$]*/g;
     let t;

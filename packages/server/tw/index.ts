@@ -1194,6 +1194,13 @@ export class TWServer {
             // render pipeline serve `(.)page.tw` interceptors (modals).
             (renderPipeline as any).navRequest = request.headers.get("x-tw-navigate") === "1";
             const result: any = await renderPipeline.renderWithServerBlocks(pathname, request);
+            // A .twm route (no page file) comes back as a stub carrying the
+            // route file; execute it through renderRoute so its status and
+            // headers (Set-Cookie, custom status) are honored, instead of
+            // returning the stub's placeholder body.
+            if (result && result.routeFile) {
+              return await renderPipeline.renderRoute(pathname, request.method, request);
+            }
             if (result && result.html) {
               // `render stream`: shell first, Suspense holes as streamed chunks
               if (result.renderMode === "stream") {
@@ -1228,6 +1235,16 @@ export class TWServer {
                 headers: outHeaders,
               });
             }
+            // A server-block page can resolve to a body-less result: a
+            // redirect (requireUser()/redirect()) or a notFound()/error status
+            // carries no HTML. Return it as-is instead of falling through to a
+            // 404, which would turn a real redirect into "not found".
+            if (result && !result.html && typeof result.status === "number" && result.status >= 300) {
+              return new Response(null, {
+                status: result.status,
+                headers: result.headers ?? {},
+              });
+            }
           }
         } catch (err: any) {
           console.error(`[ssr] Error: ${err.message}`);
@@ -1251,12 +1268,16 @@ export class TWServer {
 
         // If handler returned data, convert to JSON
         if (response !== undefined && response !== null) {
-          return new Response(JSON.stringify(response), {
-            headers: {
-              "Content-Type": "application/json",
-              // Response headers -- do NOT spread ctx.headers (request headers) into response
-            },
-          });
+          const r: any = response;
+          // Honor a route result's status and headers (a .twm handler returns
+          // { status, json, headers }) -- dropping them lost Set-Cookie and
+          // any custom status a route set.
+          const headers: Record<string, string> = { "Content-Type": "application/json" };
+          if (r.headers && typeof r.headers === "object") {
+            for (const [k, v] of Object.entries(r.headers)) headers[k] = String(v);
+          }
+          const status = typeof r.status === "number" ? r.status : 200;
+          return new Response(JSON.stringify(r.json ?? r), { status, headers });
         }
 
         // If ctx has response set by middleware

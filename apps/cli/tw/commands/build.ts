@@ -368,6 +368,7 @@ function stripServerRegionsForScan(source: string): string {
 
 export async function buildCommand(): Promise<void> {
   const rootDir = process.cwd();
+  let errorCount = 0;
   // --profile: emit a stage-by-stage timing report (docs/build-profiler.md)
   const profile = process.argv.slice(2).includes("--profile");
   const P = _compilerMod as any;
@@ -794,7 +795,6 @@ export async function buildCommand(): Promise<void> {
   // summary -- "Pages: 1" while the site had many SSR routes looked broken.
   let requestRenderedCount = 0;
   let apiCount = 0;
-  let errorCount = 0;
   const isrRoutes = new Map<string, number | Record<string, any>>();
 
   // -- 1. Compile all page.tw files to HTML --------------------------------
@@ -850,7 +850,9 @@ export async function buildCommand(): Promise<void> {
           const { loadTWMModule } = await import("../../../../packages/server/tw/routing/twm-loader.ts");
           const pmod: any = await loadTWMModule(paramsTwm, rootDir);
           if (typeof pmod.generate === "function") {
-            const arr = pmod.generate();
+            // `fn generate()` compiles to an async function, so its result is a
+            // Promise; awaiting it also works for a plain synchronous function.
+            const arr = await pmod.generate();
             if (Array.isArray(arr) && arr.length > 0) {
               // the DOCS form returns plain values
               // (`return ["one", "two", "three"]` next to a [item]/page.tw).
@@ -952,6 +954,24 @@ export async function buildCommand(): Promise<void> {
       console.log("  \x1b[36m~\x1b[0m " + routePath + " [" + renderMode + ": rendered at request time]");
       try {
         const src = readFileSync(pageFile, "utf-8");
+        // Server blocks are checked at build time for every page, not only
+        // static ones -- a non-serializable or env-reading block must fail the
+        // build regardless of render mode.
+        if (serverBlocksOn) {
+          try {
+            const { parseWithDetails, collectServerBlocks, checkServerBlocks, collectReferencedNames, extractVary } = _compilerMod as any;
+            const prog = parseWithDetails(src, { filePath: pageFile, cache: false, experimental: { serverBlocks: true } }).program;
+            const sb = collectServerBlocks(prog);
+            if (sb.length) {
+              const problems = checkServerBlocks(prog, {
+                mode: renderMode, paramNames: Object.keys(paramSets[0] ?? {}), hasEnumeratedParams: hasExplicitParams,
+                cachedPage: /cache\s*\{/.test(src), hasVary: extractVary(src).length > 0, referenced: collectReferencedNames(src),
+              });
+              for (const p of problems) console.error("  \x1b[31m\u2717\x1b[0m " + pageFile.replace(rootDir + "/", "") + ":" + p.line + "  " + p.code + "  " + p.message);
+              if (problems.length) errorCount++;
+            }
+          } catch { /* server-block checks are best-effort here */ }
+        }
         const r = _compileSync(src, { filePath: pageFile, ...compilePassOpts() });
         const errs = (r.diagnostics || []).filter((d: any) => d.severity === "error");
         if (errs.length > 0) {
@@ -1008,7 +1028,7 @@ export async function buildCommand(): Promise<void> {
       // param set, then merge the encoded values into a COPY of the state.
       let serverVars: Record<string, string> = {};
       if (serverBlocksOn) {
-        const { parseWithDetails, collectServerBlocks, checkServerBlocks, executeServerBlocks, encodeServerValues, collectReferencedNames, extractVary, secretEnvValues } = _compilerMod as any;
+        const { parseWithDetails, collectServerBlocks, checkServerBlocks, executeServerBlocks, encodeServerValues, collectReferencedNames, extractVary, secretEnvValues, resolveServerImports } = _compilerMod as any;
         const prog = parseWithDetails(source, { filePath: pageFile, cache: false, experimental: { serverBlocks: true } }).program;
         const sb = collectServerBlocks(prog);
         if (sb.length) {
@@ -1026,11 +1046,15 @@ export async function buildCommand(): Promise<void> {
           // without enumerated params) -- bind them to a throwing stand-in.
           const omit = ["headers", "cookies", "query"];
           if (!hasExplicitParams) omit.push("params");
+          // Resolve the block's imports the same way the SSR path does; without
+          // this a static block that imports a helper ran with the name unbound.
+          const imports: Record<string, unknown> = {};
+          for (const b of sb) Object.assign(imports, await resolveServerImports(b, pageFile, { dev: false }));
           try {
             const { createServerFetch, wrapJsonErrors, SERVER_FETCH_BUILD_ID } = _compilerMod as any;
             const sfetch = createServerFetch({ buildId: SERVER_FETCH_BUILD_ID, timeoutMs: fetchTimeoutMs, maxBytes: fetchCacheMaxBytes });
             const fetchShim = (u: any, i?: any) => sfetch(u, i).then(wrapJsonErrors);
-            const vals = await executeServerBlocks(sb, { context: { params: paramSet, env: process.env as Record<string, string>, loginPath }, omit, omitRuntime: ["getSession", "requireUser", "redirect", "notFound"], label: pageFile, fetch: fetchShim, referenced, maxPayloadBytes, secrets: secretEnvValues(process.env) });
+            const vals = await executeServerBlocks(sb, { context: { params: paramSet, env: process.env as Record<string, string>, loginPath }, imports, omit, omitRuntime: ["getSession", "requireUser", "redirect", "notFound"], label: pageFile, fetch: fetchShim, referenced, maxPayloadBytes, secrets: secretEnvValues(process.env) });
             serverVars = encodeServerValues(vals);
           } catch (e: any) {
             console.error("  \x1b[31m\u2717\x1b[0m " + pageFile.replace(rootDir + "/", "") + "  server block failed: " + (e?.message ?? e));
