@@ -7,7 +7,7 @@ import { describe, test, expect } from "bun:test";
 import { mkdtempSync, mkdirSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
-import { walkClientGraph, formatChain, collectModuleImports } from "../apps/cli/tw/commands/server-boundary";
+import { walkClientGraph, formatChain, collectModuleImports, devServerOnlyBoundary } from "../apps/cli/tw/commands/server-boundary";
 import { parseWithDetails, collectServerBlocks, stripServerBlockRegions } from "@tw/compiler";
 
 function app(files: Record<string, string>): string {
@@ -108,5 +108,28 @@ describe("Phase D: boundary walk", () => {
   test("a clean page passes", () => {
     const dir = app({ "home/page.tw": 'import dayjs from "dayjs"\nh1 "hi"\n' });
     expect(walk(dir, ["home/page.tw"]).length).toBe(0);
+  });
+});
+
+describe("dev: transitive server-only boundary (non-fatal)", () => {
+  test("devServerOnlyBoundary reports a transitive violation through the chain", async () => {
+    const dir = app({
+      "home/page.tw": 'import Cart from "./islands/Cart.tsx"\ndiv { }\n',
+      "home/islands/Cart.tsx": 'import { db } from "../lib/db.server.ts"\nexport default () => db\n',
+      "home/lib/db.server.ts": "export const db = 1\n",
+    });
+    const msgs = await devServerOnlyBoundary(dir, [join(dir, "home/page.tw")]);
+    expect(msgs.length).toBe(1);
+    expect(msgs[0]).toContain("db.server.ts");
+    expect(msgs[0]).toContain("Cart.tsx");
+  });
+
+  test("a server block importing a .server.ts is not a client violation", async () => {
+    const dir = app({
+      "home/page.tw": 'server {\n  import { db } from "../lib/db.server.ts"\n  const x = db\n}\np "{x}"\n',
+      "home/lib/db.server.ts": "export const db = 1\n",
+    });
+    const msgs = await devServerOnlyBoundary(dir, [join(dir, "home/page.tw")]);
+    expect(msgs).toEqual([]);
   });
 });

@@ -179,6 +179,11 @@ describe("server block: byte-identical fixtures", () => {
     // byte-identical to that baseline too.
     for (const f of files) {
       const src = readFileSync(f, "utf8");
+      // Byte-identity ON vs OFF is only promised for pages that do NOT contain
+      // a server block: with the flag on a block is stripped from codegen, with
+      // it off the block is ordinary page content, so the two are expected to
+      // differ. Skip the block pages (they are covered by the block tests).
+      if (/\bserver\s*(?::[A-Za-z]\w*)?\s*\{/.test(src)) continue;
       const on = compileSync(src, { filePath: f, experimental: { serverBlocks: true } });
       const off = compileSync(src, { filePath: f, experimental: { serverBlocks: false } });
       expect(on.html, `${f} html`).toBe(off.html);
