@@ -43,10 +43,23 @@ describe("E1: helpers in the runner", () => {
     expect(r.html).toContain("s=null");
   });
 
-  test("getSession: session -> the object", async () => {
-    const p = app('server {\n  const s = getSession()\n  const out = s && s.user ? s.user.name : "none"\n}\np "n={out}"\n');
-    const r = await p.renderWithServerBlocks("/", req({ user: { name: "Ada" } }));
+  test("getSession: session -> the sanitized shape { id, ...data }", async () => {
+    const p = app('server {\n  const s = getSession()\n  const out = s && s.name ? s.name : "none"\n}\np "n={out}"\n');
+    const r = await p.renderWithServerBlocks("/", req({ userId: "u1", data: { name: "Ada" } }));
     expect(r.html).toContain("n=Ada");
+  });
+
+  test("getSession never exposes sessionId/ipHash/userAgentHash", async () => {
+    const p = app('server {\n  const s = getSession()\n  const leak = s && (s.sessionId || s.ipHash || s.userAgentHash) ? "LEAK" : "clean"\n}\np "x={leak}"\n');
+    const r = await p.renderWithServerBlocks("/", req({ userId: "u1", data: {}, sessionId: "sid", ipHash: "ip", userAgentHash: "ua" }));
+    expect(r.html).toContain("x=clean");
+  });
+
+  test("requireUser: anonymous session (no userId) -> 302", async () => {
+    const p = app('server {\n  const me = requireUser()\n  const x = me.name\n}\np "x={x}"\n');
+    const r = await p.renderWithServerBlocks("/", req({ data: { name: "Anon" } }));
+    expect(r.status).toBe(302);
+    expect(r.headers?.Location).toBe("/login");
   });
 
   test("requireUser: no session -> 302 to /login", async () => {
@@ -60,7 +73,7 @@ describe("E1: helpers in the runner", () => {
 
   test("requireUser: with session -> the user renders", async () => {
     const p = app('server {\n  const me = requireUser()\n  const x = me.name\n}\np "x={x}"\n');
-    const r = await p.renderWithServerBlocks("/", req({ user: { name: "Grace" } }));
+    const r = await p.renderWithServerBlocks("/", req({ userId: "u1", data: { name: "Grace" } }));
     expect(r.html).toContain("x=Grace");
   });
 
@@ -98,11 +111,24 @@ describe("E1: helpers in the runner", () => {
     expect(r.headers?.Location).toBe("/x");
   });
 
-  test("KNOWN LIMITATION: a user try/catch swallows the redirect", async () => {
-    const p = app('server {\n  let caught = "no"\n  try { redirect("/x") } catch { caught = "yes" }\n}\np "caught={caught}"\n');
+  test("swallow hardening: try/catch around redirect() still ends in 302", async () => {
+    const p = app('server {\n  try { redirect("/x") } catch { /* swallowed */ }\n}\np "y"\n');
     const r = await p.renderWithServerBlocks("/", req(null));
-    expect(r.status).toBe(200);
-    expect(r.html).toContain("caught=yes");
+    expect(r.status).toBe(302);
+    expect(r.headers?.Location).toBe("/x");
+  });
+
+  test("swallow hardening: try/catch around requireUser() still ends in 302", async () => {
+    const p = app('server {\n  try { requireUser() } catch { /* swallowed */ }\n}\np "y"\n');
+    const r = await p.renderWithServerBlocks("/", req(null));
+    expect(r.status).toBe(302);
+    expect(r.headers?.Location).toBe("/login");
+  });
+
+  test("swallow hardening: try/catch around notFound() still ends in 404", async () => {
+    const p = app('server {\n  try { notFound() } catch { /* swallowed */ }\n}\np "y"\n');
+    const r = await p.renderWithServerBlocks("/", req(null));
+    expect(r.status).toBe(404);
   });
 
   test("a non-redirect throw stays the generic 500", async () => {
@@ -151,7 +177,7 @@ describe("E1: real middleware + real Cookie (socket)", () => {
 import { request as httpRequest } from "node:http";
 const { TWServer } = await import(${JSON.stringify(serverPath)});
 const { sessionMiddleware } = await import(${JSON.stringify(mwPath)});
-const store = new Map([["sid1", { user: { name: "Zed" } }]]);
+const store = new Map([["sid1", { userId: "u1", data: { name: "Zed" } }]]);
 const mw = sessionMiddleware({ secret: "s", store });
 const server = new TWServer({ rootDir: ${JSON.stringify(dir)}, port: 0, host: "127.0.0.1", config: { experimental: { serverBlocks: true } }, securityHeaders: false, cors: false, compression: false });
 const srv = Bun.serve({ port: 0, fetch: (r) => { mw(r, { headers: { set() {} } }, () => {}); return server.handleRequest(r); } });

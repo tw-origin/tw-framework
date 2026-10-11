@@ -164,7 +164,7 @@ function runOne(block: ServerBlock, bindings: Record<string, unknown>): Promise<
  */
 export async function executeServerBlock(
   block: ServerBlock,
-  opts: { context?: ServerRequestContext; imports?: Record<string, unknown>; scope?: Record<string, unknown>; omit?: string[]; omitRuntime?: string[]; label?: string } = {},
+  opts: { context?: ServerRequestContext; imports?: Record<string, unknown>; scope?: Record<string, unknown>; omit?: string[]; omitRuntime?: string[]; label?: string; signal?: RedirectSignal; fetch?: any } = {},
 ): Promise<Record<string, unknown>> {
   const ctx = Object.freeze({
     params: Object.freeze({ ...(opts.context?.params ?? {}) }),
@@ -173,7 +173,8 @@ export async function executeServerBlock(
     cookies: Object.freeze({ ...(opts.context?.cookies ?? {}) }),
     env: Object.freeze({ ...(opts.context?.env ?? {}) }),
   });
-  const helpers = makeRuntimeHelpers(opts.context?.session ?? null, opts.context?.loginPath ?? "/login");
+  const signal = opts.signal;
+  const helpers = makeRuntimeHelpers(opts.context?.session ?? null, opts.context?.loginPath ?? "/login", signal);
   const bindings: Record<string, unknown> = {
     ...(opts.scope ?? {}),
     ...(opts.imports ?? {}),
@@ -186,13 +187,29 @@ export async function executeServerBlock(
     requireUser: helpers.requireUser,
     redirect: helpers.redirect,
     notFound: helpers.notFound,
+    // The `fetch` seen inside a block is the serverFetch shim (timeout, cache,
+    // dedupe). Falls back to the platform fetch when the caller passes none.
+    fetch: opts.fetch ?? globalThis.fetch,
   };
   // A static page's block must not see headers/cookies/query (or params without
   // enumerated params): bind them to a value that throws a named error on any
   // access, so aliasing/destructuring is caught at build time too.
   for (const name of opts.omit ?? []) bindings[name] = unavailable(name, opts.label);
   for (const name of opts.omitRuntime ?? []) bindings[name] = unavailableHelper(name, opts.label);
-  return (await runOne(block, bindings)) ?? {};
+
+  // A redirect/notFound recorded at throw time is honoured even if user code
+  // caught the exception.
+  let out: Record<string, unknown> | undefined;
+  try {
+    out = await runOne(block, bindings);
+  } catch (e) {
+    if (signal?.redirect) throw new ServerRedirect(signal.redirect);
+    if (signal?.notFound) throw new ServerNotFound();
+    throw e;
+  }
+  if (signal?.redirect) throw new ServerRedirect(signal.redirect);
+  if (signal?.notFound) throw new ServerNotFound();
+  return out ?? {};
 }
 
 /** A stand-in for an unavailable context name: any access throws TW106. */
@@ -214,13 +231,14 @@ function unavailableHelper(name: string, label?: string): any {
  * does not cancel the running block. */
 export async function executeServerBlocks(
   blocks: ServerBlock[],
-  opts: { context?: ServerRequestContext; imports?: Record<string, unknown>; timeoutMs?: number; omit?: string[]; omitRuntime?: string[]; label?: string } = {},
+  opts: { context?: ServerRequestContext; imports?: Record<string, unknown>; timeoutMs?: number; omit?: string[]; omitRuntime?: string[]; label?: string; signal?: RedirectSignal; fetch?: any } = {},
 ): Promise<Record<string, unknown>> {
   const scope: Record<string, unknown> = {};
   const ms = opts.timeoutMs ?? DEFAULT_SERVER_BLOCK_TIMEOUT_MS;
+  const signal = opts.signal ?? {};
   for (const b of blocks) {
     const vals = await withTimeout(
-      executeServerBlock(b, { context: opts.context, imports: opts.imports, scope, omit: opts.omit, omitRuntime: opts.omitRuntime, label: opts.label }),
+      executeServerBlock(b, { context: opts.context, imports: opts.imports, scope, omit: opts.omit, omitRuntime: opts.omitRuntime, label: opts.label, signal, fetch: opts.fetch }),
       ms,
       `block at line ${b.line}`,
     );
@@ -281,20 +299,29 @@ export interface ServerRuntimeHelpers {
  * `requireUser()` mapping: `session.user` if present, else `session.data`,
  * else the session object itself.
  */
-export function makeRuntimeHelpers(session: any, loginPath: string): ServerRuntimeHelpers {
+export function makeRuntimeHelpers(session: any, loginPath: string, signal?: RedirectSignal): ServerRuntimeHelpers {
+  // Only `{ id, ...data }` is exposed -- never sessionId, ipHash, userAgentHash
+  // or the raw session object. A session with no userId is anonymous.
+  const sanitize = (s: any) =>
+    (s && typeof s === "object" && s.userId) ? { id: s.userId, ...(s.data ?? {}) } : null;
   return {
-    getSession: () => session ?? null,
+    getSession: () => sanitize(session),
     requireUser: () => {
-      if (!session) throw new ServerRedirect(loginPath);
-      return session.user ?? session.data ?? session;
+      const u = sanitize(session);
+      if (!u) { if (signal) signal.redirect = loginPath; throw new ServerRedirect(loginPath); }
+      return u;
     },
     redirect: (target: string) => {
       if (!isValidRedirectTarget(target)) throw new Error("TW109: redirect() target must be a same-origin internal path: " + String(target));
+      if (signal) signal.redirect = target;
       throw new ServerRedirect(target);
     },
-    notFound: () => { throw new ServerNotFound(); },
+    notFound: () => { if (signal) signal.notFound = true; throw new ServerNotFound(); },
   };
 }
+
+/** Records a redirect/notFound at THROW time so a user try/catch cannot hide it. */
+export interface RedirectSignal { redirect?: string; notFound?: boolean; }
 
 // --- Imports + timeout -------------------------------------------------------
 
@@ -429,6 +456,13 @@ export function checkServerBlocks(program: Program, opts: ServerBlockCheckOption
     }
   }
 
+  // A cached fetch that sets a credential header (literal case -> build error).
+  for (const b of blocks) {
+    for (const h of scanCachedCredentialHeaders(b.source)) {
+      push("TW110", `a cached fetch must not set a credential header (${h})`, b.line, b.col);
+    }
+  }
+
   return out;
 }
 
@@ -449,6 +483,34 @@ export function scanRuntimeCalls(body: string): {
         const a0 = node.arguments[0];
         if (a0 && ts.isStringLiteral(a0)) out.redirectLiterals.push(a0.text);
       } else if (n === "notFound") out.notFound = true;
+    }
+    ts.forEachChild(node, visit);
+  };
+  visit(sf);
+  return out;
+}
+
+/** Credential headers a cached fetch must not set (AST scan of the literal case). */
+export function scanCachedCredentialHeaders(body: string): string[] {
+  const out: string[] = [];
+  if (!body.trim()) return out;
+  const creds = new Set(["authorization", "proxy-authorization", "cookie"]);
+  const sf = ts.createSourceFile("s.ts", body, ts.ScriptTarget.Latest, true, ts.ScriptKind.TS);
+  const visit = (node: ts.Node) => {
+    if (ts.isCallExpression(node) && ts.isIdentifier(node.expression) && node.expression.text === "fetch") {
+      const arg1 = node.arguments[1];
+      if (arg1 && ts.isObjectLiteralExpression(arg1)) {
+        const hasCache = arg1.properties.some((p) => ts.isPropertyAssignment(p) && ts.isIdentifier(p.name) && p.name.text === "cache");
+        const headersProp = arg1.properties.find((p) => ts.isPropertyAssignment(p) && ts.isIdentifier(p.name) && p.name.text === "headers");
+        if (hasCache && headersProp && ts.isPropertyAssignment(headersProp) && ts.isObjectLiteralExpression(headersProp.initializer)) {
+          for (const hp of headersProp.initializer.properties) {
+            if (ts.isPropertyAssignment(hp) && (ts.isStringLiteral(hp.name) || ts.isIdentifier(hp.name))) {
+              const name = ts.isStringLiteral(hp.name) ? hp.name.text : hp.name.text;
+              if (creds.has(name.toLowerCase())) out.push(name);
+            }
+          }
+        }
+      }
     }
     ts.forEachChild(node, visit);
   };

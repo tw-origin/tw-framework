@@ -128,6 +128,7 @@ export const ERROR_CODES: Record<ErrorCode, { message: string; severity: Diagnos
   TW107: { message: "getSession()/requireUser() are not available in a static page's server block", severity: "error", category: "semantic" },
   TW108: { message: "redirect()/notFound() are not available in a static page's server block", severity: "error", category: "semantic" },
   TW109: { message: "redirect() target must be a same-origin internal path", severity: "error", category: "semantic" },
+  TW110: { message: "A cached fetch must not set an Authorization, Proxy-Authorization or Cookie header", severity: "error", category: "semantic" },
   // Codes thrown outside the rule engine. TW303 comes from the stylesheet
   // parser (codegen/tss.ts); TW000 is the generic fallback used when an error
   // carries no code of its own.

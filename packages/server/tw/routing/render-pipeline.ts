@@ -25,7 +25,7 @@
 
 import { readFileSync, existsSync } from "node:fs";
 import { dirname } from "node:path";
-import { compileSync, registerComponentTemplate, collectServerBlocks, encodeServerValues, executeServerBlocks, resolveServerImports, isServerRedirect, isServerNotFound, type CompileResult } from "@tw/compiler";
+import { compileSync, registerComponentTemplate, collectServerBlocks, encodeServerValues, executeServerBlocks, resolveServerImports, isServerRedirect, isServerNotFound, createServerFetch, wrapJsonErrors, SERVER_FETCH_BUILD_ID, type CompileResult } from "@tw/compiler";
 import { maskSourceStringsAndComments, sha256, extractCacheDirective, resolveCache, readCacheProfilesSync, type ResolvedCache } from "@tw/shared";
 import { executeRouteHandler } from "./twm-loader";
 import type {
@@ -203,7 +203,15 @@ export class RenderPipeline {
     try {
       const imports: Record<string, unknown> = {};
       for (const b of blocks) Object.assign(imports, await resolveServerImports(b, pageFile, { dev: this.dev }));
-      const values = await executeServerBlocks(blocks, { context, imports });
+      // serverFetch: request-scoped dedupe; the cache is bypassed in dev unless
+      // server.cacheInDev. Non-2xx stays a normal Response; .json() is typed.
+      const sfetch = createServerFetch({
+        buildId: SERVER_FETCH_BUILD_ID,
+        cacheEnabled: this.dev ? !!(this as any).cacheInDev : true,
+        log: this.dev ? (l: string) => console.log(l) : undefined,
+      });
+      const fetchShim = (u: any, i?: any) => sfetch(u, i).then(wrapJsonErrors);
+      const values = await executeServerBlocks(blocks, { context, imports, fetch: fetchShim });
       const merged = { ...(match!.params ?? {}), params: match!.params ?? {}, ...encodeServerValues(values) };
       // Bypass BOTH caches: per-request data would grow them without bound.
       (this as any).__bypassCompileCache = true;

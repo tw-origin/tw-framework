@@ -1017,7 +1017,10 @@ export async function buildCommand(): Promise<void> {
           const omit = ["headers", "cookies", "query"];
           if (!hasExplicitParams) omit.push("params");
           try {
-            const vals = await executeServerBlocks(sb, { context: { params: paramSet, env: process.env as Record<string, string>, loginPath }, omit, omitRuntime: ["getSession", "requireUser", "redirect", "notFound"], label: pageFile });
+            const { createServerFetch, wrapJsonErrors, SERVER_FETCH_BUILD_ID } = _compilerMod as any;
+            const sfetch = createServerFetch({ buildId: SERVER_FETCH_BUILD_ID });
+            const fetchShim = (u: any, i?: any) => sfetch(u, i).then(wrapJsonErrors);
+            const vals = await executeServerBlocks(sb, { context: { params: paramSet, env: process.env as Record<string, string>, loginPath }, omit, omitRuntime: ["getSession", "requireUser", "redirect", "notFound"], label: pageFile, fetch: fetchShim });
             serverVars = encodeServerValues(vals);
           } catch (e: any) {
             console.error("  \x1b[31m\u2717\x1b[0m " + pageFile.replace(rootDir + "/", "") + "  server block failed: " + (e?.message ?? e));
