@@ -1,0 +1,256 @@
+/**
+ * Server-block toolkit (Phase C) — pure helpers the build and serve paths use:
+ * value encoding, source stripping, name-collision checks, static-page rules
+ * and execution of a block's raw TypeScript body.
+ *
+ * Nothing here runs at parse time; execution happens only where the caller
+ * asks for it (build / ssr).
+ */
+
+import * as ts from "typescript";
+import type { Program, ServerBlock } from "../ast/nodes";
+
+// --- Encoding (matches `state { }`) -----------------------------------------
+
+/**
+ * Encode a runtime value into the template scope exactly the way a `state { }`
+ * literal of the same value is encoded: strings as-is, numbers/booleans via
+ * `String`, `null` as "null", `undefined` as "", objects/arrays as JSON.
+ * (See the state-literal encoding table in the Phase C report.)
+ */
+export function encodeServerValue(v: unknown): string {
+  if (v === undefined) return "";
+  if (v === null) return "null";
+  if (typeof v === "string") return v;
+  if (typeof v === "number" || typeof v === "boolean") return String(v);
+  try {
+    return JSON.stringify(v) ?? "";
+  } catch {
+    return "";
+  }
+}
+
+/** Encode a whole `{ ...declaredNames }` result into stateVars. */
+export function encodeServerValues(values: Record<string, unknown>): Record<string, string> {
+  const out: Record<string, string> = {};
+  for (const k of Object.keys(values)) out[k] = encodeServerValue(values[k]);
+  return out;
+}
+
+// --- Collect / strip ---------------------------------------------------------
+
+export function collectServerBlocks(program: Program): ServerBlock[] {
+  return ((program.directives as any[]) ?? []).filter((d) => d.type === "ServerBlock") as ServerBlock[];
+}
+
+/**
+ * Replace every server-block region with spaces, keeping offsets and newlines
+ * intact, so a raw-source scan (e.g. client-import collection) never sees the
+ * block or its imports. Uses the block's char offsets, not a regex.
+ */
+export function stripServerBlockRegions(source: string, blocks: ServerBlock[]): string {
+  if (!blocks.length) return source;
+  const chars = source.split("");
+  for (const b of blocks) {
+    const start = Math.max(0, b.startOffset);
+    const end = Math.min(chars.length, b.endOffset);
+    for (let i = start; i < end; i++) {
+      if (chars[i] !== "\n") chars[i] = " ";
+    }
+  }
+  return chars.join("");
+}
+
+// --- Collisions --------------------------------------------------------------
+
+/** Names declared in both a `server { }` block and `state { }` on the same page. */
+export function serverStateCollisions(program: Program): { name: string; line: number; col: number }[] {
+  const stateNames = new Set<string>();
+  for (const d of (program.directives as any[]) ?? []) {
+    if (d.type === "StateDirective") for (const decl of d.declarations ?? []) stateNames.add(decl.name);
+  }
+  const out: { name: string; line: number; col: number }[] = [];
+  for (const b of collectServerBlocks(program)) {
+    for (const n of b.declaredNames) {
+      if (stateNames.has(n)) out.push({ name: n, line: b.line, col: b.col });
+    }
+  }
+  return out;
+}
+
+/** Server-declared names that clash with a route param name. */
+export function serverRouteParamCollisions(blocks: ServerBlock[], paramNames: Iterable<string>): { name: string; line: number; col: number }[] {
+  const params = new Set(paramNames);
+  const out: { name: string; line: number; col: number }[] = [];
+  for (const b of blocks) {
+    for (const n of b.declaredNames) {
+      if (params.has(n)) out.push({ name: n, line: b.line, col: b.col });
+    }
+  }
+  return out;
+}
+
+// --- Static-page rules (direct access only) ---------------------------------
+
+const REQUEST_IDENTIFIERS = new Set(["headers", "cookies", "query", "params"]);
+
+/**
+ * Which request-context names a block reads **directly** (as a bare identifier
+ * or the object of a member/element access). Uses a real TS AST walk, not a
+ * regex. Indirect access (aliases, helpers) is left to the runtime guard.
+ */
+export function scanRequestAccess(body: string): Set<string> {
+  const found = new Set<string>();
+  if (!body.trim()) return found;
+  const sf = ts.createSourceFile("s.ts", body, ts.ScriptTarget.Latest, true, ts.ScriptKind.TS);
+  const visit = (node: ts.Node) => {
+    if (ts.isIdentifier(node) && REQUEST_IDENTIFIERS.has(node.text)) {
+      const parent = node.parent;
+      const isPropName =
+        (parent && ts.isPropertyAccessExpression(parent) && parent.name === node) ||
+        (parent && ts.isPropertyAssignment(parent) && parent.name === node) ||
+        (parent && ts.isPropertyDeclaration(parent) && parent.name === node) ||
+        (parent && ts.isBindingElement(parent) && parent.propertyName === node);
+      if (!isPropName) found.add(node.text);
+    }
+    ts.forEachChild(node, visit);
+  };
+  visit(sf);
+  return found;
+}
+
+// --- Execution ---------------------------------------------------------------
+
+export interface ServerRequestContext {
+  params?: Record<string, string>;
+  query?: Record<string, string>;
+  headers?: Record<string, string>;
+  cookies?: Record<string, string>;
+  env?: Record<string, string>;
+}
+
+/** Remove the block's own `import ...` statements from its body. */
+function stripImports(body: string, imports: { source: string }[]): string {
+  let out = body;
+  for (const imp of imports) {
+    const idx = out.indexOf(imp.source);
+    if (idx >= 0) out = out.slice(0, idx) + out.slice(idx + imp.source.length);
+  }
+  return out;
+}
+
+function runOne(block: ServerBlock, bindings: Record<string, unknown>): Promise<Record<string, unknown>> {
+  const body = stripImports(block.source, block.imports);
+  const names = block.declaredNames;
+  const params = Object.keys(bindings);
+  const src =
+    `async function __tw_server_block(${params.join(", ")}) {\n${body}\n` +
+    `return { ${names.map((n) => `${JSON.stringify(n)}: typeof ${n} !== "undefined" ? ${n} : undefined`).join(", ")} };\n}`;
+  const js = ts.transpileModule(src, {
+    compilerOptions: { target: ts.ScriptTarget.ES2022, module: ts.ModuleKind.ESNext },
+  }).outputText;
+  // The code is the project's own authored source — the same trust level as any
+  // server code the app runs (mirrors the .twm loader).
+  const factory = new Function(`${js}\nreturn __tw_server_block;`)() as (...a: unknown[]) => Promise<Record<string, unknown>>;
+  return factory(...params.map((p) => bindings[p]));
+}
+
+/**
+ * Run a block. The request context is frozen; `env` is included. `scope`
+ * carries names declared by earlier blocks (they run in source order sharing
+ * one scope). `imports` are the block's resolved import bindings.
+ */
+export async function executeServerBlock(
+  block: ServerBlock,
+  opts: { context?: ServerRequestContext; imports?: Record<string, unknown>; scope?: Record<string, unknown> } = {},
+): Promise<Record<string, unknown>> {
+  const ctx = Object.freeze({
+    params: Object.freeze({ ...(opts.context?.params ?? {}) }),
+    query: Object.freeze({ ...(opts.context?.query ?? {}) }),
+    headers: Object.freeze({ ...(opts.context?.headers ?? {}) }),
+    cookies: Object.freeze({ ...(opts.context?.cookies ?? {}) }),
+    env: Object.freeze({ ...(opts.context?.env ?? {}) }),
+  });
+  const bindings: Record<string, unknown> = {
+    ...(opts.scope ?? {}),
+    ...(opts.imports ?? {}),
+    params: ctx.params,
+    query: ctx.query,
+    headers: ctx.headers,
+    cookies: ctx.cookies,
+    env: ctx.env,
+  };
+  return (await runOne(block, bindings)) ?? {};
+}
+
+/** Run every block in source order, threading one shared scope. */
+export async function executeServerBlocks(
+  blocks: ServerBlock[],
+  opts: { context?: ServerRequestContext; imports?: Record<string, unknown> } = {},
+): Promise<Record<string, unknown>> {
+  const scope: Record<string, unknown> = {};
+  for (const b of blocks) {
+    const vals = await executeServerBlock(b, { context: opts.context, imports: opts.imports, scope });
+    Object.assign(scope, vals);
+  }
+  return scope;
+}
+
+// --- Diagnostics -------------------------------------------------------------
+
+export interface ServerBlockCheckOptions {
+  /** Render mode of the page ("static" | "ssr" | ...). */
+  mode?: string;
+  /** Route param names of the page (from the router match / filename). */
+  paramNames?: string[];
+  /** True when the file is a layout. */
+  isLayout?: boolean;
+  /** True when the dynamic route has enumerated params (params.twm / fn generate()). */
+  hasEnumeratedParams?: boolean;
+}
+
+export interface ServerBlockProblem {
+  severity: "error";
+  code: string;
+  message: string;
+  line: number;
+  col: number;
+  category: string;
+}
+
+/** Every compile-time problem a page's server blocks have, given its route context. */
+export function checkServerBlocks(program: Program, opts: ServerBlockCheckOptions = {}): ServerBlockProblem[] {
+  const blocks = collectServerBlocks(program);
+  if (!blocks.length) return [];
+  const out: ServerBlockProblem[] = [];
+  const push = (code: string, message: string, line: number, col: number) =>
+    out.push({ severity: "error", code, message, line, col, category: "semantic" });
+
+  if (opts.isLayout) {
+    for (const b of blocks) push("TW105", "server blocks in layouts are not supported yet", b.line, b.col);
+    return out;
+  }
+
+  for (const c of serverStateCollisions(program)) {
+    push("TW102", `server block declares '${c.name}', which is already declared in state { }`, c.line, c.col);
+  }
+  if (opts.paramNames && opts.paramNames.length) {
+    for (const c of serverRouteParamCollisions(blocks, opts.paramNames)) {
+      push("TW102", `server block declares '${c.name}', which collides with the route param '${c.name}'`, c.line, c.col);
+    }
+  }
+
+  if (opts.mode === "static") {
+    for (const b of blocks) {
+      const used = scanRequestAccess(b.source);
+      for (const name of ["headers", "cookies", "query"]) {
+        if (used.has(name)) push("TW103", `a static page's server block cannot read '${name}'`, b.line, b.col);
+      }
+      if (used.has("params") && !opts.hasEnumeratedParams) {
+        push("TW104", "a static page's server block cannot read 'params' without enumerated params (add params.twm / fn generate())", b.line, b.col);
+      }
+    }
+  }
+
+  return out;
+}

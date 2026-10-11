@@ -1174,7 +1174,7 @@ export function parseServerDirective(cursor: TokenCursor, keywordToken: Token): 
       code: "TW100",
       severity: "error",
     } as any);
-    return { type: "ServerBlock", deferred, source: "", imports: [], declaredNames: [], line: keywordToken.pos.line, col: keywordToken.pos.col };
+    return { type: "ServerBlock", deferred, source: "", imports: [], declaredNames: [], line: keywordToken.pos.line, col: keywordToken.pos.col, startOffset: keywordToken.pos.offset, endOffset: keywordToken.pos.offset };
   }
 
   // The body is the source between this '{' and its matching '}', taken
@@ -1215,5 +1215,7 @@ export function parseServerDirective(cursor: TokenCursor, keywordToken: Token): 
     col: keywordToken.pos.col,
     endLine: open.end.line,
     endCol: open.end.col,
+    startOffset: keywordToken.pos.offset,
+    endOffset: end >= src.length ? src.length : end + 1,
   };
 }

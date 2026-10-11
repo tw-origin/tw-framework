@@ -4,6 +4,7 @@ import { optimize, DEFAULT_OPTS, minifyJS as minifyJSOut } from "./optimizer";
 import { generate, resetSuspenseCounter, minifyHTML as minifyHTMLOut, minifyCSS as minifyCSSOut, getComponentRegistry, generateSourceMap } from "./codegen";
 import { diagnose } from "./diagnostics";
 import type { Diagnostic } from "./diagnostics/types";
+import { checkServerBlocks } from "./server-blocks";
 /**
  * compiler.incremental / cacheSize: the parser keeps its own cache (keyed on
  * file + source hash, storing the AST and its diagnostics). This sizes that
@@ -297,6 +298,14 @@ export async function compile(source: string, opts?: CompileOptions): Promise<Co
         category: "syntax",
       } as any as Diagnostic);
     }
+
+    // Server blocks: name collisions with state { } (the route-context rules
+    // -- static request access, route params, layouts -- run at build time).
+    if (opts?.experimental?.serverBlocks) {
+      for (const p of checkServerBlocks(ast)) {
+        diagnostics.push({ severity: p.severity, message: p.message, line: p.line, col: p.col, filePath, code: p.code, suggestions: [], category: p.category } as any as Diagnostic);
+      }
+    }
   }
 
   // compiler.strict === false -> report errors as warnings.
@@ -371,6 +380,14 @@ export function compileSync(source: string, opts?: CompileOptions): CompileResul
         category: "syntax",
       } as any as Diagnostic);
     }
+
+    // Server blocks: name collisions with state { } (the route-context rules
+    // -- static request access, route params, layouts -- run at build time).
+    if (opts?.experimental?.serverBlocks) {
+      for (const p of checkServerBlocks(ast)) {
+        diagnostics.push({ severity: p.severity, message: p.message, line: p.line, col: p.col, filePath, code: p.code, suggestions: [], category: p.category } as any as Diagnostic);
+      }
+    }
   }
 
   // compiler.strict === false -> report errors as warnings.
@@ -414,6 +431,8 @@ export { SUSPENSE_CLIENT_RUNTIME, createLoadingState, createSuspense, renderErro
 export type { ErrorBoundaryConfig, SuspenseBoundary } from "./suspense";
 export { ASTBuilder, ComponentBuilder, ElementBuilder, ForBuilder, FragmentBuilder, IfBuilder, NodeVisitor, TransformVisitor, analyzeTree, builder, collectAllBindings, collectAllDirectives, collectAllEvents, collectAllStyles, collectBody, collectByDirectiveType, collectDependencies, collectDirectives, collectHead, collectImports, collectLayout, collectRenderMode, collectStateDecls, collectStateVars, countNodes, createAttribute, createComponent, createElement, createEventBinding, createFor, createFragment, createIf, createProgram, createPropertyBinding, createScriptBlock, createSlot, createStyleBlock, createStyleDecl, createText, dumpTree, everyNode, extractAllText, extractText, findCircularComponentRefs, findComments, findComponentByName, findComponentUsage, findComponents, findElementById, findElements, findElementsByAttr, findElementsByClass, findElementsByTag, findForNodes, findIfNodes, findNode, findNodes, findScriptBlocks, findStyleBlocks, findTextNodes, findTwmBlocks, forEachNode, fromJSON, getAllComponentNames, getDepth, getPath, hasForms, hasInteractiveFeatures, hasMedia, hasSSRFeatures, hasScripts, hasState, hasStreamingFeatures, hasStyles, isBodyDirective, isComment, isComponent, isDirective, isElement, isElementDirective, isExportDirective, isExpression, isForNode, isFragment, isHeadDirective, isIfNode, isImportDirective, isLayoutDirective, isLoadDirective, isPageDirective, isRenderDirective, isScriptBlock, isSlot, isStateDirective, isStyleBlock, isSwitchNode, isText, isTryNode, isTwmBlock, isWhileNode, mergeElements, printAST, printMinified, query, someNode, summary, toDot, toJSON, walk, walkAsync } from "./ast";
 export type { ASTNode, ASTNodeType, ArrayExpr, ArrowFnExpr, AssignmentExpr, AsyncVisitor, AsyncVisitorOptions, AttributeNode, AwaitExpr, BaseNode, BinaryExpr, BodyDirective, CSSRule, CallExpr, Comment, CommentNode, ComponentNode, ConditionalExpr, ConfigDirective, DefineDirective, DestructurePattern, DestructureProperty, DirectiveNode, DoctypeNode, ElementDirective, ElementNode, ElseIfNode, EventBinding, EventModifier, ExportDirective, ExpressionNode, ForNode, FragmentNode, HeadDirective, IdentifierExpr, IfNode, ImportDirective, InterpolationExpr, LayoutDirective, LinkTag, LiteralExpr, LoadDirective, LogicalExpr, MemberExpr, MetaDirective, MetaTag, MiddlewareDirective, NewExpr, ObjectExpr, ObjectProperty, PageDirective, Param, ParseError, Program, PropertyBinding, QueryOptions, RedirectDirective, RenderDirective, RevalidateDirective, RewriteDirective, ScriptBlock, SectionDirective, SequenceExpr, SlotNode, SpreadExpr, StateDeclaration, StateDirective, StyleBlock, StyleDecl, SwitchCase, SwitchNode, SyncVisitor, TemplateExpr, TextNode, TreeAnalysis, TryNode, TwmBlock, UnaryExpr, VisitorAction, VisitorContext, VisitorOptions, VisitorResult, WhileNode, YieldExpr } from "./ast";
+export { encodeServerValue, encodeServerValues, collectServerBlocks, stripServerBlockRegions, serverStateCollisions, serverRouteParamCollisions, scanRequestAccess, executeServerBlock, executeServerBlocks, checkServerBlocks } from "./server-blocks";
+export type { ServerRequestContext, ServerBlockCheckOptions, ServerBlockProblem } from "./server-blocks";
 export { DiskCache, MemoryCache, UnifiedCache, makeConfigKey, makeFileKey, makeKey, makeSourceKey } from "./cache";
 export type { CacheOptions, DiskCacheEntry, MemoryCacheEntry } from "./cache";
 export { BUILTIN_COMPONENT_SPECIFIERS, collectBuiltinImports, generateImageTag, generateRouterLinkTag, generateBuiltinTag, resolveBuiltin, setBuiltinImageConfig, getBuiltinImageConfig } from "./codegen";

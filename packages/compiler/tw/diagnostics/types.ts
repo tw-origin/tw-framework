@@ -55,6 +55,7 @@ export type ErrorCode =
   | "TW094" | "TW095" | "TW096" | "TW097"
   // Server blocks (TW099-TW101)
   | "TW099" | "TW100" | "TW101"
+  | "TW102" | "TW103" | "TW104" | "TW105"
   // Declared for codes emitted outside the rule engine (see codes.ts)
   | "TW303" | "TW000";
 

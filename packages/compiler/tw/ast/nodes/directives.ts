@@ -217,5 +217,9 @@ export interface ServerBlock extends BaseNode {
   imports: ImportInfo[];
   /** Top-level names the block declares (imports and nested scopes excluded). */
   declaredNames: string[];
+  /** Char offset of the `server` keyword (for stripping the region). */
+  startOffset: number;
+  /** Char offset just past the closing `}`. */
+  endOffset: number;
 }
 
