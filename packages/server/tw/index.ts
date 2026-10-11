@@ -1176,6 +1176,7 @@ export class TWServer {
                 homeDir,
                 enableCache: true, hydrationMode: (this.options as any).config?.strategies?.hydration?.mode,
                 dev: false,
+                serverBlocks: (this.options as any).config?.experimental?.serverBlocks === true,
               });
               setActivePipeline(this.renderPipeline);
             }
@@ -1186,7 +1187,7 @@ export class TWServer {
             // SPA navigation signal (client runtime link fetch): lets the
             // render pipeline serve `(.)page.tw` interceptors (modals).
             (renderPipeline as any).navRequest = request.headers.get("x-tw-navigate") === "1";
-            const result: any = renderPipeline.render(pathname);
+            const result: any = await renderPipeline.renderWithServerBlocks(pathname, request);
             if (result && result.html) {
               // `render stream`: shell first, Suspense holes as streamed chunks
               if (result.renderMode === "stream") {
@@ -1205,7 +1206,7 @@ export class TWServer {
                 const rvSecs = typeof rv === "number" ? rv
                   : (rv && typeof rv === "object" ? Number((rv as any).revalidate) || 0 : 0);
                 const window = rvSecs || Number(result.revalidate) || 0;
-                if (mode !== "isr" || !outHeaders["Cache-Control"]) {
+                if (!result.serverBlocks && (mode !== "isr" || !outHeaders["Cache-Control"])) {
                   outHeaders["Cache-Control"] = this.cacheControlForRoute(window);
                 }
               }

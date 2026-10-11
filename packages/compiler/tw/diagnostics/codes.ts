@@ -124,6 +124,7 @@ export const ERROR_CODES: Record<ErrorCode, { message: string; severity: Diagnos
   TW103: { message: "A static page's server block cannot read headers, cookies or query", severity: "error", category: "semantic" },
   TW104: { message: "A static page's server block cannot read params without enumerated params (add params.twm / fn generate())", severity: "error", category: "semantic" },
   TW105: { message: "Server blocks in layouts are not supported yet", severity: "error", category: "semantic" },
+  TW106: { message: "Request context (headers/cookies/query/params) is not available in a static server block", severity: "error", category: "semantic" },
   // Codes thrown outside the rule engine. TW303 comes from the stylesheet
   // parser (codegen/tss.ts); TW000 is the generic fallback used when an error
   // carries no code of its own.

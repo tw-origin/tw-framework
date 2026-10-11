@@ -298,12 +298,28 @@ export function parseTokens(tokens: Token[], opts?: ParseOptions): Program {
   const cursor = new TokenCursor(tokens, errors);
   const state = new CompilerState(errors);
   const program = createProgram(filePath);
+  const serverBlocksOn = opts?.experimental?.serverBlocks === true;
 
   // Parse directives
   while (!cursor.done) {
     cursor.skipWhitespace();
     const token = cursor.peek();
     if (!token) break;
+
+    // parseTokens has no source, so a server block's raw body cannot be
+    // extracted -- report it clearly instead of silently mis-parsing.
+    if (serverBlocksOn && isServerBlockStart(cursor)) {
+      cursor.errors.add({
+        type: "error",
+        message: "server blocks require source text -- parse with parse()/parseFile(), not parseTokens()",
+        line: token.pos.line,
+        col: token.pos.col,
+        code: "TW101",
+        severity: "error",
+      } as any);
+      cursor.advance();
+      continue;
+    }
 
     if ((token.type === "KEYWORD" && isDirectiveKeyword(token.value)) || token.type === "DIRECTIVE") {
       cursor.advance();

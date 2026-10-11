@@ -10,9 +10,10 @@ import { join } from "node:path";
 import { tmpdir } from "node:os";
 import { pathToFileURL } from "node:url";
 
-export async function twImportTs(tsPath: string): Promise<any> {
+export async function twImportTs(tsPath: string, bust?: number): Promise<any> {
+  const q = bust ? "?v=" + bust : "";
   if (!(globalThis as any).__TW_NODE) {
-    return import(tsPath);
+    return import(tsPath + q);
   }
 
   // Node resolution from a spawned test process may walk up from a temp
@@ -21,7 +22,7 @@ export async function twImportTs(tsPath: string): Promise<any> {
   const esbuildMain = (globalThis as any).__TW_ESBUILD_MODULE;
   const esbuild = await (esbuildMain ? import(esbuildMain) : import("esbuild"));
   const safe = tsPath.replace(/[^a-zA-Z0-9]/g, "_").slice(-120);
-  const cachePath = join(tmpdir(), "tw-" + safe + ".mjs");
+  const cachePath = join(tmpdir(), "tw-" + safe + (bust ? "-" + bust : "") + ".mjs");
 
   await esbuild.build({
     entryPoints: [tsPath],
@@ -33,5 +34,5 @@ export async function twImportTs(tsPath: string): Promise<any> {
     logLevel: "silent",
   });
 
-  return import(pathToFileURL(cachePath).href);
+  return import(pathToFileURL(cachePath).href + q);
 }

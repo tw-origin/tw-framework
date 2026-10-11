@@ -104,14 +104,12 @@ export function scanRequestAccess(body: string): Set<string> {
   if (!body.trim()) return found;
   const sf = ts.createSourceFile("s.ts", body, ts.ScriptTarget.Latest, true, ts.ScriptKind.TS);
   const visit = (node: ts.Node) => {
-    if (ts.isIdentifier(node) && REQUEST_IDENTIFIERS.has(node.text)) {
-      const parent = node.parent;
-      const isPropName =
-        (parent && ts.isPropertyAccessExpression(parent) && parent.name === node) ||
-        (parent && ts.isPropertyAssignment(parent) && parent.name === node) ||
-        (parent && ts.isPropertyDeclaration(parent) && parent.name === node) ||
-        (parent && ts.isBindingElement(parent) && parent.propertyName === node);
-      if (!isPropName) found.add(node.text);
+    // Direct member/element access (`cookies.x`, `headers["y"]`). A bare
+    // binding (`const c = cookies`) is left to the runtime trap, which fires
+    // on the first property access.
+    if (ts.isPropertyAccessExpression(node) || ts.isElementAccessExpression(node)) {
+      const obj = node.expression;
+      if (ts.isIdentifier(obj) && REQUEST_IDENTIFIERS.has(obj.text)) found.add(obj.text);
     }
     ts.forEachChild(node, visit);
   };
@@ -162,7 +160,7 @@ function runOne(block: ServerBlock, bindings: Record<string, unknown>): Promise<
  */
 export async function executeServerBlock(
   block: ServerBlock,
-  opts: { context?: ServerRequestContext; imports?: Record<string, unknown>; scope?: Record<string, unknown> } = {},
+  opts: { context?: ServerRequestContext; imports?: Record<string, unknown>; scope?: Record<string, unknown>; omit?: string[]; label?: string } = {},
 ): Promise<Record<string, unknown>> {
   const ctx = Object.freeze({
     params: Object.freeze({ ...(opts.context?.params ?? {}) }),
@@ -180,20 +178,105 @@ export async function executeServerBlock(
     cookies: ctx.cookies,
     env: ctx.env,
   };
+  // A static page's block must not see headers/cookies/query (or params without
+  // enumerated params): bind them to a value that throws a named error on any
+  // access, so aliasing/destructuring is caught at build time too.
+  for (const name of opts.omit ?? []) bindings[name] = unavailable(name, opts.label);
   return (await runOne(block, bindings)) ?? {};
 }
 
-/** Run every block in source order, threading one shared scope. */
+/** A stand-in for an unavailable context name: any access throws TW106. */
+function unavailable(name: string, label?: string): any {
+  const msg = `TW106: '${name}' is not available in a static server block${label ? ` (${label})` : ""}`;
+  const boom = (): never => { throw new Error(msg); };
+  return new Proxy({}, { get: boom, has: boom, ownKeys: boom, getOwnPropertyDescriptor: boom });
+}
+
+/** Run every block in source order, threading one shared scope. Each block
+ * run is bounded by `timeoutMs` (default 10s); the timeout stops waiting but
+ * does not cancel the running block. */
 export async function executeServerBlocks(
   blocks: ServerBlock[],
-  opts: { context?: ServerRequestContext; imports?: Record<string, unknown> } = {},
+  opts: { context?: ServerRequestContext; imports?: Record<string, unknown>; timeoutMs?: number; omit?: string[]; label?: string } = {},
 ): Promise<Record<string, unknown>> {
   const scope: Record<string, unknown> = {};
+  const ms = opts.timeoutMs ?? DEFAULT_SERVER_BLOCK_TIMEOUT_MS;
   for (const b of blocks) {
-    const vals = await executeServerBlock(b, { context: opts.context, imports: opts.imports, scope });
+    const vals = await withTimeout(
+      executeServerBlock(b, { context: opts.context, imports: opts.imports, scope, omit: opts.omit, label: opts.label }),
+      ms,
+      `block at line ${b.line}`,
+    );
     Object.assign(scope, vals);
   }
   return scope;
+}
+
+// --- Imports + timeout -------------------------------------------------------
+
+export const DEFAULT_SERVER_BLOCK_TIMEOUT_MS = 10_000;
+
+function withTimeout<T>(p: Promise<T>, ms: number, label: string): Promise<T> {
+  if (!(ms > 0)) return p;
+  return new Promise<T>((res, rej) => {
+    const t = setTimeout(() => rej(new Error(`server block timed out after ${ms}ms (${label})`)), ms);
+    p.then((v) => { clearTimeout(t); res(v); }, (e) => { clearTimeout(t); rej(e); });
+  });
+}
+
+/** Names an `import ... from "x"` statement introduces, best-effort. */
+function importBindingNames(stmt: string): string[] {
+  const names: string[] = [];
+  const s = stmt.replace(/^import\s+(type\s+)?/, "");
+  const fromIdx = s.lastIndexOf(" from ");
+  if (fromIdx < 0) return names;
+  const clause = s.slice(0, fromIdx).trim();
+  if (clause.startsWith("{")) {
+    for (const part of clause.slice(1, -1).split(",")) {
+      const t = part.trim();
+      if (!t) continue;
+      const as = t.split(/\s+as\s+/);
+      names.push((as[1] ?? as[0]).trim());
+    }
+  } else if (clause.startsWith("*")) {
+    const as = clause.split(/\s+as\s+/);
+    if (as[1]) names.push(as[1].trim());
+  } else {
+    const first = clause.split(",")[0].trim();
+    if (first && /^[A-Za-z_$]/.test(first)) names.push(first);
+  }
+  return names;
+}
+
+/** Resolve a block's imports relative to the page file, using the .twm loader's
+ * TS module path. In dev, a changed file is re-imported (cache-busted). */
+export async function resolveServerImports(
+  block: ServerBlock,
+  pageFile: string,
+  opts: { dev?: boolean } = {},
+): Promise<Record<string, unknown>> {
+  if (!block.imports.length) return {};
+  const out: Record<string, unknown> = {};
+  const { twImportTs } = await import("@tw/shared/tw/node-import");
+  const { dirname, resolve } = await import("node:path");
+  const { statSync } = await import("node:fs");
+  for (const imp of block.imports) {
+    if (!imp.specifier) continue;
+    const spec = imp.specifier;
+    let mod: any;
+    if (spec.startsWith("./") || spec.startsWith("../") || spec.startsWith("@./")) {
+      const rel = spec.startsWith("@./") ? spec.slice(2) : spec;
+      const abs = resolve(dirname(pageFile), rel);
+      let bust: number | undefined;
+      if (opts.dev) { try { bust = statSync(abs).mtimeMs; } catch { /* missing */ } }
+      mod = await twImportTs(abs, bust);
+    } else {
+      mod = await import(spec);
+    }
+    const names = importBindingNames(imp.source);
+    for (const n of names) out[n] = mod?.[n] ?? mod?.default;
+  }
+  return out;
 }
 
 // --- Diagnostics -------------------------------------------------------------

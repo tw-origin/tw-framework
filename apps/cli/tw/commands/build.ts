@@ -355,6 +355,17 @@ function autoprefixCss(css: string, targets: string[] = []): string {
   return out.join("\n");
 }
 
+/** Strip `server { }` regions from source before a raw client-import scan. */
+function stripServerRegionsForScan(source: string): string {
+  try {
+    const { parseWithDetails, collectServerBlocks, stripServerBlockRegions } = _compilerMod as any;
+    if (!parseWithDetails || !collectServerBlocks || !stripServerBlockRegions) return source;
+    const prog = parseWithDetails(source, { filePath: "<scan>", cache: false, experimental: { serverBlocks: true } }).program;
+    const blocks = collectServerBlocks(prog);
+    return blocks.length ? stripServerBlockRegions(source, blocks) : source;
+  } catch { return source; }
+}
+
 export async function buildCommand(): Promise<void> {
   const rootDir = process.cwd();
   // --profile: emit a stage-by-stage timing report (docs/build-profiler.md)
@@ -474,6 +485,7 @@ export async function buildCommand(): Promise<void> {
   // compiler.* -> the compile passes. `optimization` maps to optimize
   // (none = off); the rest pass straight through to the compiler so each
   // fine-grained field reaches the pass it names.
+  let serverBlocksOn = false;
   const compilePassOpts = (): any =>
     compilerOpts
       ? {
@@ -499,8 +511,9 @@ export async function buildCommand(): Promise<void> {
             preserveComments: compilerOpts.preserveComments,
             looseDiagnostics: compilerOpts.strict === false,
           },
+          experimental: serverBlocksOn ? { serverBlocks: true } : undefined,
         }
-      : {};
+      : { experimental: serverBlocksOn ? { serverBlocks: true } : undefined };
   // Plugins (docs/plugins.md): load from plugins/ per tw.config.ts and fire the
   // build hooks. A broken plugin never fails the build -- the loader isolates it.
   let pluginManager: any = null;
@@ -521,6 +534,7 @@ export async function buildCommand(): Promise<void> {
       const { twImportTs } = await import("@tw/shared/tw/node-import");
       const cfgMod: any = await twImportTs(cfgPath);
       const cfg = cfgMod.default ?? cfgMod;
+      serverBlocksOn = cfg?.experimental?.serverBlocks === true;
       // Plugins load here so the config is already resolved when setup() runs.
       try {
         const { loadPlugins } = await import("@tw/plugins");
@@ -973,7 +987,35 @@ export async function buildCommand(): Promise<void> {
       const source = readFileSync(pageFile, "utf-8");
       // Route params are exposed BOTH flat ({slug}) and as an object
       // ({params.slug}) -- docs/project-tree.md documents params.slug.
-      const scopeVars = { ...paramSet, params: paramSet };
+      // Server blocks (experimental.serverBlocks): run at build time, once per
+      // param set, then merge the encoded values into a COPY of the state.
+      let serverVars: Record<string, string> = {};
+      if (serverBlocksOn) {
+        const { parseWithDetails, collectServerBlocks, checkServerBlocks, executeServerBlocks, encodeServerValues } = _compilerMod as any;
+        const prog = parseWithDetails(source, { filePath: pageFile, cache: false, experimental: { serverBlocks: true } }).program;
+        const sb = collectServerBlocks(prog);
+        if (sb.length) {
+          const problems = checkServerBlocks(prog, { mode: renderMode, paramNames: Object.keys(paramSet), hasEnumeratedParams: hasExplicitParams });
+          if (problems.length) {
+            for (const p of problems) console.error("  \x1b[31m\u2717\x1b[0m " + pageFile.replace(rootDir + "/", "") + ":" + p.line + "  " + p.code + "  " + p.message);
+            errorCount++;
+            continue;
+          }
+          // A static block must not see headers/cookies/query (nor params
+          // without enumerated params) -- bind them to a throwing stand-in.
+          const omit = ["headers", "cookies", "query"];
+          if (!hasExplicitParams) omit.push("params");
+          try {
+            const vals = await executeServerBlocks(sb, { context: { params: paramSet, env: process.env as Record<string, string> }, omit, label: pageFile });
+            serverVars = encodeServerValues(vals);
+          } catch (e: any) {
+            console.error("  \x1b[31m\u2717\x1b[0m " + pageFile.replace(rootDir + "/", "") + "  server block failed: " + (e?.message ?? e));
+            errorCount++;
+            continue;
+          }
+        }
+      }
+      const scopeVars = { ...paramSet, params: paramSet, ...serverVars };
       const result = _compileSync(source, { filePath: pageFile, stateVars: scopeVars, ...compilePassOpts() } as any);
       {
         const used = new Set<string>();
@@ -1005,6 +1047,12 @@ export async function buildCommand(): Promise<void> {
         const layoutPrograms = layoutChain.map(lp => {
           const ls = readFileSync(lp, "utf-8");
           const lr = _compileSync(ls, { filePath: lp, ...compilePassOpts() });
+          if (serverBlocksOn) {
+            const { checkServerBlocks } = _compilerMod as any;
+            const probs = checkServerBlocks(lr.ast, { isLayout: true });
+            for (const p of probs) console.error("  \x1b[31m\u2717\x1b[0m " + lp.replace(rootDir + "/", "") + ":" + p.line + "  " + p.code + "  " + p.message);
+            if (probs.length) errorCount++;
+          }
           return lr.ast;
         }).filter(Boolean);
         if (layoutPrograms.length > 0 && _generateWithLayoutChain) {
@@ -1078,8 +1126,8 @@ export async function buildCommand(): Promise<void> {
           const own = new Set<string>();
           const deps = new Set<string>();
           const { collectClientImportsFromSource, findServerOnlyViolations } = await import("./client-bundle");
-          for (const l of collectClientImportsFromSource(source)) own.add(l);
-          for (const v of findServerOnlyViolations(source)) tw1007.push({ file: pageFile, spec: v });
+          for (const l of collectClientImportsFromSource(serverBlocksOn ? stripServerRegionsForScan(source) : source)) own.add(l);
+          for (const v of findServerOnlyViolations(serverBlocksOn ? stripServerRegionsForScan(source) : source)) tw1007.push({ file: pageFile, spec: v });
           for (const lf of chainFiles) {
             const ls = readFileSync(lf, "utf-8");
             for (const l of collectClientImportsFromSource(ls)) deps.add(l);

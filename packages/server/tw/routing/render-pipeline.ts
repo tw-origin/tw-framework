@@ -25,7 +25,7 @@
 
 import { readFileSync, existsSync } from "node:fs";
 import { dirname } from "node:path";
-import { compileSync, registerComponentTemplate, type CompileResult } from "@tw/compiler";
+import { compileSync, registerComponentTemplate, collectServerBlocks, encodeServerValues, executeServerBlocks, resolveServerImports, type CompileResult } from "@tw/compiler";
 import { maskSourceStringsAndComments, sha256, extractCacheDirective, resolveCache, readCacheProfilesSync, type ResolvedCache } from "@tw/shared";
 import { executeRouteHandler } from "./twm-loader";
 import type {
@@ -79,6 +79,8 @@ export class RenderPipeline {
   /** ISR: paths currently re-rendering in the background (stampede guard). */
   private pendingRefresh = new Set<string>();
   private dev: boolean;
+  /** experimental.serverBlocks (from config): off by default. */
+  private serverBlocksFlag: boolean;
   private routeTree: RouteNode | null = null;
   private compiledCache: Map<string, CompiledFileEntry> = new Map();
   /**
@@ -118,6 +120,7 @@ export class RenderPipeline {
     this.enableCache = opts.enableCache ?? true;
     this.cacheTTL = opts.cacheTTL ?? 60000;
     this.dev = opts.dev ?? false;
+    this.serverBlocksFlag = (opts as any).serverBlocks === true;
     this.hydrationMode = opts.hydrationMode ?? "auto";
   }
 
@@ -162,7 +165,69 @@ export class RenderPipeline {
    * @param stateVars -- Optional state variables for SSR
    * @returns RouteRenderResult with complete HTML
    */
-  render(pathname: string, stateVars?: Record<string, string>): RouteRenderResult {
+  async renderWithServerBlocks(pathname: string, request: Request): Promise<RouteRenderResult> {
+    if (!this.serverBlocksFlag) return this.render(pathname);
+    const tree = this.getRouteTree();
+    const match = tree ? matchRoute(tree, pathname) : null;
+    const ctx: any = match ? resolveLayoutChain(match) : null;
+    const pageFile: string | undefined = ctx?.page?.absolutePath;
+    if (!pageFile) return this.render(pathname);
+
+    let blocks: any[] = [];
+    try {
+      const src = this.readSource(ctx.page);
+      const { parseWithDetails } = await import("@tw/compiler");
+      const program = parseWithDetails(src, { filePath: pageFile, cache: false, experimental: { serverBlocks: true } } as any).program;
+      blocks = collectServerBlocks(program);
+    } catch {
+      return this.render(pathname);
+    }
+    if (!blocks.length) return this.render(pathname);
+
+    let url: URL;
+    try { url = new URL(request.url); } catch { url = new URL("http://localhost" + pathname); }
+    const query: Record<string, string> = {};
+    for (const [k, v] of url.searchParams) query[k] = v;
+    const headers: Record<string, string> = {};
+    try { (request.headers as any)?.forEach?.((v: string, k: string) => { headers[k] = v; }); } catch { /* no headers */ }
+    const cookies: Record<string, string> = {};
+    for (const part of (headers["cookie"] ?? "").split(";")) {
+      const eq = part.indexOf("=");
+      if (eq > 0) cookies[part.slice(0, eq).trim()] = part.slice(eq + 1).trim();
+    }
+    const context = { params: match!.params ?? {}, query, headers, cookies, env: (process.env as Record<string, string>) ?? {} };
+
+    try {
+      const imports: Record<string, unknown> = {};
+      for (const b of blocks) Object.assign(imports, await resolveServerImports(b, pageFile, { dev: this.dev }));
+      const values = await executeServerBlocks(blocks, { context, imports });
+      const merged = { ...(match!.params ?? {}), params: match!.params ?? {}, ...encodeServerValues(values) };
+      // Bypass BOTH caches: per-request data would grow them without bound.
+      (this as any).__bypassCompileCache = true;
+      let result: RouteRenderResult;
+      try { result = this.render(pathname, merged, { bypassCache: true }); }
+      finally { (this as any).__bypassCompileCache = false; }
+      const outHeaders = { ...(result.headers ?? {}), "Cache-Control": "private, no-store" } as Record<string, string>;
+      delete outHeaders["x-tw-cache-age"];
+      return { ...result, headers: outHeaders, serverBlocks: true } as RouteRenderResult;
+    } catch (err: any) {
+      // Detail stays in the server log; the body is generic.
+      console.error(`[tw] server block failed for ${pageFile}: ${err?.message ?? err}`);
+      return {
+        html: "<!DOCTYPE html><html><head><title>Server Error</title></head><body><h1>Internal Server Error</h1></body></html>",
+        css: "",
+        js: "",
+        status: 500,
+        headers: { "Content-Type": "text/html; charset=utf-8", "Cache-Control": "private, no-store" },
+        fromCache: false,
+        durationMs: 0,
+        serverBlocks: true,
+      } as RouteRenderResult;
+    }
+  }
+
+  render(pathname: string, stateVars?: Record<string, string>, opts?: { bypassCache?: boolean }): RouteRenderResult {
+    const bypassCache = opts?.bypassCache === true;
     // Unicode routes: the request pathname arrives percent-encoded (browsers
     // always encode non-ASCII); the route tree stores decoded segments.
     // Decode each segment so Hindi/emoji route folders match.
@@ -175,7 +240,7 @@ export class RenderPipeline {
     // SPA navigations render `(.)page.tw` interceptors -- a different result
       // than a direct visit, so the nav flag must be part of the cache key.
       const cacheKey = sha256(`${pathname}:${JSON.stringify(stateVars ?? {})}:${(this as any).navRequest ? "nav" : ""}`);
-    if (this.enableCache) {
+    if (this.enableCache && !bypassCache) {
       const cached = this.renderCache.get(cacheKey);
       const now = Date.now();
       // Freshness windows (docs/cache-tags.md). Plain TTL entries (no
@@ -519,7 +584,7 @@ export class RenderPipeline {
       // page's resolved cache config overrides the global cacheTTL for
       // this entry and enables stale-while-revalidate.
       const pageCache = this.extractCacheConfig(ctx.page);
-      if (this.enableCache) {
+      if (this.enableCache && !bypassCache) {
         if (this.renderCache.size >= 100) {
           const oldest = this.renderCache.keys().next().value;
           if (oldest) this.renderCache.delete(oldest);
@@ -597,7 +662,7 @@ export class RenderPipeline {
     // compile the same file with different param values.
     const cacheKey = file.absolutePath + ":" + JSON.stringify(stateVars ?? {});
     const cached = this.compiledCache.get(cacheKey);
-    if (cached && !this.dev) {
+    if (cached && !this.dev && !(this as any).__bypassCompileCache) {
       return {
         ast: {} as CompileResult["ast"],
         html: cached.html,
@@ -633,12 +698,14 @@ export class RenderPipeline {
       diagnostics: false,
       transforms: true,
       stateVars,
+      // Only when the feature is configured on; off = original parse.
+      ...(this.serverBlocksFlag ? { experimental: { serverBlocks: true } } : {}),
     });
 
     // For .twm files (route, middleware), JS is used for server-side execution
     // For .tw files, everything goes through the full pipeline
     const isServerModule = file.extension === ".twm";
-    this.compiledCache.set(cacheKey, {
+    if (!(this as any).__bypassCompileCache) this.compiledCache.set(cacheKey, {
       html: result.html,
       css: isServerModule ? "" : result.css,
       js: isServerModule ? "" : result.js,
