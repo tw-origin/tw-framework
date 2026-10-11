@@ -1,5 +1,5 @@
 /**
- * Server blocks -- Phase C part 2: SSR runtime wiring (renderWithServerBlocks)
+ * Server blocks -- SSR runtime wiring (renderWithServerBlocks)
  * + the review fixes (flag threading, compile-cache bypass, static trap).
  */
 
@@ -28,7 +28,7 @@ function makeApp(pageSrc: string, serverBlocks = true): any {
 const req = (headers: Record<string, string> = {}, q = "") =>
   new Request("http://localhost/" + q, { headers });
 
-describe("Phase C part 2: SSR server blocks", () => {
+describe("SSR server blocks", () => {
   test("different request context -> different HTML", async () => {
     const p = makeApp('server {\n  const u = headers["x-u"] ?? "none"\n}\np "u={u}"\n');
     const a = await p.renderWithServerBlocks("/", req({ "x-u": "1" }));
@@ -95,7 +95,7 @@ describe("Phase C part 2: SSR server blocks", () => {
   }, 20000);
 });
 
-describe("Phase C part 2: static trap + static path", () => {
+describe("static trap + static path", () => {
   test("static trap: aliased cookies access throws TW106 with file + name", async () => {
     const sb = collectServerBlocks(parseWithDetails('server {\n  const c = cookies\n  const u = c.u\n}\np "x"\n', SB).program);
     await expect(
@@ -148,7 +148,7 @@ describe("Phase C part 2: static trap + static path", () => {
   });
 });
 
-describe("Phase D0: dev re-import", () => {
+describe("dev re-import", () => {
   test("an edited imported helper is picked up in dev", async () => {
     const dir = mkdtempSync(join(tmpdir(), "tw-sb-dev-"));
     mkdirSync(join(dir, "home"), { recursive: true });
@@ -165,7 +165,7 @@ describe("Phase D0: dev re-import", () => {
   }, 30000);
 });
 
-describe("Phase D0: real listening server", () => {
+describe("real listening server", () => {
   test("a socket request with a real Cookie header reaches the block", () => {
     const dir = mkdtempSync(join(tmpdir(), "tw-sb-sock-"));
     mkdirSync(join(dir, "home"), { recursive: true });
@@ -200,7 +200,7 @@ srv.stop(true);
   }, 30000);
 });
 
-describe("Phase C part 2: cookie header + real build", () => {
+describe("cookie header + real build", () => {
   test("a real Cookie header reaches the block", async () => {
     const p = makeApp('server {\n  const u = cookies.u ?? "none"\n}\np "u={u}"\n');
     const h = new Headers();

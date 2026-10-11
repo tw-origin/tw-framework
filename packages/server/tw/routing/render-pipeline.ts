@@ -83,7 +83,7 @@ export class RenderPipeline {
   private serverBlocksFlag: boolean;
   /** server.loginPath (default "/login") for requireUser(). */
   private loginPath: string;
-  /** server.fetchTimeoutMs / fetchCacheMaxBytes / cacheInDev (E2b-0). */
+  /** server.fetchTimeoutMs / fetchCacheMaxBytes / cacheInDev (config threading). */
   private fetchTimeoutMs?: number;
   private fetchCacheMaxBytes?: number;
   private cacheInDev?: boolean;
@@ -214,7 +214,7 @@ export class RenderPipeline {
       if (eq > 0) cookies[part.slice(0, eq).trim()] = part.slice(eq + 1).trim();
     }
 
-    // --- Cached page (E2b): server block + page { cache { } } -----------------
+    // --- Cached page: server block + page { cache { } } -----------------
     const pageCache = parsePageCache(src);
     if (pageCache && /cache\s*\{/.test(src)) {
       const vary = extractVary(src);

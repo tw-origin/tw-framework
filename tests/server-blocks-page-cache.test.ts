@@ -1,5 +1,5 @@
 /**
- * Phase E2b -- page cache + vary + the cached-page context trap.
+ * page cache + vary + the cached-page context trap.
  */
 
 import { describe, test, expect, beforeEach } from "bun:test";
@@ -16,7 +16,7 @@ const SB = { filePath: "<t>", cache: false, experimental: { serverBlocks: true }
 beforeEach(() => clearFetchCache());
 
 function app(pageSrc: string): any {
-  const dir = mkdtempSync(join(tmpdir(), "tw-e2b-"));
+  const dir = mkdtempSync(join(tmpdir(), "tw-sb-pcache-"));
   mkdirSync(join(dir, "home"), { recursive: true });
   writeFileSync(join(dir, "tw.config.ts"), "export default {}");
   writeFileSync(join(dir, "home", "page.tw"), pageSrc);
@@ -24,7 +24,7 @@ function app(pageSrc: string): any {
 }
 const req = (q = "", headers: Record<string, string> = {}) => new Request("http://localhost/" + q, { headers });
 
-describe("E2b: vary helpers", () => {
+describe("vary helpers", () => {
   test("extractVary: lowercased, sorted, unique", () => {
     expect(extractVary('page { cache { revalidate: 1, vary: ["sort", "Page", "page"] } }')).toEqual(["page", "sort"]);
     expect(extractVary('page { cache { revalidate: 1 } }')).toEqual([]);
@@ -40,7 +40,7 @@ describe("E2b: vary helpers", () => {
   });
 });
 
-describe("E2b: cached page", () => {
+describe("cached page", () => {
   const PAGE = 'page { title "P" cache { revalidate: 300, vary: ["page"] } }\nserver {\n  const p = query.page ?? "none"\n}\np "p={p}"\n';
 
   test("two requests with different cookies -> same HTML (block saw no cookie)", async () => {
@@ -117,7 +117,7 @@ describe("E2b: cached page", () => {
   });
 });
 
-describe("E2b: E2b-0 fixes", () => {
+describe("config threading fixes", () => {
   test("fetchTimeoutMs from config changes behaviour", async () => {
     let aborted = false;
     const m = (_u: string, init: any) => new Promise<Response>((_, rej) => { init?.signal?.addEventListener("abort", () => { aborted = true; const e: any = new Error("a"); e.name = "AbortError"; rej(e); }); });

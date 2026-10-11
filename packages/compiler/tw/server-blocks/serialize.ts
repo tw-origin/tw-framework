@@ -1,5 +1,5 @@
 /**
- * Server-block serialization contract (Phase F).
+ * Server-block serialization contract .
  *
  * Values a server block returns cross to the template as JSON. Only
  * JSON-safe values may cross; everything else is a named error carrying

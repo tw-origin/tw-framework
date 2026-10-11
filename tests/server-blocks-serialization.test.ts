@@ -1,5 +1,5 @@
 /**
- * Phase F -- serialization contract, size cap, env guard, lints.
+ * serialization contract, size cap, env guard, lints.
  */
 
 import { describe, test, expect } from "bun:test";
@@ -15,7 +15,7 @@ import {
 const { RenderPipeline } = await import("../packages/server/tw/routing/render-pipeline.ts") as any;
 const SB = { filePath: "<t>", cache: false, experimental: { serverBlocks: true } } as any;
 
-describe("F: serialization guard", () => {
+describe("serialization guard", () => {
   const okVals: [string, any][] = [
     ["string", "x"], ["number", 1], ["bool", true], ["null", null], ["undef", undefined],
     ["date", new Date("2020-01-02T03:04:05.000Z")],
@@ -51,7 +51,7 @@ describe("F: serialization guard", () => {
   });
 });
 
-describe("F: referenced names", () => {
+describe("referenced names", () => {
   test("collectReferencedNames finds template identifiers", () => {
     const r = collectReferencedNames('p "{name} has {items.length}"\n');
     expect(r.has("name")).toBe(true);
@@ -66,7 +66,7 @@ describe("F: referenced names", () => {
   });
 });
 
-describe("F: compile-time checks + lints", () => {
+describe("compile-time checks + lints", () => {
   test("TW113: a referenced function/Map initializer", () => {
     const prog = parseWithDetails('server {\n  const f = () => 1\n  const m = new Map()\n}\np "a={f} b={m}"\n', SB).program;
     const probs = checkServerBlocks(prog, { referenced: new Set(["f", "m"]) });
@@ -98,7 +98,7 @@ describe("F: compile-time checks + lints", () => {
   });
 });
 
-describe("F: env runtime backstop", () => {
+describe("env runtime backstop", () => {
   test("secret-looking env values are detected", () => {
     const secrets = secretEnvValues({ API_KEY: "supersecretvalue", SHORT: "abc", OTHER: "x" });
     expect(secrets.map((s) => s.name)).toEqual(["API_KEY"]);
@@ -112,7 +112,7 @@ describe("F: env runtime backstop", () => {
   });
 });
 
-describe("F: size cap", () => {
+describe("size cap", () => {
   test("executeServerBlocks throws TW114 over the cap", async () => {
     const blocks = collectServerBlocks(parseWithDetails('server {\n  const big = "x".repeat(200)\n}\np "b={big}"\n', SB).program);
     await expect(executeServerBlocks(blocks, { context: { params: {} }, referenced: new Set(["big"]), maxPayloadBytes: 50, label: "p.tw" })).rejects.toThrow(/TW114/);

@@ -1177,7 +1177,7 @@ export async function buildCommand(): Promise<void> {
           const scanSrc = serverBlocksOn ? stripServerRegionsForScan(source) : source;
           for (const l of collectClientImportsFromSource(scanSrc)) own.add(l);
           if (serverBlocksOn) {
-            // Phase D: transitive walk with the TS parser, chains included.
+            // transitive walk with the TS parser, chains included.
             const { walkClientGraph, formatChain } = await import("./server-boundary");
             const viols = walkClientGraph([pageFile, ...chainFiles], {
               onlyPackages: serverOnlyPackages,

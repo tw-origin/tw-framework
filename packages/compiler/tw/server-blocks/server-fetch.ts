@@ -1,5 +1,5 @@
 /**
- * serverFetch -- the `fetch` seen inside server blocks (Phase E2a).
+ * serverFetch -- the `fetch` seen inside server blocks .
  *
  * Wraps the platform fetch with:
  *   - a default timeout (AbortSignal), `server.fetchTimeoutMs` (default 10s)

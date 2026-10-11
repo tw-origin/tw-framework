@@ -1,5 +1,5 @@
 /**
- * Phase D -- the server-only boundary: the transitive client-graph walk and
+ * the server-only boundary: the transitive client-graph walk and
  * its four layers.
  */
 
@@ -27,7 +27,7 @@ const strip = (s: string) => {
 const walk = (dir: string, entries: string[], opts: any = {}) =>
   walkClientGraph(entries.map((e) => join(dir, e)), { stripServerRegions: strip, rootDir: dir, ...opts });
 
-describe("Phase D: boundary walk", () => {
+describe("boundary walk", () => {
   test("collectModuleImports handles import / export-from / dynamic", () => {
     const specs = collectModuleImports('import a from "./x"\nexport * from "./y"\nconst z = await import("./z")\n').map((i) => i.specifier);
     expect(specs).toEqual(["./x", "./y", "./z"]);

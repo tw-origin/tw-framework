@@ -1,5 +1,5 @@
 /**
- * Server blocks -- parser + AST (Phase B).
+ * Server blocks -- parser + AST .
  *
  * These tests exercise the `server { }` / `server:defer { }` block behind
  * `experimental.serverBlocks`. Everything here is parser-only: no execution,

@@ -1,5 +1,5 @@
 /**
- * Phase E1 -- getSession/requireUser, redirect()/notFound(), error handling.
+ * getSession/requireUser, redirect()/notFound(), error handling.
  */
 
 import { describe, test, expect } from "bun:test";
@@ -16,7 +16,7 @@ const {
 const SB = { filePath: "<t>", cache: false, experimental: { serverBlocks: true } } as any;
 
 function app(pageSrc: string, cfg: any = { experimental: { serverBlocks: true } }): any {
-  const dir = mkdtempSync(join(tmpdir(), "tw-e1-"));
+  const dir = mkdtempSync(join(tmpdir(), "tw-sb-auth-"));
   mkdirSync(join(dir, "home"), { recursive: true });
   writeFileSync(join(dir, "tw.config.ts"), "export default {}");
   writeFileSync(join(dir, "home", "page.tw"), pageSrc);
@@ -25,7 +25,7 @@ function app(pageSrc: string, cfg: any = { experimental: { serverBlocks: true } 
 const req = (session: any, headers: Record<string, string> = {}) =>
   Object.assign(new Request("http://localhost/", { headers }), { session });
 
-describe("E1: redirect validation", () => {
+describe("redirect validation", () => {
   const accept = ["/", "/login", "/login?next=/a#x", "/a/b", "/u/2?tab=posts"];
   const reject = [
     "https://evil.com", "http://evil.com", "//evil.com", "/\\evil.com", "/%5C/evil.com",
@@ -36,7 +36,7 @@ describe("E1: redirect validation", () => {
   for (const t of reject) test(`rejects ${JSON.stringify(t)}`, () => expect(isValidRedirectTarget(t)).toBe(false));
 });
 
-describe("E1: helpers in the runner", () => {
+describe("helpers in the runner", () => {
   test("getSession: no session -> null, never throws", async () => {
     const p = app('server {\n  const s = getSession()\n  const out = s === null ? "null" : "obj"\n}\np "s={out}"\n');
     const r = await p.renderWithServerBlocks("/", req(null));
@@ -139,7 +139,7 @@ describe("E1: helpers in the runner", () => {
   });
 });
 
-describe("E1: static pages", () => {
+describe("static pages", () => {
   test("TW107: getSession/requireUser in a static block", () => {
     const prog = parseWithDetails('server {\n  const s = getSession()\n}\np "x"\n', SB).program;
     const probs = checkServerBlocks(prog, { mode: "static" });
@@ -164,9 +164,9 @@ describe("E1: static pages", () => {
   });
 });
 
-describe("E1: real middleware + real Cookie (socket)", () => {
+describe("real middleware + real Cookie (socket)", () => {
   test("requireUser sees the session the middleware attaches", () => {
-    const dir = mkdtempSync(join(tmpdir(), "tw-e1-sock-"));
+    const dir = mkdtempSync(join(tmpdir(), "tw-sb-auth-sock-"));
     mkdirSync(join(dir, "home"), { recursive: true });
     writeFileSync(join(dir, "tw.config.ts"), "export default { experimental: { serverBlocks: true } };");
     writeFileSync(join(dir, "home", "page.tw"), 'server {\n  const me = requireUser()\n  const n = me.name\n}\np "n={n}"\n');
@@ -197,7 +197,7 @@ srv.stop(true);
   }, 30000);
 });
 
-describe("E1: helpers are block-only", () => {
+describe("helpers are block-only", () => {
   test("client bundle contains no helper source", () => {
     // The block (with its helper calls) is stripped, so a plain client scan
     // never sees `requireUser`/`redirect`.

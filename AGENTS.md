@@ -1140,11 +1140,11 @@ the frozen counter on api-server.
 
 ---
 
-# PART X -- CHANGELOG ADDENDUM: THE 30-EXAMPLE EXPANSION
+# PART X -- MORE EXAMPLE NOTES
 
-## 46. The bug the 30th example found (and the fix)
+## 46. A build-silent .twm comment-strip bug (and the fix)
 
-Adding the url-shortener example surfaced a real, build-silent framework
+A real, build-silent framework
 bug: the .twm loader's comment stripper used a naive `//` regex that ate
 `https://...` INSIDE string literals. The generated module code ended
 with an unclosed string, `loadTWMModule` caught the SyntaxError, logged
@@ -1156,7 +1156,7 @@ a string-aware state machine (' " ` modes, escape handling) used at all
 four comment-strip sites. Locked by tests/unit-twm-comment-strip.test.ts
 (10 cases, including the exact `new Map([["tw", "https://..."]])` repro).
 
-Lesson encoded for every future audit: a 405 with a clean build means the
+Lesson: a 405 with a clean build means the
 module failed to EXECUTE, not to compile -- and the error was in the
 serve log all along (this one was found by finally NOT redirecting
 stderr to /dev/null).
@@ -1168,4 +1168,4 @@ countdown, calculator, quiz-app, kanban-board, comments, headers-demo,
 redirects-demo, search-demo, webhook-log, pricing-table -- each verified
 by build, and the server-touching ones spot-checked live with curl
 (redirect codes, cached-query freezing, canonical keys, header surfaces,
-log tails, tag invalidation). All 30 build on every CI run.
+log tails, tag invalidation). All of them build on every CI run.

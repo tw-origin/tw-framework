@@ -1,5 +1,5 @@
 /**
- * Server-only boundary for the client graph (Phase D).
+ * Server-only boundary for the client graph .
  *
  * Walks the client graph (page + layout chain + every local module they
  * import, recursively, cycle-safe) with the TypeScript parser -- not the

@@ -1,5 +1,5 @@
 /**
- * Server-block toolkit (Phase C) — pure helpers the build and serve paths use:
+ * Server-block toolkit  — pure helpers the build and serve paths use:
  * value encoding, source stripping, name-collision checks, static-page rules
  * and execution of a block's raw TypeScript body.
  *
@@ -17,7 +17,7 @@ import type { Program, ServerBlock } from "../ast/nodes";
  * Encode a runtime value into the template scope exactly the way a `state { }`
  * literal of the same value is encoded: strings as-is, numbers/booleans via
  * `String`, `null` as "null", `undefined` as "", objects/arrays as JSON.
- * (See the state-literal encoding table in the Phase C report.)
+ * (See the state-literal encoding table in the report.)
  */
 export function encodeServerValue(v: unknown): string {
   if (v === undefined) return "";
@@ -568,7 +568,7 @@ export function scanCachedCredentialHeaders(body: string): string[] {
   return out;
 }
 
-// --- Cached pages (E2b) ------------------------------------------------------
+// --- Cached pages ------------------------------------------------------
 
 /** The `vary` list from a page's `cache { ... }` (lowercased, sorted, unique). */
 export function extractVary(source: string): string[] {

@@ -1,5 +1,5 @@
 /**
- * Phase E2a -- serverFetch + the per-fetch cache.
+ * serverFetch + the per-fetch cache.
  *
  * The tests inject a mock platform fetch (a test shim such as happy-dom must
  * not intercept server-side fetches), so they exercise the cache/dedupe/error
@@ -27,7 +27,7 @@ const hang = (init: any) => new Promise<Response>((_, rej) => {
   init?.signal?.addEventListener("abort", () => { const e: any = new Error("aborted"); e.name = "AbortError"; rej(e); });
 });
 
-describe("E2a: per-fetch cache", () => {
+describe("per-fetch cache", () => {
   test("second call within revalidate is a HIT; after expiry it refetches", async () => {
     const m = mock(() => ok());
     const sf = createServerFetch({ buildId: "b1", platformFetch: m.f });
@@ -98,7 +98,7 @@ describe("E2a: per-fetch cache", () => {
   });
 });
 
-describe("E2a: errors", () => {
+describe("errors", () => {
   test("timeout -> kind timeout, no query in the message", async () => {
     const m = mock((_u, init) => hang(init));
     const sf = createServerFetch({ buildId: "b1", timeoutMs: 60, platformFetch: m.f });
@@ -130,7 +130,7 @@ describe("E2a: errors", () => {
   });
 });
 
-describe("E2a: dedupe + credentials", () => {
+describe("dedupe + credentials", () => {
   test("Promise.all of 3 identical GETs = 1 network call", async () => {
     const m = mock(() => ok());
     const sf = createServerFetch({ buildId: "b1", platformFetch: m.f });
@@ -160,7 +160,7 @@ describe("E2a: dedupe + credentials", () => {
   });
 });
 
-describe("E2a: server blocks get the fetch shim", () => {
+describe("server blocks get the fetch shim", () => {
   test("a block's fetch is the shim (cached HIT)", async () => {
     const m = mock(() => ok("{}"));
     const sf = createServerFetch({ buildId: "b1", platformFetch: m.f });

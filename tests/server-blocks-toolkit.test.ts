@@ -1,5 +1,5 @@
 /**
- * Server blocks -- Phase C (compiler-side): encoding, source stripping, name
+ * Server blocks -- (compiler-side): encoding, source stripping, name
  * collisions, static-page rules and execution.
  */
 
@@ -17,7 +17,7 @@ function parseSB(src: string) {
 }
 const blocks = (src: string) => collectServerBlocks(parseSB(src).program);
 
-describe("Phase C: encoding matches state { } (B)", () => {
+describe("encoding matches state { }", () => {
   const literals: [string, unknown][] = [
     ['"hi"', "hi"], ["42", 42], ["true", true], ["null", null], ['""', ""],
     ['"say \\"hi\\""', 'say "hi"'], ['"{\\"a\\":1}"', '{"a":1}'], ['"123"', "123"],
@@ -45,13 +45,13 @@ describe("Phase C: encoding matches state { } (B)", () => {
 
   test("REPORTED: member access on a JSON-looking string is misread as an object", () => {
     // `{g}` (bare) is literal, but `{g.a}` runs the evaluator, which JSON-parses
-    // the string. This is a pre-existing evaluator behaviour, not a Phase C bug.
+    // the string. This is a pre-existing evaluator behaviour, not a bug.
     const r = compileSync('p "{g.a}"', { filePath: "t.tw", stateVars: { g: '{"a":1}' } });
     expect(r.html).toContain(">1<");
   });
 });
 
-describe("Phase C: strip server regions (C)", () => {
+describe("strip server regions", () => {
   const src = 'server {\n  import { db } from "lib/db"\n  const a = 1\n}\nh1 "x"';
 
   test("stripping removes the block but keeps offsets/newlines", () => {
@@ -72,7 +72,7 @@ describe("Phase C: strip server regions (C)", () => {
   });
 });
 
-describe("Phase C: collisions (4, D)", () => {
+describe("name collisions", () => {
   test("server name colliding with state { }", () => {
     const p = parseSB('state { a = 1 }\nserver { const a = 2 }').program;
     expect(serverStateCollisions(p).map((c) => c.name)).toEqual(["a"]);
@@ -91,7 +91,7 @@ describe("Phase C: collisions (4, D)", () => {
   });
 });
 
-describe("Phase C: static-page rules (5)", () => {
+describe("static-page rules", () => {
   test("scanRequestAccess finds direct reads only", () => {
     expect([...scanRequestAccess("const o = {headers:1}; obj.headers; const h = headers.a")]).toEqual(["headers"]);
   });
@@ -119,7 +119,7 @@ describe("Phase C: static-page rules (5)", () => {
   });
 });
 
-describe("Phase C: execution (D)", () => {
+describe("block execution", () => {
   test("transpiled TypeScript runs (types stripped)", async () => {
     const out = await executeServerBlock(blocks("server { const a: number = 1 + 1; const s: string = 'z' }")[0], {});
     expect(out).toEqual({ a: 2, s: "z" });
