@@ -148,6 +148,58 @@ describe("Phase C part 2: static trap + static path", () => {
   });
 });
 
+describe("Phase D0: dev re-import", () => {
+  test("an edited imported helper is picked up in dev", async () => {
+    const dir = mkdtempSync(join(tmpdir(), "tw-sb-dev-"));
+    mkdirSync(join(dir, "home"), { recursive: true });
+    writeFileSync(join(dir, "tw.config.ts"), "export default {}");
+    writeFileSync(join(dir, "home", "helper.ts"), 'export const v = "v1"\n');
+    writeFileSync(join(dir, "home", "page.tw"), 'server {\n  import { v } from "./helper.ts"\n  const out = v\n}\np "out={out}"\n');
+    const p = new RenderPipeline({ rootDir: dir, homeDir: join(dir, "home"), enableCache: true, serverBlocks: true, dev: true });
+    const a = await p.renderWithServerBlocks("/", req());
+    expect(a.html).toContain("out=v1");
+    await new Promise((r) => setTimeout(r, 20)); // ensure a new mtime
+    writeFileSync(join(dir, "home", "helper.ts"), 'export const v = "v2"\n');
+    const b = await p.renderWithServerBlocks("/", req());
+    expect(b.html).toContain("out=v2");
+  }, 30000);
+});
+
+describe("Phase D0: real listening server", () => {
+  test("a socket request with a real Cookie header reaches the block", () => {
+    const dir = mkdtempSync(join(tmpdir(), "tw-sb-sock-"));
+    mkdirSync(join(dir, "home"), { recursive: true });
+    writeFileSync(join(dir, "tw.config.ts"), "export default { experimental: { serverBlocks: true } };");
+    writeFileSync(join(dir, "home", "page.tw"), 'server {\n  const u = cookies.u ?? "none"\n}\np "u={u}"\n');
+    // A separate process (no happy-dom preload) so the request goes over a real
+    // socket with a real Cookie header.
+    const serverPath = join(import.meta.dir, "..", "packages", "server", "tw", "index.ts");
+    const script = join(dir, "sock.mjs");
+    writeFileSync(script, `
+import { request as httpRequest } from "node:http";
+const { TWServer } = await import(${JSON.stringify(serverPath)});
+const server = new TWServer({ rootDir: ${JSON.stringify(dir)}, port: 0, host: "127.0.0.1", config: { experimental: { serverBlocks: true } }, securityHeaders: false, cors: false, compression: false });
+const srv = Bun.serve({ port: 0, fetch: (r) => server.handleRequest(r) });
+const doReq = (method) => new Promise((res, rej) => {
+  const r = httpRequest({ host: "127.0.0.1", port: srv.port, path: "/", method, headers: { cookie: "u=99" } }, (x) => { let d = ""; x.on("data", (c) => { d += c; }); x.on("end", () => res({ status: x.statusCode, body: d, cc: x.headers["cache-control"] })); });
+  r.on("error", rej); r.end();
+});
+const get = await doReq("GET");
+const head = await doReq("HEAD");
+console.log("RESULT:" + JSON.stringify({ get, head }));
+srv.stop(true);
+`);
+    const r = spawnSync(process.execPath, [script], { cwd: dir, encoding: "utf8" });
+    const m = /RESULT:(\{.*\})/.exec(r.stdout || "");
+    expect(m).toBeTruthy();
+    const out = JSON.parse(m![1]);
+    expect(out.get.body).toContain("u=99");
+    expect(out.get.cc).toBe("private, no-store");
+    expect(out.head.status).toBe(200);
+    expect(out.head.cc).toBe("private, no-store");
+  }, 30000);
+});
+
 describe("Phase C part 2: cookie header + real build", () => {
   test("a real Cookie header reaches the block", async () => {
     const p = makeApp('server {\n  const u = cookies.u ?? "none"\n}\np "u={u}"\n');

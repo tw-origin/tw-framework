@@ -43,6 +43,9 @@
       "@tw/shared": [
         "./packages/shared/tw"
       ],
+      "@tw/server-only": [
+        "./packages/server-only/tw"
+      ],
       "@tw/sdk": [
         "./packages/sdk/tw"
       ],

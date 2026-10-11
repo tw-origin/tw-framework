@@ -486,6 +486,7 @@ export async function buildCommand(): Promise<void> {
   // (none = off); the rest pass straight through to the compiler so each
   // fine-grained field reaches the pass it names.
   let serverBlocksOn = false;
+  let serverOnlyPackages: string[] = [];
   const compilePassOpts = (): any =>
     compilerOpts
       ? {
@@ -535,6 +536,7 @@ export async function buildCommand(): Promise<void> {
       const cfgMod: any = await twImportTs(cfgPath);
       const cfg = cfgMod.default ?? cfgMod;
       serverBlocksOn = cfg?.experimental?.serverBlocks === true;
+      serverOnlyPackages = Array.isArray(cfg?.server?.onlyPackages) ? cfg.server.onlyPackages : [];
       // Plugins load here so the config is already resolved when setup() runs.
       try {
         const { loadPlugins } = await import("@tw/plugins");
@@ -1126,12 +1128,24 @@ export async function buildCommand(): Promise<void> {
           const own = new Set<string>();
           const deps = new Set<string>();
           const { collectClientImportsFromSource, findServerOnlyViolations } = await import("./client-bundle");
-          for (const l of collectClientImportsFromSource(serverBlocksOn ? stripServerRegionsForScan(source) : source)) own.add(l);
-          for (const v of findServerOnlyViolations(serverBlocksOn ? stripServerRegionsForScan(source) : source)) tw1007.push({ file: pageFile, spec: v });
+          const scanSrc = serverBlocksOn ? stripServerRegionsForScan(source) : source;
+          for (const l of collectClientImportsFromSource(scanSrc)) own.add(l);
+          if (serverBlocksOn) {
+            // Phase D: transitive walk with the TS parser, chains included.
+            const { walkClientGraph, formatChain } = await import("./server-boundary");
+            const viols = walkClientGraph([pageFile, ...chainFiles], {
+              onlyPackages: serverOnlyPackages,
+              stripServerRegions: stripServerRegionsForScan,
+              rootDir,
+            });
+            for (const v of viols) tw1007.push({ file: pageFile, spec: `${v.layer}:${v.specifier}  [${formatChain(v)}]` });
+          } else {
+            for (const v of findServerOnlyViolations(source)) tw1007.push({ file: pageFile, spec: v });
+          }
           for (const lf of chainFiles) {
             const ls = readFileSync(lf, "utf-8");
             for (const l of collectClientImportsFromSource(ls)) deps.add(l);
-            for (const v of findServerOnlyViolations(ls)) tw1007.push({ file: lf, spec: v });
+            if (!serverBlocksOn) for (const v of findServerOnlyViolations(ls)) tw1007.push({ file: lf, spec: v });
           }
           for (const l of own) deps.add(l);
           pageMods = { deps: [...deps], own: [...own] };
