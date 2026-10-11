@@ -20,7 +20,7 @@ import {
 import { setSignal } from "./signal-stream";
 import { join } from "node:path";
 import { isRuleDsl, parseRules, evaluateRules, type MiddlewareRule } from "./twm-rules";
-import { sha256, parseCacheBody, resolveCache, canonicalizeQuery, readCacheProfilesSync, type ResolvedCache } from "@tw/shared";
+import { sha256, parseCacheBody, resolveCache, canonicalizeQuery, readCacheProfilesSync, findBalancedBraceEnd, type ResolvedCache } from "@tw/shared";
 
 // --- Types -------------------------------------------------------------------
 
@@ -510,23 +510,10 @@ const NONDET_PATTERN = /\b(?:Date\s*\.\s*now\s*\(|Math\s*\.\s*random\s*\(|crypto
 /** Extract a balanced-brace body from `after` (which starts inside the fn,
  * i.e. just past the function's opening brace -- so depth starts at 1). */
 function handlerBodyEnd(after: string): number {
-  let depth = 1;
-  let inStr: string | null = null;
-  for (let i = 0; i < after.length; i++) {
-    const ch = after[i];
-    if (inStr) {
-      if (ch === "\\") i++;
-      else if (ch === inStr) inStr = null;
-      continue;
-    }
-    if (ch === '"' || ch === "'" || ch === "`") { inStr = ch; continue; }
-    if (ch === "{") depth++;
-    else if (ch === "}") {
-      depth--;
-      if (depth === 0) return i;
-    }
-  }
-  return after.length;
+  // Delegate to the shared, string/comment/template-aware scanner so the
+  // .twm and .tw raw-TypeScript extractors can never drift apart. `after`
+  // starts just past the opening brace, so scan from a synthetic '{'.
+  return findBalancedBraceEnd("{" + after, 0) - 1;
 }
 
 /** cache.profiles from tw.config.ts, loaded once per rootDir. */

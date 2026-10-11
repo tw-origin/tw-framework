@@ -115,6 +115,10 @@ export const ERROR_CODES: Record<ErrorCode, { message: string; severity: Diagnos
   TW095: { message: "Invalid for-loop iterable -- use {varName} or a valid comma-separated literal", severity: "error", category: "syntax" },
   TW096: { message: "Unknown state variable in interpolation (renders empty)", severity: "warning", category: "semantic" },
   TW097: { message: "while with a comparison renders its body ONCE at build time (state cannot mutate during SSR) -- use for loops for repetition", severity: "warning", category: "semantic" },
+  // Server blocks (TW099-TW101)
+  TW099: { message: "Unknown server modifier (only ':defer' is supported)", severity: "error", category: "syntax" },
+  TW100: { message: "Expected '{' after 'server'", severity: "error", category: "syntax" },
+  TW101: { message: "Unclosed server block -- a '}' never closes the 'server {'", severity: "error", category: "syntax" },
   // Codes thrown outside the rule engine. TW303 comes from the stylesheet
   // parser (codegen/tss.ts); TW000 is the generic fallback used when an error
   // carries no code of its own.

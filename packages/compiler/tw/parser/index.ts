@@ -10,7 +10,7 @@ import { createProgram } from "../ast/nodes";
 import { TokenCursor } from "./expressions";
 import { ErrorCollector, CompilerError, CompilerState } from "./recovery";
 import { parseStatements } from "./statements";
-import { parseDirective, isDirectiveKeyword } from "./directives";
+import { parseDirective, isDirectiveKeyword, parseServerDirective } from "./directives";
 import { sha256 } from "@tw/shared";
 
 function deepClone<T>(obj: T): T {
@@ -22,6 +22,28 @@ function deepClone<T>(obj: T): T {
   catch { return obj; }
 }
 
+/**
+ * A top-level `server { ... }` or `server:defer { ... }` starts here.
+ * `server` is already a keyword (used by `render server`), so the block form
+ * is recognised by POSITION: a `server` at a statement start followed by `{`
+ * (or `:defer {`). Any other use of the keyword parses exactly as before.
+ */
+function isServerBlockStart(cursor: TokenCursor): boolean {
+  const t = cursor.peek();
+  if (!t || t.type !== "KEYWORD" || t.value !== "server") return false;
+  const n1 = cursor.peek(1);
+  if (!n1) return false;
+  if (n1.type === "LBRACE") return true;
+  if (n1.type === "COLON") {
+    const n2 = cursor.peek(2);
+    const n3 = cursor.peek(3);
+    // `server:<ident> {` -- any modifier name, so an unknown one is reported
+    // by the parser rather than silently ignored.
+    return !!n2 && (n2.type === "IDENT" || n2.type === "KEYWORD") && !!n3 && n3.type === "LBRACE";
+  }
+  return false;
+}
+
 export interface ParseOptions {
   filePath?: string;
   tokenizer?: TokenizerOptions;
@@ -29,6 +51,8 @@ export interface ParseOptions {
   maxErrors?: number;
   /** compiler.incremental -- false bypasses the parse cache. Default: on. */
   cache?: boolean;
+  /** Experimental syntax, off unless explicitly enabled. */
+  experimental?: { serverBlocks?: boolean };
 }
 
 export interface ParseResult {
@@ -84,11 +108,15 @@ export function parse(source: string, opts?: ParseOptions): Program {
 
 export function parseWithDetails(source: string, opts?: ParseOptions): ParseResult {
   const filePath = opts?.filePath ?? "<anonymous>";
+  const serverBlocksOn = opts?.experimental?.serverBlocks === true;
   const startTime = performance.now();
 
   // Check cache (compiler.incremental: opts.cache === false bypasses it)
   const hash = sha256(source);
-  const cached = opts?.cache === false ? undefined : parseCache.get(filePath);
+  // The key carries the experimental flag: the same file parsed with a
+  // different flag is a different program.
+  const cacheKey = serverBlocksOn ? filePath + "\u0000experimental.serverBlocks" : filePath;
+  const cached = opts?.cache === false ? undefined : parseCache.get(cacheKey);
   if (cached && cached.hash === hash) {
     return {
       program: cached.program,
@@ -121,7 +149,7 @@ export function parseWithDetails(source: string, opts?: ParseOptions): ParseResu
   }
 
   // Create cursor
-  const cursor = new TokenCursor(tokenizerResult.tokens, errors);
+  const cursor = new TokenCursor(tokenizerResult.tokens, errors, source);
   const state = new CompilerState(errors);
 
   // Create program
@@ -133,6 +161,13 @@ export function parseWithDetails(source: string, opts?: ParseOptions): ParseResu
     cursor.skipWhitespace();
     const token = cursor.peek();
     if (!token) break;
+
+    // Top-level `server { }` / `server:defer { }` (experimental).
+    if (serverBlocksOn && isServerBlockStart(cursor)) {
+      cursor.advance();
+      program.directives.push(parseServerDirective(cursor, token));
+      continue;
+    }
 
     // Check for directives -- but NOT if keyword is followed by . or # (CSS selector)
     if (token.type === "KEYWORD" && isDirectiveKeyword(token.value)) {
@@ -178,6 +213,13 @@ export function parseWithDetails(source: string, opts?: ParseOptions): ParseResu
       return !!(n && (n.type === "DOT" || n.type === "HASH"));
     };
 
+    // Top-level `server { }` / `server:defer { }` (experimental).
+    if (serverBlocksOn && isServerBlockStart(cursor)) {
+      cursor.advance();
+      program.directives.push(parseServerDirective(cursor, token));
+      continue;
+    }
+
     if (token.type === "KEYWORD" && isDirectiveKeyword(token.value) && !isSelector(token)) {
       cursor.advance();
       const directive = parseDirective(cursor, token, (c) => parseStatements(c, errors, { filePath, state, stopTypes: ["RBRACE"] } as any));
@@ -192,7 +234,7 @@ export function parseWithDetails(source: string, opts?: ParseOptions): ParseResu
     }
 
     const before = cursor.position;
-    const chunk = parseStatements(cursor, errors, { filePath, state, stopTypes: ["DIRECTIVE"], stopKeywordCheck: isDirectiveKeyword } as any);
+    const chunk = parseStatements(cursor, errors, { filePath, state, stopTypes: ["DIRECTIVE"], stopKeywordCheck: serverBlocksOn ? (v: string) => isDirectiveKeyword(v) || v === "server" : isDirectiveKeyword } as any);
     body.push(...chunk);
     if (cursor.position === before) {
       // No progress (stray keyword that is not a directive) -- skip a token.
@@ -229,7 +271,7 @@ export function parseWithDetails(source: string, opts?: ParseOptions): ParseResu
       if (oldestKey) parseCache.delete(oldestKey);
     }
 
-    parseCache.set(filePath, {
+    parseCache.set(cacheKey, {
       hash,
       program: deepClone(program),
       errors: errors.getErrors(),

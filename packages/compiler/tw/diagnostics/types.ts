@@ -53,6 +53,8 @@ export type ErrorCode =
   // Silent-garbage guards (TW094-TW096,)
   | "TW090" | "TW091" | "TW092" | "TW093"
   | "TW094" | "TW095" | "TW096" | "TW097"
+  // Server blocks (TW099-TW101)
+  | "TW099" | "TW100" | "TW101"
   // Declared for codes emitted outside the rule engine (see codes.ts)
   | "TW303" | "TW000";
 

@@ -22,7 +22,8 @@ export type DirectiveNode =
   | DefineDirective
   | ConfigDirective
   | MiddlewareDirective
-  | MetaDirective;
+  | MetaDirective
+  | ServerBlock;
 
 export interface PageDirective extends BaseNode {
   type: "PageDirective";
@@ -190,5 +191,31 @@ export interface MetaDirective extends BaseNode {
   key: string;
   value: string;
   property?: string;
+}
+
+/** An `import ... from "..."` statement found inside a `server { }` block. */
+export interface ImportInfo {
+  /** The statement verbatim, as authored. */
+  source: string;
+  /** The module specifier (the string after `from`). */
+  specifier: string;
+}
+
+/**
+ * A top-level `server { }` block (`server:defer { }` sets `deferred`).
+ * The body is raw TypeScript; parsing it into an executable module is a
+ * later phase. Imports are hoisted later, so they never enter
+ * `declaredNames`.
+ */
+export interface ServerBlock extends BaseNode {
+  type: "ServerBlock";
+  /** `server:defer { }` -> true. */
+  deferred: boolean;
+  /** Raw TypeScript body, exactly as authored between the braces. */
+  source: string;
+  /** `import ... from "..."` statements found inside the block. */
+  imports: ImportInfo[];
+  /** Top-level names the block declares (imports and nested scopes excluded). */
+  declaredNames: string[];
 }
 

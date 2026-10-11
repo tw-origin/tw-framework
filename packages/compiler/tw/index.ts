@@ -15,6 +15,7 @@ function parseForCompile(source: string, filePath: string, opts?: CompileOptions
   return parseWithDetails(source, {
     filePath,
     cache: opts?.incremental !== false && size !== 0,
+    experimental: opts?.experimental,
   });
 }
 
@@ -194,6 +195,8 @@ export interface CompileOptions {
   cssPrefix?: string;
   /** css.importPaths -- extra dirs to resolve stylesheet imports from. */
   cssImportPaths?: string[];
+  /** Experimental syntax, off unless explicitly enabled. */
+  experimental?: { serverBlocks?: boolean };
 }
 
 export interface CompilePassOptions {
