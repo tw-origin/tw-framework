@@ -1,0 +1,10 @@
+page {
+  title "Broken"
+  render ssr
+}
+
+server {
+  throw new Error("boom-should-not-leak")
+}
+
+p "unreachable"

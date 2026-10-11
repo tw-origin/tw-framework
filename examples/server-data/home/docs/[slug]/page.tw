@@ -1,0 +1,17 @@
+page {
+  title "Docs"
+  render static
+}
+
+server {
+  import { docsBySlug } from "../../../lib/db.server.ts"
+  const docSlug = params.slug
+  const doc = docsBySlug(docSlug)
+  const title = doc.title
+  const body = doc.body
+}
+
+div.doc {
+  h1 "{title}"
+  p "{body}"
+}

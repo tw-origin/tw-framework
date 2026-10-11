@@ -1,0 +1,14 @@
+import { verifyCredentials } from "db.server"
+import { createSession } from "sessions"
+
+fn post(request) {
+  const body = request.body || {}
+  const user = verifyCredentials(String(body.user ?? ""), String(body.pass ?? ""))
+  if (!user) return { status: 401, json: { ok: false, error: "invalid credentials" } }
+  const sid = createSession(user.id, { name: user.name })
+  return {
+    status: 200,
+    json: { ok: true, user: user.id },
+    headers: { "Set-Cookie": "tw.sid=" + sid + "; Path=/; HttpOnly; SameSite=Lax" }
+  }
+}

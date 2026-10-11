@@ -1,0 +1,24 @@
+page {
+  title "Posts"
+  render ssr
+  cache { revalidate: 60, vary: ["page"] }
+}
+
+server {
+  const page = query.page ?? "1"
+  const origin = env.PUBLIC_ORIGIN ?? "http://localhost:8801"
+  const res = await fetch(origin + "/api/posts?page=" + page, { cache: { revalidate: 60, tag: "posts" } })
+  const data = await res.json()
+  const posts = data.posts
+}
+
+div.posts {
+  h1 "Posts"
+  p "page {page}"
+  for post in posts {
+    article {
+      h2 "{post.title}"
+      p "{post.body}"
+    }
+  }
+}

@@ -1,0 +1,10 @@
+rule "protect dashboard" {
+  match "/dashboard/**"
+  session {
+    cookie "tw.sid"
+  }
+  response {
+    status 302
+    redirect "/login"
+  }
+}

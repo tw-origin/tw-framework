@@ -1,0 +1,10 @@
+page {
+  title "Fn"
+  render ssr
+}
+
+server {
+  const helper = () => 1
+}
+
+p "h={helper}"
