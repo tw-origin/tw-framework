@@ -13,6 +13,14 @@
  *   L4 the `@tw/server-only` marker
  * plus the by-name rule: any specifier ending in `.server.ts` / `.server.js`.
  *
+ * Known limitations:
+ *   - The walk does not enter bare packages: a package that re-exports a denied
+ *     module is not traced (only local modules are followed).
+ *   - `path` and `crypto` are NOT denied (both are common client-side); the
+ *     `crypto` "already used client-side" report is not implemented.
+ *   - Only used when `experimental.serverBlocks` is on. `tw dev` still uses the
+ *     legacy line scan (wiring the walk into dev needs the page file path).
+ *
  * Only used when `experimental.serverBlocks` is on; the legacy TW1007 path is
  * untouched when it is off.
  */
@@ -23,9 +31,11 @@ import * as ts from "typescript";
 
 export const SERVER_ONLY_MARKER = "@tw/server-only";
 
-/** L1 -- Node built-ins always denied in the client graph. */
+/** L1 -- Node built-ins always denied in the client graph.
+ * (`path` is intentionally NOT here: it is common client-side and bundlers
+ * shim it. `crypto` is likewise allowed -- see the report.) */
 export const DENY_NODE_BUILTINS = new Set([
-  "fs", "fs/promises", "net", "child_process", "os", "path", "path/posix", "path/win32",
+  "fs", "fs/promises", "net", "child_process", "os",
   "tls", "dns", "dns/promises", "cluster", "worker_threads", "http", "https", "http2",
   "dgram", "repl", "readline", "v8", "vm", "inspector", "perf_hooks", "async_hooks",
   "diagnostics_channel", "process", "module", "tty", "zlib", "constants", "sys",

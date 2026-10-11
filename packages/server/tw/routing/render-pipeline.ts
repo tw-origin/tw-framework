@@ -25,7 +25,7 @@
 
 import { readFileSync, existsSync } from "node:fs";
 import { dirname } from "node:path";
-import { compileSync, registerComponentTemplate, collectServerBlocks, encodeServerValues, executeServerBlocks, resolveServerImports, type CompileResult } from "@tw/compiler";
+import { compileSync, registerComponentTemplate, collectServerBlocks, encodeServerValues, executeServerBlocks, resolveServerImports, isServerRedirect, isServerNotFound, type CompileResult } from "@tw/compiler";
 import { maskSourceStringsAndComments, sha256, extractCacheDirective, resolveCache, readCacheProfilesSync, type ResolvedCache } from "@tw/shared";
 import { executeRouteHandler } from "./twm-loader";
 import type {
@@ -81,6 +81,8 @@ export class RenderPipeline {
   private dev: boolean;
   /** experimental.serverBlocks (from config): off by default. */
   private serverBlocksFlag: boolean;
+  /** server.loginPath (default "/login") for requireUser(). */
+  private loginPath: string;
   private routeTree: RouteNode | null = null;
   private compiledCache: Map<string, CompiledFileEntry> = new Map();
   /**
@@ -121,6 +123,7 @@ export class RenderPipeline {
     this.cacheTTL = opts.cacheTTL ?? 60000;
     this.dev = opts.dev ?? false;
     this.serverBlocksFlag = (opts as any).serverBlocks === true;
+    this.loginPath = (opts as any).loginPath ?? "/login";
     this.hydrationMode = opts.hydrationMode ?? "auto";
   }
 
@@ -195,7 +198,7 @@ export class RenderPipeline {
       const eq = part.indexOf("=");
       if (eq > 0) cookies[part.slice(0, eq).trim()] = part.slice(eq + 1).trim();
     }
-    const context = { params: match!.params ?? {}, query, headers, cookies, env: (process.env as Record<string, string>) ?? {} };
+    const context = { params: match!.params ?? {}, query, headers, cookies, env: (process.env as Record<string, string>) ?? {}, session: (request as any).session ?? null, loginPath: this.loginPath };
 
     try {
       const imports: Record<string, unknown> = {};
@@ -211,6 +214,33 @@ export class RenderPipeline {
       delete outHeaders["x-tw-cache-age"];
       return { ...result, headers: outHeaders, serverBlocks: true } as RouteRenderResult;
     } catch (err: any) {
+      // redirect()/notFound() are typed, branded exceptions the runner recognises
+      // even through Promise.all. Both are private and never cached.
+      if (isServerRedirect(err)) {
+        return {
+          html: "", css: "", js: "", status: 302,
+          headers: { Location: err.target, "Cache-Control": "private, no-store" },
+          fromCache: false, durationMs: 0, serverBlocks: true,
+        } as RouteRenderResult;
+      }
+      if (isServerNotFound(err)) {
+        let html = "<!DOCTYPE html><html><head><title>Not Found</title></head><body><h1>404 Not Found</h1></body></html>";
+        const rootNotFound = findRootNotFound(tree!);
+        if (rootNotFound) {
+          try {
+            const compiled = this.compileFile(rootNotFound);
+            let nf = String(compiled.html || "");
+            const nfm = nf.match(/<body[^>]*>([\s\S]*)<\/body>/i);
+            nf = (nfm ? nfm[1] : nf).replace(/<\/?html[^>]*>/gi, "").replace(/<\/?body[^>]*>/gi, "");
+            html = this.assembleHTML(nf, compiled.css, "", "Not Found");
+          } catch { /* keep the generic 404 */ }
+        }
+        return {
+          html, css: "", js: "", status: 404,
+          headers: { "Content-Type": "text/html; charset=utf-8", "Cache-Control": "private, no-store" },
+          fromCache: false, durationMs: 0, serverBlocks: true,
+        } as RouteRenderResult;
+      }
       // Detail stays in the server log; the body is generic.
       console.error(`[tw] server block failed for ${pageFile}: ${err?.message ?? err}`);
       return {

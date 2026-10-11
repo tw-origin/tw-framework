@@ -1177,6 +1177,7 @@ export class TWServer {
                 enableCache: true, hydrationMode: (this.options as any).config?.strategies?.hydration?.mode,
                 dev: false,
                 serverBlocks: (this.options as any).config?.experimental?.serverBlocks === true,
+                loginPath: (this.options as any).config?.server?.loginPath,
               });
               setActivePipeline(this.renderPipeline);
             }

@@ -487,6 +487,7 @@ export async function buildCommand(): Promise<void> {
   // fine-grained field reaches the pass it names.
   let serverBlocksOn = false;
   let serverOnlyPackages: string[] = [];
+  let loginPath = "/login";
   const compilePassOpts = (): any =>
     compilerOpts
       ? {
@@ -537,6 +538,14 @@ export async function buildCommand(): Promise<void> {
       const cfg = cfgMod.default ?? cfgMod;
       serverBlocksOn = cfg?.experimental?.serverBlocks === true;
       serverOnlyPackages = Array.isArray(cfg?.server?.onlyPackages) ? cfg.server.onlyPackages : [];
+      if (cfg?.server?.loginPath !== undefined) {
+        const { isValidRedirectTarget } = _compilerMod as any;
+        loginPath = String(cfg.server.loginPath);
+        if (!isValidRedirectTarget?.(loginPath)) {
+          console.error("  \x1b[31m\u2717\x1b[0m tw.config.ts server.loginPath is not a same-origin internal path: " + JSON.stringify(loginPath));
+          errorCount++;
+        }
+      }
       // Plugins load here so the config is already resolved when setup() runs.
       try {
         const { loadPlugins } = await import("@tw/plugins");
@@ -1008,7 +1017,7 @@ export async function buildCommand(): Promise<void> {
           const omit = ["headers", "cookies", "query"];
           if (!hasExplicitParams) omit.push("params");
           try {
-            const vals = await executeServerBlocks(sb, { context: { params: paramSet, env: process.env as Record<string, string> }, omit, label: pageFile });
+            const vals = await executeServerBlocks(sb, { context: { params: paramSet, env: process.env as Record<string, string>, loginPath }, omit, omitRuntime: ["getSession", "requireUser", "redirect", "notFound"], label: pageFile });
             serverVars = encodeServerValues(vals);
           } catch (e: any) {
             console.error("  \x1b[31m\u2717\x1b[0m " + pageFile.replace(rootDir + "/", "") + "  server block failed: " + (e?.message ?? e));

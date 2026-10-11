@@ -125,6 +125,10 @@ export interface ServerRequestContext {
   headers?: Record<string, string>;
   cookies?: Record<string, string>;
   env?: Record<string, string>;
+  /** The request's existing session (attached by the middleware), or null. */
+  session?: any;
+  /** server.loginPath from tw.config.ts (default "/login"). */
+  loginPath?: string;
 }
 
 /** Remove the block's own `import ...` statements from its body. */
@@ -160,7 +164,7 @@ function runOne(block: ServerBlock, bindings: Record<string, unknown>): Promise<
  */
 export async function executeServerBlock(
   block: ServerBlock,
-  opts: { context?: ServerRequestContext; imports?: Record<string, unknown>; scope?: Record<string, unknown>; omit?: string[]; label?: string } = {},
+  opts: { context?: ServerRequestContext; imports?: Record<string, unknown>; scope?: Record<string, unknown>; omit?: string[]; omitRuntime?: string[]; label?: string } = {},
 ): Promise<Record<string, unknown>> {
   const ctx = Object.freeze({
     params: Object.freeze({ ...(opts.context?.params ?? {}) }),
@@ -169,6 +173,7 @@ export async function executeServerBlock(
     cookies: Object.freeze({ ...(opts.context?.cookies ?? {}) }),
     env: Object.freeze({ ...(opts.context?.env ?? {}) }),
   });
+  const helpers = makeRuntimeHelpers(opts.context?.session ?? null, opts.context?.loginPath ?? "/login");
   const bindings: Record<string, unknown> = {
     ...(opts.scope ?? {}),
     ...(opts.imports ?? {}),
@@ -177,11 +182,16 @@ export async function executeServerBlock(
     headers: ctx.headers,
     cookies: ctx.cookies,
     env: ctx.env,
+    getSession: helpers.getSession,
+    requireUser: helpers.requireUser,
+    redirect: helpers.redirect,
+    notFound: helpers.notFound,
   };
   // A static page's block must not see headers/cookies/query (or params without
   // enumerated params): bind them to a value that throws a named error on any
   // access, so aliasing/destructuring is caught at build time too.
   for (const name of opts.omit ?? []) bindings[name] = unavailable(name, opts.label);
+  for (const name of opts.omitRuntime ?? []) bindings[name] = unavailableHelper(name, opts.label);
   return (await runOne(block, bindings)) ?? {};
 }
 
@@ -192,24 +202,98 @@ function unavailable(name: string, label?: string): any {
   return new Proxy({}, { get: boom, has: boom, ownKeys: boom, getOwnPropertyDescriptor: boom });
 }
 
+/** A stand-in for a runtime helper unavailable in a static block (TW107/TW108). */
+function unavailableHelper(name: string, label?: string): any {
+  const code = name === "getSession" || name === "requireUser" ? "TW107" : "TW108";
+  const msg = `${code}: ${name}() is not available in a static server block${label ? ` (${label})` : ""}`;
+  return (..._a: any[]): never => { throw new Error(msg); };
+}
+
 /** Run every block in source order, threading one shared scope. Each block
  * run is bounded by `timeoutMs` (default 10s); the timeout stops waiting but
  * does not cancel the running block. */
 export async function executeServerBlocks(
   blocks: ServerBlock[],
-  opts: { context?: ServerRequestContext; imports?: Record<string, unknown>; timeoutMs?: number; omit?: string[]; label?: string } = {},
+  opts: { context?: ServerRequestContext; imports?: Record<string, unknown>; timeoutMs?: number; omit?: string[]; omitRuntime?: string[]; label?: string } = {},
 ): Promise<Record<string, unknown>> {
   const scope: Record<string, unknown> = {};
   const ms = opts.timeoutMs ?? DEFAULT_SERVER_BLOCK_TIMEOUT_MS;
   for (const b of blocks) {
     const vals = await withTimeout(
-      executeServerBlock(b, { context: opts.context, imports: opts.imports, scope, omit: opts.omit, label: opts.label }),
+      executeServerBlock(b, { context: opts.context, imports: opts.imports, scope, omit: opts.omit, omitRuntime: opts.omitRuntime, label: opts.label }),
       ms,
       `block at line ${b.line}`,
     );
     Object.assign(scope, vals);
   }
   return scope;
+}
+
+// --- Runtime helpers (available inside server blocks only) -------------------
+
+export const SERVER_REDIRECT_BRAND = Symbol.for("tw.serverRedirect");
+export const SERVER_NOT_FOUND_BRAND = Symbol.for("tw.serverNotFound");
+
+/** Thrown by redirect(); carries the validated target. */
+export class ServerRedirect extends Error {
+  readonly [SERVER_REDIRECT_BRAND] = true;
+  constructor(public target: string) { super("TW server redirect: " + target); this.name = "ServerRedirect"; }
+}
+/** Thrown by notFound(). */
+export class ServerNotFound extends Error {
+  readonly [SERVER_NOT_FOUND_BRAND] = true;
+  constructor() { super("TW server not found"); this.name = "ServerNotFound"; }
+}
+export const isServerRedirect = (e: any): e is ServerRedirect => !!(e && (e as any)[SERVER_REDIRECT_BRAND]);
+export const isServerNotFound = (e: any): e is ServerNotFound => !!(e && (e as any)[SERVER_NOT_FOUND_BRAND]);
+
+/**
+ * Same-origin internal path check, by PARSING. Rejects absolute URLs,
+ * protocol-relative `//`, `\` and `%5C` variants, `%2F` at position 1,
+ * control characters (raw or percent-encoded), non-`/` schemes, empty or
+ * non-string values, and relative paths without a leading `/`.
+ */
+export function isValidRedirectTarget(target: unknown): target is string {
+  if (typeof target !== "string" || target.length === 0) return false;
+  if (!target.startsWith("/")) return false;
+  if (target.startsWith("//")) return false;
+  if (target[1] === "\\") return false;
+  if (/^\/%2f/i.test(target) || /^\/%5c/i.test(target)) return false;
+  if (/[\u0000-\u001f\u007f]/.test(target)) return false;
+  if (/%0[0-9a-f]|%1[0-9a-f]|%7f/i.test(target)) return false;
+  try {
+    const u = new URL(target, "http://x.invalid");
+    if (u.origin !== "http://x.invalid") return false;
+    if (!u.pathname.startsWith("/")) return false;
+    return true;
+  } catch { return false; }
+}
+
+export interface ServerRuntimeHelpers {
+  getSession: () => any;
+  requireUser: () => any;
+  redirect: (target: string) => never;
+  notFound: () => never;
+}
+
+/**
+ * The four runtime helpers, built from the request's existing session.
+ * `requireUser()` mapping: `session.user` if present, else `session.data`,
+ * else the session object itself.
+ */
+export function makeRuntimeHelpers(session: any, loginPath: string): ServerRuntimeHelpers {
+  return {
+    getSession: () => session ?? null,
+    requireUser: () => {
+      if (!session) throw new ServerRedirect(loginPath);
+      return session.user ?? session.data ?? session;
+    },
+    redirect: (target: string) => {
+      if (!isValidRedirectTarget(target)) throw new Error("TW109: redirect() target must be a same-origin internal path: " + String(target));
+      throw new ServerRedirect(target);
+    },
+    notFound: () => { throw new ServerNotFound(); },
+  };
 }
 
 // --- Imports + timeout -------------------------------------------------------
@@ -332,8 +416,42 @@ export function checkServerBlocks(program: Program, opts: ServerBlockCheckOption
       if (used.has("params") && !opts.hasEnumeratedParams) {
         push("TW104", "a static page's server block cannot read 'params' without enumerated params (add params.twm / fn generate())", b.line, b.col);
       }
+      const calls = scanRuntimeCalls(b.source);
+      if (calls.getSession || calls.requireUser) push("TW107", "getSession()/requireUser() are not available in a static page's server block", b.line, b.col);
+      if (calls.redirect || calls.notFound) push("TW108", "redirect()/notFound() are not available in a static page's server block", b.line, b.col);
     }
   }
 
+  // A literal redirect() target that is not a same-origin internal path.
+  for (const b of blocks) {
+    for (const lit of scanRuntimeCalls(b.source).redirectLiterals) {
+      if (!isValidRedirectTarget(lit)) push("TW109", `redirect(${JSON.stringify(lit)}) target must be a same-origin internal path`, b.line, b.col);
+    }
+  }
+
+  return out;
+}
+
+/** Direct calls to the runtime helpers inside a block body (AST walk). */
+export function scanRuntimeCalls(body: string): {
+  getSession: boolean; requireUser: boolean; redirect: boolean; notFound: boolean; redirectLiterals: string[];
+} {
+  const out = { getSession: false, requireUser: false, redirect: false, notFound: false, redirectLiterals: [] as string[] };
+  if (!body.trim()) return out;
+  const sf = ts.createSourceFile("s.ts", body, ts.ScriptTarget.Latest, true, ts.ScriptKind.TS);
+  const visit = (node: ts.Node) => {
+    if (ts.isCallExpression(node) && ts.isIdentifier(node.expression)) {
+      const n = node.expression.text;
+      if (n === "getSession") out.getSession = true;
+      else if (n === "requireUser") out.requireUser = true;
+      else if (n === "redirect") {
+        out.redirect = true;
+        const a0 = node.arguments[0];
+        if (a0 && ts.isStringLiteral(a0)) out.redirectLiterals.push(a0.text);
+      } else if (n === "notFound") out.notFound = true;
+    }
+    ts.forEachChild(node, visit);
+  };
+  visit(sf);
   return out;
 }
