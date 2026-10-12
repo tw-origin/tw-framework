@@ -82,6 +82,32 @@ These throw; a `try/catch` around them does not swallow the intent — the runne
 still performs the redirect or 404 after the block finishes. None of them are
 available in a **static** page's block (`TW107`/`TW108`).
 
+### Wiring the session
+
+`getSession()` and `requireUser()` read the request's session, which the server
+populates from a session middleware registered with `server.use(...)`. The
+framework's `sessionMiddleware` is express-shaped `(req, res, next)`; wrap it
+with `asMiddleware` so the server runs it on the page path too:
+
+```ts
+import { TWServer, asMiddleware, sessionMiddleware } from "@tw/server";
+
+const server = new TWServer({ rootDir, config });
+server.use(asMiddleware(sessionMiddleware({ secret: process.env.TW_SESSION_SECRET, store })));
+
+Bun.serve({ port, fetch: (r) => server.handleRequest(r) });
+```
+
+The middleware runs for page and `.twm` route requests — the paths the built-in
+pipeline does not cover — so `request.session` is set before the block runs. A
+`Set-Cookie` the middleware writes is delivered on the page response. Any
+express-style middleware works through `asMiddleware`; one that sets `res.status`
+/ `res.body` short-circuits the page instead of rendering it.
+
+For a custom or shared store, or JWT sessions, use `createSessionManager` from
+`@tw/security` (see [sessions](./sessions.md)) and expose the same shape as
+`request.session`.
+
 ## Caching
 
 ### Per-fetch cache

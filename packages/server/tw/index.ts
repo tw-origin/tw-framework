@@ -847,7 +847,44 @@ export class TWServer {
       }
     }
 
+    // User middleware (`server.use(...)`) runs only on registered API routes in
+    // the built-in pipeline; page and `.twm` route requests go straight to the
+    // render path. Run the user middleware here too, so a session middleware can
+    // populate `request.session` before a server block reads it, and a guard can
+    // short-circuit a page. API routes are skipped -- the pipeline runs them.
+    let userSetCookies: string[] | undefined;
+    if (
+      this.pipeline.list().some((n) => n.startsWith("mw-")) &&
+      !this.router.match(request.method, normalizePathname(new URL(request.url).pathname))
+    ) {
+      const ctx: RouteContext = {
+        request,
+        url: new URL(request.url),
+        method: request.method,
+        params: {},
+        query: {},
+        headers: {},
+        body: undefined,
+        state: {},
+      };
+      await this.pipeline.runUser(ctx, async () => {});
+      const shortCircuit = (ctx.state as { expressResponse?: Response }).expressResponse;
+      if (shortCircuit instanceof Response) return this.applyCors(request, shortCircuit);
+      userSetCookies = (ctx.state as { setCookies?: string[] }).setCookies;
+    }
+
     const response = await this.handleRequestInner(request);
+
+    // A session/user middleware that set a cookie contributes Set-Cookie here.
+    if (userSetCookies?.length) {
+      for (const c of userSetCookies) {
+        try {
+          response.headers.append("set-cookie", c);
+        } catch {
+          /* headers may be immutable -- never break the response */
+        }
+      }
+    }
 
     // Merge middleware-provided headers (security headers, CORS, ...)
     if (mwHeaders) {
@@ -1337,6 +1374,7 @@ export { DEFAULT_I18N_CONFIG, configureI18n, formatCurrency, formatDate, formatN
 export type { I18nConfig, LocaleRouteResult } from "./i18n";
 export { DEFAULT_IMAGE_CONFIG, imgTag, optimizeImage, processImage } from "./image";
 export type { ImageOptimizerConfig, OptimizedImage } from "./image";
+export { asMiddleware } from "./middleware";
 export { BodyParser, MemoryStore, MiddlewarePipeline, acceptFilter, anyBody, bodyParse, bodyParserMiddleware, cacheHeaders, clearCookie, combinedSecurityMiddleware, compressionMiddleware, concurrencyLimit, conditionalGet, contentTypeFilter, cookieParser, cookieSerializer, corsMiddleware, cspMiddleware, csrfProtection, errorBoundary, favicon, healthCheck, hostFilter, hstsMiddleware, httpsOnly, ipFilter, jsonBody, limitBodySize, loggingMiddleware, lowerCasePaths, methodFilter, methodOverride, mount, multipartBody, noCache, nonWWWRedirect, notFound, poweredBy, protocolFilter, queryParser, rangeRequest, rateLimit, rateLimitMiddleware, rawBody, redirectToHTTPS, redirectToNonWWW, redirectToWWW, refererFilter, removeHeader, sanitizeBody, securityHeadersMiddleware, sessionMiddleware, setHeaders, signedCookie, slowDown, textBody, timeoutMiddleware, trailingSlash, urlEncodedBody, userAgentFilter, validateBody, verifySignedCookie, vhost, wwwRedirect } from "./middleware";
 export type { BodyParserOptions, Middleware, ParsedBody, RateLimitStore } from "./middleware";
 export { buildCSPHeader, buildHSTSHeader, buildPermissionsPolicyHeader, createDevCSP, createProdCSP, generateNonce, generateNonceForCSP, generateSecurityHeaders } from "./security-headers";

@@ -37,6 +37,29 @@ export class MiddlewarePipeline {
     return (ctx as any).response ?? undefined;
   }
 
+  /**
+   * Run only the middleware added through `useFn` (i.e. `server.use(...)`),
+   * skipping the built-ins the server registers itself. The server calls this
+   * on requests the built-in pipeline does not already cover -- page and `.twm`
+   * route requests -- so user middleware (sessions, auth) runs there too.
+   */
+  async runUser(ctx: RouteContext, finalHandler: () => Promise<Response | void>): Promise<Response | void> {
+    const stack = this.middlewares.filter((m) => m.name.startsWith("mw-"));
+    let i = 0;
+
+    const next = async (): Promise<void> => {
+      if (i >= stack.length) {
+        await finalHandler();
+        return;
+      }
+      const mw = stack[i++];
+      await mw.fn(ctx, next);
+    };
+
+    await next();
+    return (ctx as any).response ?? undefined;
+  }
+
   size(): number {
     return this.middlewares.length;
   }
@@ -45,6 +68,8 @@ export class MiddlewarePipeline {
     return this.middlewares.map((m) => m.name);
   }
 }
+
+export { asMiddleware } from "./express";
 
 // Built-in middleware factories
 
