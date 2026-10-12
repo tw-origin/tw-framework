@@ -111,6 +111,25 @@ describe("cached page", () => {
     expect(probs.filter((x: any) => x.code === "TW111").length).toBe(2);
   });
 
+  test("TW111 does not fire on a clean cached page (no request reads)", () => {
+    const prog = parseWithDetails('page { cache { revalidate: 1 } }\nserver {\n  const x = "1"\n}\np "x={x}"\n', SB).program;
+    const probs = checkServerBlocks(prog, { cachedPage: true });
+    expect(probs.filter((x: any) => x.code === "TW111").length).toBe(0);
+  });
+
+  test("a cached page whose HTML is over 1 MB is not cached", async () => {
+    const p = app('page { title "P" cache { revalidate: 300 } }\nserver {\n  const big = "x".repeat(1_100_000)\n}\np "{big}"\n');
+    // Raise the payload cap so the *page* body, not the block value, is what
+    // reaches the 1 MB entry limit.
+    (p as any).maxPayloadBytes = 2_000_000;
+    process.env.TW_DEBUG_CACHE = "1";
+    const a = await p.renderWithServerBlocks("/", req());
+    const b = await p.renderWithServerBlocks("/", req());
+    expect(a.headers?.["x-tw-cache"]).toBe("MISS");
+    expect(b.headers?.["x-tw-cache"]).toBe("MISS");
+    delete process.env.TW_DEBUG_CACHE;
+  });
+
   test("vary on a static page -> TW112", () => {
     const prog = parseWithDetails('server {\n  const a = 1\n}\np "x"\n', SB).program;
     expect(checkServerBlocks(prog, { mode: "static", hasVary: true }).some((x: any) => x.code === "TW112")).toBe(true);
