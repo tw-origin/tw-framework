@@ -185,12 +185,12 @@ Error TW007: Mismatched closing tag at home/page.tw:15:1
 
 ---
 
-## Routing Errors (TW100–TW120)
+## Routing Errors (TW120–TW140)
 
-### TW100 — Route Not Found
+### TW120 — Route Not Found
 
 ```
-Error TW100: Route not found: /nonexistent
+Error TW120: Route not found: /nonexistent
 
   No page.tw file matches the URL "/nonexistent".
 
@@ -204,10 +204,10 @@ Error TW100: Route not found: /nonexistent
 
 ---
 
-### TW101 — Duplicate Route
+### TW121 — Duplicate Route
 
 ```
-Error TW101: Duplicate route at /about
+Error TW121: Duplicate route at /about
 
   Two files resolve to the same URL "/about":
     - home/about/page.tw
@@ -220,10 +220,10 @@ Error TW101: Duplicate route at /about
 
 ---
 
-### TW102 — Missing page.tw
+### TW122 — Missing page.tw
 
 ```
-Error TW102: Directory "home/about/" has no page.tw
+Error TW122: Directory "home/about/" has no page.tw
 
   The directory exists but contains no page.tw file.
   Directories without page.tw are not routes.
@@ -237,10 +237,10 @@ Error TW102: Directory "home/about/" has no page.tw
 
 ---
 
-### TW103 — Invalid Route File Name
+### TW123 — Invalid Route File Name
 
 ```
-Error TW103: Invalid route file "about.tw"
+Error TW123: Invalid route file "about.tw"
 
   Files like "about.tw" are not recognized as routes.
   Every route must be a directory containing "page.tw".
@@ -253,10 +253,10 @@ Error TW103: Invalid route file "about.tw"
 
 ---
 
-### TW104 — Private Folder Contains page.tw
+### TW124 — Private Folder Contains page.tw
 
 ```
-Error TW104: Private folder "_components" contains page.tw
+Error TW124: Private folder "_components" contains page.tw
 
   Private folders (starting with "_") are excluded from routing.
   page.tw inside a private folder has no effect.
@@ -393,10 +393,23 @@ Error TW302: Function declaration "fn get()" is not allowed in .tw files
 
 ---
 
-### TW303 — Markup in .twm File
+### TW303 — Unbalanced Braces in a Stylesheet
 
 ```
-Error TW303: Markup is not allowed in .twm files
+Error TW303: Unbalanced braces in a stylesheet -- a rule block is never closed
+
+  → File: style/home.tss:20:1
+  → Problem: a `{` opened a rule block that is never closed with `}`.
+
+  Fix: add the missing `}`.
+```
+
+---
+
+### TW305 — Markup in .twm File
+
+```
+Error TW305: Markup is not allowed in .twm files
 
   → File: home/api/route.twm:10:1
   → Problem: Tag "div" found. .twm files contain server-side
@@ -949,15 +962,26 @@ Every error carries a code, a file position and a fix. The general workflow:
 
 | Range | System |
 |-------|--------|
-| TW001–TW020 | Syntax — parsing `.tw` files |
-| TW090–TW097 | Cache, state and loop semantics |
+| TW000 | Generic / fallback |
+| TW001–TW019 | Syntax — parsing `.tw` files |
+| TW020–TW049 | Structure & attributes |
+| TW050–TW069 | Semantics |
+| TW070–TW089 | Quality — performance, accessibility, security, best-practice, deprecation |
+| TW090–TW097 | Cache, state & loops |
 | TW099–TW117 | Server blocks — see [Server Data](./server-data.md) |
-| TW303 | Stylesheets — unbalanced braces |
+| TW120–TW199 | Routing *(reserved)* |
+| TW200–TW299 | Render modes *(reserved)* |
+| TW300–TW399 | Extensions (`.tw` / `.twm` / `.tss`) — real: TW303 |
+| TW400–TW499 | Imports *(reserved)* |
+| TW500–TW599 | Build *(reserved)* |
+| TW600–TW699 | Runtime *(reserved)* |
+| TW700–TW799 | CLI *(reserved)* |
 | TW1007 | The server boundary — server-only import in a page/layout |
 
-The wider numeric ranges below (routing, render modes, extensions, …) are a
-reserved convention and are **not** in the live registry (`errors.json`) yet;
-the registry is authoritative.
+`errors.json` (generated from `ERROR_CODES`) is the single source of truth.
+The reserved bands are a convention, not emitted codes — they carry no entry
+in the registry until a rule starts emitting them. The allocation map also
+lives at the top of `packages/compiler/tw/diagnostics/codes.ts`.
 
 ## TW1007 — The Most Important Build Error
 

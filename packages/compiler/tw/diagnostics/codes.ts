@@ -1,4 +1,28 @@
-/** Error codes - TW001 through TW090. */
+/**
+ * Error codes.
+ *
+ * This registry is the single source of truth: errors.json is generated from it
+ * and docs/error-reference.md documents it. Code allocation:
+ *
+ *   TW000        generic / fallback
+ *   TW001-TW019  syntax
+ *   TW020-TW049  structure & attributes
+ *   TW050-TW069  semantics
+ *   TW070-TW089  quality (perf, a11y, security, best-practice, deprecation)
+ *   TW090-TW097  cache, state & loops
+ *   TW099-TW119  server blocks (experimental.serverBlocks)
+ *   TW120-TW199  routing                          [reserved]
+ *   TW200-TW299  render modes                     [reserved]
+ *   TW300-TW399  extensions (.tw / .twm / .tss)   [reserved]
+ *   TW400-TW499  imports                          [reserved]
+ *   TW500-TW599  build                            [reserved]
+ *   TW600-TW699  runtime                          [reserved]
+ *   TW700-TW799  CLI                              [reserved]
+ *   TW1007       server-only boundary (standalone)
+ *
+ * A reserved band is a convention, not an emitted code: add a new code to the
+ * band that matches its origin, and mark it `reserved: true` until it is used.
+ */
 
 import { type ErrorCode, type DiagnosticSeverity, type DiagnosticCategory } from "./types";
 
