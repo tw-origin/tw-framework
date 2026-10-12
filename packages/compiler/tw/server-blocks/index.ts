@@ -232,9 +232,9 @@ function unavailableHelper(name: string, label?: string, codeOverride?: string):
  * does not cancel the running block. */
 export async function executeServerBlocks(
   blocks: ServerBlock[],
-  opts: { context?: ServerRequestContext; imports?: Record<string, unknown>; timeoutMs?: number; omit?: string[]; omitRuntime?: string[]; label?: string; signal?: RedirectSignal; fetch?: any; trapCode?: string; referenced?: Set<string>; maxPayloadBytes?: number; secrets?: { name: string; value: string }[] } = {},
+  opts: { context?: ServerRequestContext; imports?: Record<string, unknown>; timeoutMs?: number; omit?: string[]; omitRuntime?: string[]; label?: string; signal?: RedirectSignal; fetch?: any; trapCode?: string; referenced?: Set<string>; maxPayloadBytes?: number; secrets?: { name: string; value: string }[]; scope?: Record<string, unknown> } = {},
 ): Promise<Record<string, unknown>> {
-  const scope: Record<string, unknown> = {};
+  const scope: Record<string, unknown> = { ...(opts.scope ?? {}) };
   const ms = opts.timeoutMs ?? DEFAULT_SERVER_BLOCK_TIMEOUT_MS;
   const signal = opts.signal ?? {};
   const secrets = opts.secrets ?? [];
@@ -497,6 +497,18 @@ export function checkServerBlocks(program: Program, opts: ServerBlockCheckOption
   // vary on a static page is a compile error.
   if (opts.mode === "static" && opts.hasVary) {
     for (const b of blocks) push("TW112", "cache { vary } is only valid on an ssr page (not static)", b.line, b.col);
+  }
+
+  // Deferred blocks (`server:defer { }`) run after the response has begun, so
+  // they cannot drive control flow -- a redirect or notFound would arrive too
+  // late to change the response. (Their values are delivered to the client as a
+  // deferred seed, not rendered into the markup; the markup cannot read them.)
+  for (const b of blocks) {
+    if (!b.deferred) continue;
+    const calls = scanRuntimeCalls(b.source);
+    if (calls.redirect || calls.notFound) {
+      push("TW118", "a deferred server block cannot redirect() or notFound() -- the response has already begun", b.line, b.col);
+    }
   }
 
   // Compile-time serialization + env checks (only for referenced names) + lints.

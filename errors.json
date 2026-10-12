@@ -1,7 +1,7 @@
 {
   "version": 1,
-  "generatedAt": "2026-10-12T02:05:07.199Z",
-  "count": 118,
+  "generatedAt": "2026-10-12T12:32:18.077Z",
+  "count": 119,
   "codes": {
     "TW001": {
       "message": "Unexpected token",
@@ -620,6 +620,11 @@
     "TW117": {
       "message": "fetch() with a request-derived URL (SSRF lint)",
       "severity": "warning",
+      "category": "semantic"
+    },
+    "TW118": {
+      "message": "A deferred server block cannot redirect() or notFound() -- the response has already begun",
+      "severity": "error",
       "category": "semantic"
     },
     "TW303": {

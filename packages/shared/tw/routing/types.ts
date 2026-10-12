@@ -111,6 +111,11 @@ export interface RouteRenderResult {
   stale?: boolean;
   /** Render time in milliseconds. */
   durationMs: number;
+  /**
+   * A page's `server:defer { }` values, produced after the first byte. Present
+   * only when the page has a deferred block; the server streams the seed.
+   */
+  deferred?: () => Promise<Record<string, unknown>>;
 }
 
 /** Options for the render pipeline. */

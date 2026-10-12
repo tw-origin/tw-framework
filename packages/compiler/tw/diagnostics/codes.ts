@@ -160,6 +160,7 @@ export const ERROR_CODES: Record<ErrorCode, { message: string; severity: Diagnos
   TW115: { message: "A server-block value reads env (possible secret leak into markup)", severity: "error", category: "semantic" },
   TW116: { message: "SQL-looking template literal interpolates request data (lint)", severity: "warning", category: "semantic" },
   TW117: { message: "fetch() with a request-derived URL (SSRF lint)", severity: "warning", category: "semantic" },
+  TW118: { message: "A deferred server block cannot redirect() or notFound() -- the response has already begun", severity: "error", category: "semantic" },
   // Codes thrown outside the rule engine. TW303 comes from the stylesheet
   // parser (codegen/tss.ts); TW000 is the generic fallback used when an error
   // carries no code of its own.

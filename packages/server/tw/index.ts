@@ -1061,6 +1061,40 @@ export class TWServer {
     return streamRes;
   }
 
+  /**
+   * A page with a `server:defer { }` block: flush the shell immediately, then
+   * run the deferred block and stream its values as a `__tw_defer` seed once
+   * they resolve. The first byte never waits on the deferred work.
+   */
+  private streamDeferredResponse(
+    html: string,
+    status: number,
+    headers: Record<string, string>,
+    deferred: () => Promise<Record<string, unknown>>,
+  ): Response {
+    const enc = new TextEncoder();
+    const stream = new ReadableStream({
+      async start(controller) {
+        controller.enqueue(enc.encode(html));
+        try {
+          const values = await deferred();
+          const payload = JSON.stringify(values).replace(/</g, "\\u003c");
+          controller.enqueue(enc.encode(`<script id="__tw_defer" type="application/json">${payload}</script>`));
+        } catch (err: any) {
+          // A deferred block that fails must not break the already-flushed shell.
+          console.error(`[tw] deferred block failed: ${err?.message ?? err}`);
+        }
+        controller.close();
+      },
+    });
+    const res = new Response(stream, {
+      status,
+      headers: { ...headers, "Content-Type": "text/html; charset=utf-8" },
+    });
+    (res as any).__twRawStream = true; // never buffer a streamed shell
+    return res;
+  }
+
   private async handleRequestInner(request: Request): Promise<Response> {
     const url = new URL(request.url);
     const method = request.method;
@@ -1266,6 +1300,10 @@ export class TWServer {
                   outHtml = cspRes.html;
                   Object.assign(outHeaders, cspRes.headers);
                 } catch { /* CSP stamping must never break a page */ }
+              }
+              // `server:defer`: the shell goes out now; the deferred seed follows.
+              if (typeof result.deferred === "function") {
+                return this.streamDeferredResponse(outHtml, result.status ?? 200, outHeaders, result.deferred);
               }
               return new Response(outHtml, {
                 status: result.status ?? 200,

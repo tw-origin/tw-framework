@@ -309,7 +309,13 @@ export class RenderPipeline {
         log: this.dev ? (l: string) => console.log(l) : undefined,
       });
       const fetchShim = (u: any, i?: any) => sfetch(u, i).then(wrapJsonErrors);
-      const values = await executeServerBlocks(blocks, { context, imports, fetch: fetchShim, referenced: collectReferencedNames(src), maxPayloadBytes: this.maxPayloadBytes, secrets: secretEnvValues(process.env) });
+      // `server:defer { }` blocks run after the response has begun, not as part
+      // of the render scope -- split them out and hand back a thunk the server
+      // runs once the shell is on the wire.
+      const inlineBlocks = blocks.filter((b: any) => !b.deferred);
+      const deferredBlocks = blocks.filter((b: any) => b.deferred);
+      const execOpts = { context, imports, fetch: fetchShim, referenced: collectReferencedNames(src), maxPayloadBytes: this.maxPayloadBytes, secrets: secretEnvValues(process.env) };
+      const values = inlineBlocks.length ? await executeServerBlocks(inlineBlocks, execOpts) : {};
       const merged = { ...(match!.params ?? {}), params: match!.params ?? {}, ...encodeServerValues(values) };
       // Bypass BOTH caches: per-request data would grow them without bound.
       (this as any).__bypassCompileCache = true;
@@ -318,7 +324,18 @@ export class RenderPipeline {
       finally { (this as any).__bypassCompileCache = false; }
       const outHeaders = { ...(result.headers ?? {}), "Cache-Control": "private, no-store" } as Record<string, string>;
       delete outHeaders["x-tw-cache-age"];
-      return { ...result, headers: outHeaders, serverBlocks: true } as RouteRenderResult;
+      const deferred = deferredBlocks.length
+        ? async () => {
+            // A deferred block sees the inline block's values (seeded scope) but
+            // only its own declared names reach the client seed.
+            const deferNames = deferredBlocks.flatMap((b: any) => b.declaredNames);
+            const all = await executeServerBlocks(deferredBlocks, { ...execOpts, scope: values, referenced: new Set(deferNames) });
+            const out: Record<string, unknown> = {};
+            for (const n of deferNames) if (n in all) out[n] = (all as any)[n];
+            return encodeServerValues(out);
+          }
+        : undefined;
+      return { ...result, headers: outHeaders, serverBlocks: true, ...(deferred ? { deferred } : {}) } as RouteRenderResult;
     } catch (err: any) {
       // redirect()/notFound() are typed, branded exceptions the runner recognises
       // even through Promise.all. Both are private and never cached.

@@ -108,6 +108,32 @@ For a custom or shared store, or JWT sessions, use `createSessionManager` from
 `@tw/security` (see [sessions](./sessions.md)) and expose the same shape as
 `request.session`.
 
+### Deferred blocks
+
+A `server:defer { }` block runs **after** the page's first byte has been sent, so
+slow secondary work never delays the shell:
+
+```tw
+server {
+  const me = requireUser()
+  const posts = await listPosts()
+}
+
+server:defer {
+  const seen = await recordView(me.id)   // sees the inline block's names
+}
+
+ul { for post in posts { li "{post.title}" } }
+```
+
+The response streams: the shell goes out immediately, then the deferred block's
+values follow as a `<script id="__tw_defer" type="application/json">` seed once
+they resolve. Two rules apply. A deferred block **cannot** drive control flow —
+`redirect()` or `notFound()` in one is a build error (`TW118`), because the
+response has already begun. And its values are **not** available to the markup;
+they reach the client through the seed, so use the block for side effects
+(logging, analytics, cache warming) and read its data client-side.
+
 ## Caching
 
 ### Per-fetch cache
