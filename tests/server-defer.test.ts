@@ -48,6 +48,21 @@ describe("server:defer -- compile-time", () => {
     const probs = checkServerBlocks(prog, { referenced: collectReferencedNames(src) });
     expect(probs.some((p: any) => p.code === "TW118")).toBe(false);
   });
+
+  test("a deferred block on a cached page -> TW119", () => {
+    const src = 'page { cache { revalidate: 1 } }\nserver:defer {\n  const b = "2"\n}\np "b={b}"\n';
+    const prog = parseWithDetails(src, SB).program;
+    const probs = checkServerBlocks(prog, { cachedPage: true, referenced: collectReferencedNames(src) });
+    expect(probs.some((p: any) => p.code === "TW119")).toBe(true);
+  });
+
+  test("a cached page with a deferred block never runs it inline", async () => {
+    const p = app('page { title "P" cache { revalidate: 300 } }\nserver {\n  const a = "1"\n}\nserver:defer {\n  const b = "2"\n}\np "a={a} b={b}"\n');
+    const r = await p.renderWithServerBlocks("/", req());
+    expect(r.html).toContain("a=1");
+    expect(r.html).not.toContain("b=2");
+    expect(r.deferred).toBeUndefined();
+  });
 });
 
 describe("server:defer -- runtime", () => {

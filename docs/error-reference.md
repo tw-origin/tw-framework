@@ -746,7 +746,7 @@ client-side handler where state can actually mutate.
 
 ---
 
-## Server Blocks (TW099–TW118)
+## Server Blocks (TW099–TW119)
 
 > The feature model is in [Server Data](./server-data.md).
 
@@ -938,6 +938,23 @@ Error TW118: A deferred server block cannot redirect() or notFound() -- the
 
 ---
 
+### TW119 — Deferred Block on a Cached Page
+
+```
+Error TW119: A deferred server block cannot be used on a cached page -- cache { }
+  serves one HTML to every request
+
+  → File: home/page.tw:6:1
+  → Problem: a `cache { }` page is a single HTML shared by every request, but a
+    `server:defer { }` block produces a per-request value.
+
+  Fix: drop the cache { } block, or move the work into the page's server { } block.
+```
+
+**Cause:** `server:defer { }` on a page with `cache { }`.
+
+---
+
 ## Error Recovery
 
 The TW compiler has built-in error recovery:
@@ -984,7 +1001,7 @@ Every error carries a code, a file position and a fix. The general workflow:
 | TW050–TW069 | Semantics |
 | TW070–TW089 | Quality — performance, accessibility, security, best-practice, deprecation |
 | TW090–TW097 | Cache, state & loops |
-| TW099–TW118 | Server blocks — see [Server Data](./server-data.md) |
+| TW099–TW119 | Server blocks — see [Server Data](./server-data.md) |
 | TW120–TW199 | Routing *(reserved)* |
 | TW200–TW299 | Render modes *(reserved)* |
 | TW300–TW399 | Extensions (`.tw` / `.twm` / `.tss`) — real: TW303 |

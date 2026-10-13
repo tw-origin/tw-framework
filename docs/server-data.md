@@ -131,9 +131,11 @@ The response streams: the shell goes out immediately, with each deferred value
 rendered as a `<tw-defer>` placeholder, then the block's values follow as a
 `<script id="__tw_defer" type="application/json">` seed plus a small patcher
 that fills the placeholders. The markup can read a deferred value normally —
-`"{seen}"` — without the shell waiting on it. One rule applies: a deferred block
+`"{seen}"` — without the shell waiting on it. Two rules apply: a deferred block
 **cannot** drive control flow — `redirect()` or `notFound()` in one is a build
-error (`TW118`), because the response has already begun.
+error (`TW118`), because the response has already begun — and it **cannot** sit
+on a cached page: `cache { }` serves one HTML to every request, so a per-request
+deferred value would be wrong (`TW119`).
 
 ## Caching
 

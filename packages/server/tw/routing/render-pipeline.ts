@@ -241,7 +241,10 @@ export class RenderPipeline {
       try {
         // The context trap: only params + vary query + env. headers/cookies/
         // getSession/requireUser are throwing stand-ins (a runtime guarantee).
-        const values = await executeServerBlocks(blocks, {
+        // A cached entry is one HTML for every request, so a deferred block
+        // never runs here (TW119 rejects the combination at build); excluding it
+        // keeps a per-request value out of the cached HTML.
+        const values = await executeServerBlocks(blocks.filter((b: any) => !b.deferred), {
           context: cachedContext, imports, fetch: fetchShim,
           omit: ["headers", "cookies"], omitRuntime: ["getSession", "requireUser"],
           trapCode: "TW111", label: pageFile,

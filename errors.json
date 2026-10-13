@@ -1,7 +1,7 @@
 {
   "version": 1,
-  "generatedAt": "2026-10-12T12:32:18.077Z",
-  "count": 119,
+  "generatedAt": "2026-10-13T10:03:23.799Z",
+  "count": 120,
   "codes": {
     "TW001": {
       "message": "Unexpected token",
@@ -624,6 +624,11 @@
     },
     "TW118": {
       "message": "A deferred server block cannot redirect() or notFound() -- the response has already begun",
+      "severity": "error",
+      "category": "semantic"
+    },
+    "TW119": {
+      "message": "A deferred server block cannot be used on a cached page -- cache { } serves one HTML to every request",
       "severity": "error",
       "category": "semantic"
     },
