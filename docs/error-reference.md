@@ -748,8 +748,7 @@ client-side handler where state can actually mutate.
 
 ## Server Blocks (TW099–TW118)
 
-> Experimental — behind `experimental.serverBlocks`. The feature model is in
-> [Server Data](./server-data.md).
+> The feature model is in [Server Data](./server-data.md).
 
 ### TW099 — Unknown Server Modifier
 

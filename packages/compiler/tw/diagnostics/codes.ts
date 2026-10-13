@@ -10,7 +10,7 @@
  *   TW050-TW069  semantics
  *   TW070-TW089  quality (perf, a11y, security, best-practice, deprecation)
  *   TW090-TW097  cache, state & loops
- *   TW099-TW119  server blocks (experimental.serverBlocks)
+ *   TW099-TW119  server blocks (server.blocks)
  *   TW120-TW199  routing                          [reserved]
  *   TW200-TW299  render modes                     [reserved]
  *   TW300-TW399  extensions (.tw / .twm / .tss)   [reserved]

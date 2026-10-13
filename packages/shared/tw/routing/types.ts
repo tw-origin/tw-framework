@@ -138,7 +138,7 @@ export interface RenderPipelineOptions {
    *   "none"    -> never ship client JS
    */
   hydrationMode?: "auto" | "full" | "islands" | "none";
-  /** experimental.serverBlocks: run server { } blocks. Off by default. */
+  /** server.blocks: run server { } blocks. On by default. */
   serverBlocks?: boolean;
   /** server.loginPath — target of requireUser()'s redirect. */
   loginPath?: string;

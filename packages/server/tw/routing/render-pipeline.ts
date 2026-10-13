@@ -79,7 +79,7 @@ export class RenderPipeline {
   /** ISR: paths currently re-rendering in the background (stampede guard). */
   private pendingRefresh = new Set<string>();
   private dev: boolean;
-  /** experimental.serverBlocks (from config): off by default. */
+  /** server.blocks (from config): on by default. */
   private serverBlocksFlag: boolean;
   /** server.loginPath (default "/login") for requireUser(). */
   private loginPath: string;
@@ -130,7 +130,7 @@ export class RenderPipeline {
     this.enableCache = opts.enableCache ?? true;
     this.cacheTTL = opts.cacheTTL ?? 60000;
     this.dev = opts.dev ?? false;
-    this.serverBlocksFlag = (opts as any).serverBlocks === true;
+    this.serverBlocksFlag = (opts as any).serverBlocks ?? true;
     this.loginPath = (opts as any).loginPath ?? "/login";
     this.fetchTimeoutMs = (opts as any).fetchTimeoutMs;
     this.fetchCacheMaxBytes = (opts as any).fetchCacheMaxBytes;
@@ -195,7 +195,7 @@ export class RenderPipeline {
     try {
       src = this.readSource(ctx.page);
       const { parseWithDetails } = await import("@tw/compiler");
-      const program = parseWithDetails(src, { filePath: pageFile, cache: false, experimental: { serverBlocks: true } } as any).program;
+      const program = parseWithDetails(src, { filePath: pageFile, cache: false, serverBlocks: true } as any).program;
       blocks = collectServerBlocks(program);
     } catch {
       return this.render(pathname);
@@ -851,8 +851,7 @@ export class RenderPipeline {
       diagnostics: false,
       transforms: true,
       stateVars,
-      // Only when the feature is configured on; off = original parse.
-      ...(this.serverBlocksFlag ? { experimental: { serverBlocks: true } } : {}),
+      serverBlocks: true,
     });
 
     // For .twm files (route, middleware), JS is used for server-side execution

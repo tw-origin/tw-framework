@@ -11,8 +11,8 @@ Notable changes to TW Framework. The format follows
 - **Server blocks** — a top-level `server { ... }` block on a `.tw` page runs
   server-side before the page renders, so a page can read request data, call
   `fetch`, read the session and guard a route without a client round trip. Names
-  declared in the block are usable in the markup. Gated behind
-  `experimental.serverBlocks` in `tw.config.ts`. See
+  declared in the block are usable in the markup. On by default; opt out with
+  `server: { blocks: false }`. See
   [docs/server-data.md](docs/server-data.md).
 - **The server-only boundary** — `*.server.ts` modules and the `server-only`
   package keep secrets off the client. Importing a server-only module into a
@@ -35,6 +35,10 @@ Notable changes to TW Framework. The format follows
 
 ### Changed
 
+- **Server blocks are on by default.** The `experimental.serverBlocks` flag is
+  gone from the config surface: set `server: { blocks: false }` to turn the
+  feature off. The old `experimental.serverBlocks` key is still read as a
+  deprecated alias, so existing configs keep working.
 - The error-code ranges are now an explicit allocation map at the top of
   `packages/compiler/tw/diagnostics/codes.ts`; server blocks own `TW099`–`TW119`,
   and the reserved routing band moved to `TW120+`.

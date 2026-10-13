@@ -1247,7 +1247,7 @@ export class TWServer {
                 homeDir,
                 enableCache: true, hydrationMode: (this.options as any).config?.strategies?.hydration?.mode,
                 dev: false,
-                serverBlocks: (this.options as any).config?.experimental?.serverBlocks === true,
+                serverBlocks: (this.options as any).config?.server?.blocks ?? (this.options as any).config?.experimental?.serverBlocks ?? true,
                 loginPath: (this.options as any).config?.server?.loginPath,
                 fetchTimeoutMs: (this.options as any).config?.server?.fetchTimeoutMs,
                 fetchCacheMaxBytes: (this.options as any).config?.server?.fetchCacheMaxBytes,

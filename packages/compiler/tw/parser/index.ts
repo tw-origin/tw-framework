@@ -51,7 +51,9 @@ export interface ParseOptions {
   maxErrors?: number;
   /** compiler.incremental -- false bypasses the parse cache. Default: on. */
   cache?: boolean;
-  /** Experimental syntax, off unless explicitly enabled. */
+  /** Enable `server { }` blocks. Default: on. */
+  serverBlocks?: boolean;
+  /** @deprecated Use `serverBlocks`. Kept so older callers keep working. */
   experimental?: { serverBlocks?: boolean };
 }
 
@@ -108,14 +110,13 @@ export function parse(source: string, opts?: ParseOptions): Program {
 
 export function parseWithDetails(source: string, opts?: ParseOptions): ParseResult {
   const filePath = opts?.filePath ?? "<anonymous>";
-  const serverBlocksOn = opts?.experimental?.serverBlocks === true;
+  const serverBlocksOn = opts?.serverBlocks ?? opts?.experimental?.serverBlocks ?? true;
   const startTime = performance.now();
 
   // Check cache (compiler.incremental: opts.cache === false bypasses it)
   const hash = sha256(source);
-  // The key carries the experimental flag: the same file parsed with a
-  // different flag is a different program.
-  const cacheKey = serverBlocksOn ? filePath + "\u0000experimental.serverBlocks" : filePath;
+  // The same file parsed with blocks off is a different program.
+  const cacheKey = serverBlocksOn ? filePath : filePath + "\u0000no-server-blocks";
   const cached = opts?.cache === false ? undefined : parseCache.get(cacheKey);
   if (cached && cached.hash === hash) {
     return {
@@ -298,7 +299,7 @@ export function parseTokens(tokens: Token[], opts?: ParseOptions): Program {
   const cursor = new TokenCursor(tokens, errors);
   const state = new CompilerState(errors);
   const program = createProgram(filePath);
-  const serverBlocksOn = opts?.experimental?.serverBlocks === true;
+  const serverBlocksOn = opts?.serverBlocks ?? opts?.experimental?.serverBlocks ?? true;
 
   // Parse directives
   while (!cursor.done) {

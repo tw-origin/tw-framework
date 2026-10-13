@@ -115,7 +115,7 @@ nested `resolveCorsOptions` / `resolveSslOptions`). The rule everywhere:
 | Group | Fields | Where it is applied |
 |-------|--------|---------------------|
 | `dev` | 13 | `tw dev` — host/port, `hmr` (SSE live-reload channel), `hmrHost`/`hmrPort`, `openBrowser`, `https` + cert/key, `watchPaths`/`watchIgnore`, `overlay`, `fastRefresh` |
-| `server` | 15 | `tw serve` → `TWServer` — host/port, `workers`/`cluster` (reusePort), `maxConnections` (in-flight request cap), `bodyLimit` (max request body), `timeout` (408), `keepAlive`/`keepAliveTimeout` (idle timeout), `staticServing`, `compression`, `trustProxy`, `ssl`, `gracefulShutdown` |
+| `server` | 16 | `tw serve` → `TWServer` — host/port, `workers`/`cluster` (reusePort), `maxConnections` (in-flight request cap), `bodyLimit` (max request body), `timeout` (408), `keepAlive`/`keepAliveTimeout` (idle timeout), `staticServing`, `compression`, `trustProxy`, `blocks` (server `{ }` blocks — on by default; set `false` to disable), `ssl`, `gracefulShutdown` |
 | `server.cors` | 7 | applied to **every** response (static, SSR and API): `enabled`, `origin`, `methods`, `allowedHeaders`, `exposedHeaders`, `credentials`, `maxAge`. `OPTIONS` preflight for an unmatched path answers `204`. |
 | `server.ssl` | 3 | `cert`, `key`, `ca` → the server's TLS listener |
 | `build` | 20 | `tw build` — `minify`, `sourcemap`, `target`, `format`, `treeshake`, `splitting`/`codeSplitting`, `define`, `externals`, `inject`, `loaders`, `chunkNames`, `assetNames`, `outputDir`, `assetsDir`, `publicPath`, `metafile`, `bundleAnalysis`, `entryPoints`, `incremental` (page cache) |

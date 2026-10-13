@@ -4,8 +4,7 @@ export default {
   name: "server-data",
   version: "0.1.0",
 
-  // Server blocks are experimental: the flag must be on for the sample app.
-  experimental: { serverBlocks: true },
+  // Server blocks are on by default; the sample app needs no flag.
 
   dev: { port: 8801, host: "localhost", hmr: false, openBrowser: false },
 

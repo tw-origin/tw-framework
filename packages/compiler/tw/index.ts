@@ -196,7 +196,9 @@ export interface CompileOptions {
   cssPrefix?: string;
   /** css.importPaths -- extra dirs to resolve stylesheet imports from. */
   cssImportPaths?: string[];
-  /** Experimental syntax, off unless explicitly enabled. */
+  /** Enable `server { }` blocks. Default: on. */
+  serverBlocks?: boolean;
+  /** @deprecated Use `serverBlocks`. Kept so older callers keep working. */
   experimental?: { serverBlocks?: boolean };
 }
 
@@ -301,7 +303,7 @@ export async function compile(source: string, opts?: CompileOptions): Promise<Co
 
     // Server blocks: name collisions with state { } (the route-context rules
     // -- static request access, route params, layouts -- run at build time).
-    if (opts?.experimental?.serverBlocks) {
+    if (opts?.serverBlocks !== false && opts?.experimental?.serverBlocks !== false) {
       for (const p of checkServerBlocks(ast)) {
         diagnostics.push({ severity: p.severity, message: p.message, line: p.line, col: p.col, filePath, code: p.code, suggestions: [], category: p.category } as any as Diagnostic);
       }
@@ -383,7 +385,7 @@ export function compileSync(source: string, opts?: CompileOptions): CompileResul
 
     // Server blocks: name collisions with state { } (the route-context rules
     // -- static request access, route params, layouts -- run at build time).
-    if (opts?.experimental?.serverBlocks) {
+    if (opts?.serverBlocks !== false && opts?.experimental?.serverBlocks !== false) {
       for (const p of checkServerBlocks(ast)) {
         diagnostics.push({ severity: p.severity, message: p.message, line: p.line, col: p.col, filePath, code: p.code, suggestions: [], category: p.category } as any as Diagnostic);
       }

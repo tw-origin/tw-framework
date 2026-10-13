@@ -4,9 +4,9 @@ This document covers one thing completely: fetching data on the server inside a
 page, with a `server { }` block — how it runs, what it can read, what crosses to
 the client, and how it is cached and secured.
 
-Server blocks are gated behind `experimental.serverBlocks` in `tw.config.ts`.
-With the flag off, a `server { }` block is ordinary page content and nothing on
-this page applies.
+Server blocks are on by default. Set `server: { blocks: false }` in
+`tw.config.ts` to turn them off, in which case a `server { }` block is ordinary
+page content and nothing on this page applies.
 
 ---
 
@@ -290,9 +290,9 @@ div {
 }
 ```
 
-The `.twm` route can be deleted (or kept if other clients still call it). Turn
-on `experimental.serverBlocks`, move the data read into the block, and the same
-page now renders with data in its first response.
+The `.twm` route can be deleted (or kept if other clients still call it). Move
+the data read into the block, and the same page now renders with data in its
+first response.
 
 ## Known limitations
 

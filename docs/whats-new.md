@@ -34,11 +34,8 @@ The block runs once per request, before render. Values declared in it are
 available in the markup. Nothing the block declares crosses to the client unless
 the markup references it.
 
-Enable it in `tw.config.ts`:
-
-```ts
-export default { experimental: { serverBlocks: true } };
-```
+Server blocks are on by default — there is nothing to enable. To turn them off,
+set `server: { blocks: false }` in `tw.config.ts`.
 
 ## The server-only boundary keeps secrets off the client
 

@@ -486,7 +486,7 @@ export async function buildCommand(): Promise<void> {
   // compiler.* -> the compile passes. `optimization` maps to optimize
   // (none = off); the rest pass straight through to the compiler so each
   // fine-grained field reaches the pass it names.
-  let serverBlocksOn = false;
+  let serverBlocksOn = true;
   let serverOnlyPackages: string[] = [];
   let loginPath = "/login";
   let fetchTimeoutMs: number | undefined;
@@ -517,9 +517,9 @@ export async function buildCommand(): Promise<void> {
             preserveComments: compilerOpts.preserveComments,
             looseDiagnostics: compilerOpts.strict === false,
           },
-          experimental: serverBlocksOn ? { serverBlocks: true } : undefined,
+          serverBlocks: serverBlocksOn,
         }
-      : { experimental: serverBlocksOn ? { serverBlocks: true } : undefined };
+      : { serverBlocks: serverBlocksOn };
   // Plugins (docs/plugins.md): load from plugins/ per tw.config.ts and fire the
   // build hooks. A broken plugin never fails the build -- the loader isolates it.
   let pluginManager: any = null;
@@ -540,7 +540,7 @@ export async function buildCommand(): Promise<void> {
       const { twImportTs } = await import("@tw/shared/tw/node-import");
       const cfgMod: any = await twImportTs(cfgPath);
       const cfg = cfgMod.default ?? cfgMod;
-      serverBlocksOn = cfg?.experimental?.serverBlocks === true;
+      serverBlocksOn = cfg?.server?.blocks ?? cfg?.experimental?.serverBlocks ?? true;
       serverOnlyPackages = Array.isArray(cfg?.server?.onlyPackages) ? cfg.server.onlyPackages : [];
       fetchTimeoutMs = cfg?.server?.fetchTimeoutMs;
       fetchCacheMaxBytes = cfg?.server?.fetchCacheMaxBytes;
