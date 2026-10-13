@@ -316,19 +316,27 @@ export class RenderPipeline {
       const deferredBlocks = blocks.filter((b: any) => b.deferred);
       const execOpts = { context, imports, fetch: fetchShim, referenced: collectReferencedNames(src), maxPayloadBytes: this.maxPayloadBytes, secrets: secretEnvValues(process.env) };
       const values = inlineBlocks.length ? await executeServerBlocks(inlineBlocks, execOpts) : {};
-      const merged = { ...(match!.params ?? {}), params: match!.params ?? {}, ...encodeServerValues(values) };
+      // A deferred name renders as a marker element the client fills once the
+      // seed arrives, so the markup can read it without the shell waiting on the
+      // block. Private-use delimiters survive HTML escaping and never collide.
+      const deferNames = deferredBlocks.flatMap((b: any) => b.declaredNames);
+      const deferMarkers: Record<string, string> = {};
+      for (const n of deferNames) deferMarkers[n] = `\uE000tw-defer:${n}\uE001`;
+      const merged = { ...(match!.params ?? {}), params: match!.params ?? {}, ...encodeServerValues(values), ...deferMarkers };
       // Bypass BOTH caches: per-request data would grow them without bound.
       (this as any).__bypassCompileCache = true;
       let result: RouteRenderResult;
       try { result = this.render(pathname, merged as any, { bypassCache: true }); }
       finally { (this as any).__bypassCompileCache = false; }
+      if (deferNames.length && result.html) {
+        result = { ...result, html: result.html.replace(/\uE000tw-defer:([A-Za-z0-9_$]+)\uE001/g, '<tw-defer data-tw-defer="$1"></tw-defer>') };
+      }
       const outHeaders = { ...(result.headers ?? {}), "Cache-Control": "private, no-store" } as Record<string, string>;
       delete outHeaders["x-tw-cache-age"];
       const deferred = deferredBlocks.length
         ? async () => {
             // A deferred block sees the inline block's values (seeded scope) but
             // only its own declared names reach the client seed.
-            const deferNames = deferredBlocks.flatMap((b: any) => b.declaredNames);
             const all = await executeServerBlocks(deferredBlocks, { ...execOpts, scope: values, referenced: new Set(deferNames) });
             const out: Record<string, unknown> = {};
             for (const n of deferNames) if (n in all) out[n] = (all as any)[n];

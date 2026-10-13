@@ -6,11 +6,14 @@
  * not available to the markup (TW119), and at runtime its values come back from
  * a thunk the server runs once the shell is on the wire.
  */
-import { describe, test, expect } from "bun:test";
+import { describe, test, expect, beforeAll, afterAll } from "bun:test";
 import { mkdtempSync, mkdirSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
+import { request as httpRequest } from "node:http";
 import { checkServerBlocks, parseWithDetails, collectReferencedNames } from "@tw/compiler";
+
+const repoRoot = join(import.meta.dir, "..");
 
 const { RenderPipeline } = await import("../packages/server/tw/routing/render-pipeline.ts") as any;
 const SB = { filePath: "<t>", cache: false, experimental: { serverBlocks: true } } as any;
@@ -48,10 +51,13 @@ describe("server:defer -- compile-time", () => {
 });
 
 describe("server:defer -- runtime", () => {
-  test("the shell renders without the deferred value; the thunk resolves it", async () => {
-    const p = app('page { title "P" render ssr }\nserver {\n  const a = "1"\n}\nserver:defer {\n  const b = a + "2"\n}\np "a={a}"\n');
+  test("a deferred name renders a marker; the thunk resolves the value", async () => {
+    const p = app('page { title "P" render ssr }\nserver {\n  const a = "1"\n}\nserver:defer {\n  const b = a + "2"\n}\np "a={a} b={b}"\n');
     const r = await p.renderWithServerBlocks("/", req());
+    // The inline value is in the shell; the deferred one is a marker the client
+    // fills once the seed arrives.
     expect(r.html).toContain("a=1");
+    expect(r.html).toContain('<tw-defer data-tw-defer="b"></tw-defer>');
     expect(r.html).not.toContain("b=12");
     expect(typeof r.deferred).toBe("function");
     // The deferred block sees the inline block's value `a`.
@@ -63,5 +69,66 @@ describe("server:defer -- runtime", () => {
     const p = app('page { title "P" render ssr }\nserver {\n  const a = "1"\n}\np "a={a}"\n');
     const r = await p.renderWithServerBlocks("/", req());
     expect(r.deferred).toBeUndefined();
+  });
+});
+
+// --- Real server: shell, then the streamed seed + patcher -------------------
+
+const PORT = 9200 + Math.floor(Math.random() * 80);
+let proc: any;
+
+beforeAll(async () => {
+  const dir = mkdtempSync(join(tmpdir(), "tw-defer-srv-"));
+  mkdirSync(join(dir, "home"), { recursive: true });
+  writeFileSync(join(dir, "tw.config.ts"), "export default {}");
+  writeFileSync(join(dir, "home", "page.tw"), 'page { title "P" render ssr }\nserver {\n  const a = "1"\n}\nserver:defer {\n  const b = "2"\n}\np "a={a} b={b}"\n');
+  const script = join(dir, "server.mjs");
+  writeFileSync(script, `
+import { TWServer } from ${JSON.stringify(join(repoRoot, "packages/server/tw/index.ts"))};
+process.env.PUBLIC_ORIGIN = "http://127.0.0.1:${PORT}";
+const server = new TWServer({ rootDir: ${JSON.stringify(dir)}, port: ${PORT}, host: "127.0.0.1", config: {}, securityHeaders: false, cors: false, compression: false });
+try { server.loadRoutes(); } catch {}
+try { server.loadMiddleware(); } catch {}
+Bun.serve({ port: ${PORT}, fetch: (r) => server.handleRequest(r) });
+console.log("READY");
+`);
+  proc = Bun.spawn([process.execPath, script], { cwd: dir, stdout: "pipe", stderr: "pipe" });
+  const reader = proc.stdout.getReader();
+  const dec = new TextDecoder();
+  let buf = "";
+  const deadline = Date.now() + 20000;
+  while (Date.now() < deadline) {
+    const { value, done } = await reader.read();
+    if (done) break;
+    buf += dec.decode(value);
+    if (buf.includes("READY")) return;
+  }
+  throw new Error("server did not become ready: " + buf);
+}, 60000);
+
+afterAll(() => {
+  try { proc?.kill(); } catch { /* gone */ }
+});
+
+function get(path: string): Promise<string> {
+  return new Promise((resolve, reject) => {
+    const r = httpRequest({ host: "127.0.0.1", port: PORT, path, method: "GET" }, (x) => {
+      let d = "";
+      x.on("data", (c) => (d += c));
+      x.on("end", () => resolve(d));
+    });
+    r.on("error", reject);
+    r.end();
+  });
+}
+
+describe("server:defer -- streamed over a real server", () => {
+  test("the shell carries the marker, then the seed and the patcher stream in", async () => {
+    const body = await get("/");
+    expect(body).toContain("a=1");
+    expect(body).toContain('<tw-defer data-tw-defer="b"></tw-defer>');
+    expect(body).toContain('id="__tw_defer"');
+    expect(body).toContain('"b":"2"');
+    expect(body).toContain("tw-defer[data-tw-defer]"); // the patcher is present
   });
 });

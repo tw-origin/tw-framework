@@ -17,7 +17,7 @@
   <img src="https://img.shields.io/badge/version-2.0.0-22c55e" alt="version 2.0.0" />
   <img src="https://img.shields.io/badge/runtime-Bun%20%7C%20Node-22c55e" alt="Bun and Node runtimes" />
   <img src="https://img.shields.io/badge/language-TypeScript-3178c6" alt="TypeScript" />
-  <img src="https://img.shields.io/badge/tests-3886%20passing-22c55e" alt="tests" />
+  <img src="https://img.shields.io/badge/tests-3887%20passing-22c55e" alt="tests" />
 </p>
 
 ---

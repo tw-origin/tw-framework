@@ -124,15 +124,16 @@ server:defer {
 }
 
 ul { for post in posts { li "{post.title}" } }
+p "Viewed {seen} times"                   // filled once the block resolves
 ```
 
-The response streams: the shell goes out immediately, then the deferred block's
-values follow as a `<script id="__tw_defer" type="application/json">` seed once
-they resolve. Two rules apply. A deferred block **cannot** drive control flow —
-`redirect()` or `notFound()` in one is a build error (`TW118`), because the
-response has already begun. And its values are **not** available to the markup;
-they reach the client through the seed, so use the block for side effects
-(logging, analytics, cache warming) and read its data client-side.
+The response streams: the shell goes out immediately, with each deferred value
+rendered as a `<tw-defer>` placeholder, then the block's values follow as a
+`<script id="__tw_defer" type="application/json">` seed plus a small patcher
+that fills the placeholders. The markup can read a deferred value normally —
+`"{seen}"` — without the shell waiting on it. One rule applies: a deferred block
+**cannot** drive control flow — `redirect()` or `notFound()` in one is a build
+error (`TW118`), because the response has already begun.
 
 ## Caching
 

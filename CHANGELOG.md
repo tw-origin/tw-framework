@@ -30,7 +30,9 @@ Notable changes to TW Framework. The format follows
 - **Diagnostics** — `TW099`–`TW117` cover server blocks: block syntax, static
   and cached-page scope rules, serialization, the payload cap, and the SQL/SSRF
   lints. See [docs/error-reference.md](docs/error-reference.md).
-- **`server:defer { }`** — a deferred server block. See
+- **`server:defer { }`** — a deferred server block: the shell goes out with a
+  `<tw-defer>` placeholder for each deferred value, and the values stream in
+  afterwards with a patcher that fills them. See
   [docs/whats-new.md](docs/whats-new.md).
 
 ### Changed

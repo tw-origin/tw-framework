@@ -1079,7 +1079,17 @@ export class TWServer {
         try {
           const values = await deferred();
           const payload = JSON.stringify(values).replace(/</g, "\\u003c");
-          controller.enqueue(enc.encode(`<script id="__tw_defer" type="application/json">${payload}</script>`));
+          // The seed, then a tiny patcher that fills each <tw-defer> the shell
+          // left behind. Self-contained: no client runtime needed.
+          const patcher =
+            '<script>(function(){try{' +
+            'var el=document.getElementById("__tw_defer");if(!el)return;' +
+            'var d=JSON.parse(el.textContent||"{}");' +
+            'var ns=document.querySelectorAll("tw-defer[data-tw-defer]");' +
+            'for(var i=0;i<ns.length;i++){var k=ns[i].getAttribute("data-tw-defer");' +
+            'if(k&&k in d)ns[i].textContent=String(d[k]);}' +
+            '}catch(e){}})();</script>';
+          controller.enqueue(enc.encode(`<script id="__tw_defer" type="application/json">${payload}</script>` + patcher));
         } catch (err: any) {
           // A deferred block that fails must not break the already-flushed shell.
           console.error(`[tw] deferred block failed: ${err?.message ?? err}`);
