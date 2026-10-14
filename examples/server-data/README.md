@@ -5,11 +5,8 @@ with a `server { }` block. After reading it you can move a page's data read from
 a client fetch into the server, guard a route with a session, and cache a page
 per query.
 
-Server blocks are experimental. The flag is already on in `tw.config.ts`:
-
-```ts
-experimental: { serverBlocks: true },
-```
+Server blocks are on by default, so `tw.config.ts` needs no flag. To turn them
+off, set `server: { blocks: false }`.
 
 ## Run it
 

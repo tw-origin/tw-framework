@@ -770,6 +770,11 @@ async function ensureDevClientBundle(rootDir: string, pageSource: string, layout
             "X-Frame-Options": "DENY",
             "Referrer-Policy": "strict-origin-when-cross-origin",
           };
+          // The route's own headers (Set-Cookie, Location, anything custom) must
+          // survive -- `tw serve` merges them, so the dev server has to match it.
+          if (result.headers && typeof result.headers === "object") {
+            for (const [k, v] of Object.entries(result.headers)) responseHeaders[k] = String(v);
+          }
 
           // TWM can return: { status, json, session, redirect, cookie }
           if (result.json._session) {
