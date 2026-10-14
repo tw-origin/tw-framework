@@ -1,6 +1,7 @@
 /** Route registry -- file-based and programmatic routing with params. */
 
 import { existsSync, readdirSync, statSync } from "node:fs";
+import { readTextFile, readBytes, gzipBytes } from "../fs-compat";
 import { join } from "node:path";
 
 function escapeRegExp(s) {
@@ -144,7 +145,7 @@ export class RouteRegistry {
       this.get(fullPattern, async (ctx) => {
         try {
           const { compile } = await import("@tw/compiler");
-          const source = await Bun.file(filePath).text();
+          const source = await readTextFile(filePath);
           const result = await compile(source, { filePath, optimize: true });
           return new Response(result.html, {
             headers: { "Content-Type": "text/html; charset=utf-8" },

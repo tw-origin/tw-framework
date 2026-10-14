@@ -1,6 +1,7 @@
 /** Static file serving -- with MIME types, caching, ETag, range requests. */
 
 import { existsSync, statSync } from "node:fs";
+import { readTextFile, readBytes, gzipBytes } from "../fs-compat";
 import { join, extname, normalize, resolve, sep } from "node:path";
 import { MIME_TYPES } from "@tw/shared";
 import { sha256 } from "@tw/shared";
@@ -98,9 +99,7 @@ export class StaticHandler {
     const contentType = MIME_TYPES[ext] ?? "application/octet-stream";
 
     // Read file
-    const file = Bun.file(filePath);
-    const content = await file.arrayBuffer();
-    const bytes = new Uint8Array(content);
+    const bytes = await readBytes(filePath);
 
     // Generate ETag
     let etagValue = "";
@@ -145,7 +144,7 @@ export class StaticHandler {
       bytes.length > 1024
     ) {
       try {
-        const gz = Bun.gzipSync(bytes);
+        const gz = gzipBytes(bytes);
         if (gz.length < bytes.length) {
           const gzHeaders = { ...headers, "Content-Encoding": "gzip", "Content-Length": String(gz.length), Vary: "Accept-Encoding" };
           delete gzHeaders["Content-Length"];

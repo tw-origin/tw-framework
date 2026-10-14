@@ -1,4 +1,5 @@
 import { readFileSync, writeFileSync, existsSync, mkdirSync } from "node:fs";
+import { readTextFile, readBytes, gzipBytes } from "../fs-compat";
 /** SSR rendering -- compile .tw files on the server and render HTML. */
 
 import { sha256 } from "@tw/shared";
@@ -51,7 +52,7 @@ export class SSRRenderer {
     if (!filePath) return null;
 
     try {
-      const source = await Bun.file(filePath).text();
+      const source = await readTextFile(filePath);
       const { compile } = await import("@tw/compiler");
       const result = await compile(source, {
         filePath,
