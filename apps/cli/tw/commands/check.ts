@@ -3,6 +3,7 @@
 import { maskSourceStringsAndComments } from "@tw/shared";
 import { join, dirname } from "node:path";
 import { existsSync, readFileSync, readdirSync, statSync } from "node:fs";
+import { scanComponents, registerImportedComponents } from "../components";
 
 export async function checkCommand(): Promise<void> {
   const args = process.argv.slice(3);
@@ -26,13 +27,21 @@ export async function checkCommand(): Promise<void> {
   let totalInfo = 0;
 
   try {
-    const { compile } = await import("@tw/compiler");
+    const { compile, compileSync, registerComponentTemplate, clearComponentRegistry } = await import("@tw/compiler");
+
+    // Seed the codegen component registry the same way `tw build` does. Without
+    // it, every imported component compiles as "unknown component" even though
+    // the build resolves it.
+    scanComponents(rootDir, { compileSync, registerComponentTemplate, clearComponentRegistry });
 
     for (const filePath of twFiles) {
       const relativePath = filePath.replace(rootDir + "/", "");
 
       try {
         const source = readFileSync(filePath, "utf-8");
+        // Register components this page imports by path, so a component outside
+        // components/ resolves from the import just like the build's does.
+        registerImportedComponents(filePath, rootDir, { compileSync, registerComponentTemplate, clearComponentRegistry }, source);
         const result = await compile(source, {
           filePath,
           optimize: false,

@@ -24,12 +24,19 @@
 import { existsSync, mkdirSync, readFileSync, writeFileSync } from "node:fs";
 import { join, dirname } from "node:path";
 import { fileURLToPath } from "node:url";
+import { readBuildSummary, needsServer, writeVercelFiles } from "./vercel";
 
 export interface AdapterInfo {
   name: string;
   description: string;
   /** Files copied into the app root: { source-in-package, destination } */
   files: Array<{ from: string; to: string }>;
+  /**
+   * Adapters whose config depends on the app (not a fixed file) provide this
+   * instead of `files`: it writes what the app actually needs and returns the
+   * paths written. `tw adapter` and `tw ship` call it.
+   */
+  generate?: (appDir: string) => string[];
   /** Printed after generation. */
   nextSteps: string[];
 }
@@ -101,10 +108,14 @@ export const ADAPTERS: Record<string, AdapterInfo> = {
   },
   vercel: {
     name: "vercel",
-    description: "Vercel build configuration for the .tw/ output",
-    files: [{ from: "vercel/vercel.json", to: "vercel.json" }],
+    description: "Vercel config — static for a static build, serverless for SSR/API",
+    files: [],
+    // Static output serves the pre-built .tw/; an SSR/API app needs the
+    // serverless entry. Which one is right comes from the build summary.
+    generate: (appDir: string) => writeVercelFiles(appDir, needsServer(readBuildSummary(appDir))),
     nextSteps: [
       "npx vercel deploy --prod",
+      "# an SSR/API app needs the serverless config above; a static host cannot run it",
     ],
   },
   netlify: {
@@ -224,6 +235,7 @@ export function generateAdapter(name: string, appDir: string): string[] {
   if (!adapter) {
     throw new Error(`Unknown adapter "${name}". Available: ${Object.keys(ADAPTERS).join(", ")}`);
   }
+  if (adapter.generate) return adapter.generate(appDir);
   const written: string[] = [];
   for (const f of adapter.files) {
     const src = join(PKG_DIR, f.from);
@@ -239,3 +251,7 @@ export function generateAdapter(name: string, appDir: string): string[] {
 export function listAdapters(): AdapterInfo[] {
   return Object.values(ADAPTERS);
 }
+
+// Build-aware deploy helpers, shared with `tw ship`.
+export { readBuildSummary, needsServer, writeVercelFiles, vercelStaticConfig, vercelServerlessConfig, vercelServerlessEntry } from "./vercel";
+export type { BuildSummary } from "./vercel";

@@ -184,7 +184,7 @@ export function createImageHandler(options: ImageHandlerOptions) {
           } catch { /* try next */ }
         }
         return null;
-      })();
+      })().catch(() => null); // never reject -- a failed image backend degrades to passthrough
     }
     return sharpPromise;
   }

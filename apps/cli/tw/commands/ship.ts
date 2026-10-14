@@ -1,7 +1,21 @@
 /** tw ship -- deploy to platform. */
 
-import { join } from "node:path";
-import { existsSync } from "node:fs";
+import { join, resolve } from "node:path";
+import { existsSync, readFileSync } from "node:fs";
+
+/** Load the adapters package the same way `tw adapter` does (monorepo or node_modules). */
+async function loadAdapters(rootDir: string): Promise<any> {
+  const candidates = [
+    resolve(rootDir, "node_modules", "@tw", "adapters", "tw", "index.ts"),
+    resolve(rootDir, "node_modules", "@tw", "adapters", "tw", "index.js"),
+  ];
+  for (const c of candidates) {
+    if (existsSync(c)) {
+      try { return await import(c); } catch { /* try the next candidate */ }
+    }
+  }
+  try { return await import("@tw/adapters"); } catch { return null; }
+}
 
 export async function shipCommand(): Promise<void> {
   const args = process.argv.slice(3);
@@ -47,7 +61,7 @@ export async function shipCommand(): Promise<void> {
   // Generate deployment config
   switch (deployTarget) {
     case "vercel":
-      generateVercelConfig(rootDir, outDir);
+      await generateVercelConfig(rootDir, outDir);
       break;
     case "netlify":
       generateNetlifyConfig(rootDir, outDir);
@@ -96,24 +110,37 @@ export async function shipCommand(): Promise<void> {
   }
 }
 
-function generateVercelConfig(rootDir: string, outDir: string): void {
-  const config = {
-    buildCommand: "npx tw build",
-    outputDirectory: ".tw",
-    installCommand: "bun install",
-    framework: null,
-  };
-
+async function generateVercelConfig(rootDir: string, outDir: string): Promise<void> {
+  const adapters = await loadAdapters(rootDir);
   const configPath = join(rootDir, "vercel.json");
-  const existing = existsSync(configPath);
 
-  if (!existing) {
-    const { writeFileSync } = require("node:fs");
-    writeFileSync(configPath, JSON.stringify(config, null, 2));
-    console.log("  OK Generated vercel.json");
-  } else {
-    console.log("  OK vercel.json already exists");
+  if (existsSync(configPath)) {
+    console.log("  OK vercel.json already exists (left unchanged)");
+    // Never clobber a config the app already has -- but say so loudly when it
+    // cannot serve an SSR/API app, instead of letting an empty site deploy.
+    if (adapters?.readBuildSummary && adapters?.needsServer) {
+      if (adapters.needsServer(adapters.readBuildSummary(rootDir))) {
+        let raw = "";
+        try { raw = readFileSync(configPath, "utf-8"); } catch { /* unreadable */ }
+        if (!/"functions"|"rewrites"/.test(raw)) {
+          console.log("  [!] This app has SSR pages, API routes or middleware, but vercel.json is a");
+          console.log("      static config -- Vercel will serve an empty site. To fix it:");
+          console.log("        $ rm vercel.json && tw adapter vercel");
+        }
+      }
+    }
+    return;
   }
+
+  if (adapters?.generateAdapter) {
+    for (const w of adapters.generateAdapter("vercel", rootDir)) console.log("  OK " + w.replace(rootDir + "/", ""));
+    return;
+  }
+
+  // Adapters package unavailable -- fall back to a build-aware config inline.
+  const { writeFileSync } = require("node:fs");
+  writeFileSync(configPath, JSON.stringify({ buildCommand: "npx tw build", installCommand: "npm install", outputDirectory: ".tw", framework: null }, null, 2));
+  console.log("  OK Generated vercel.json");
 }
 
 function generateNetlifyConfig(rootDir: string, outDir: string): void {

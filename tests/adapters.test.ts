@@ -192,7 +192,9 @@ describe("deployment adapters", () => {
   test("every adapter has next steps", () => {
     for (const a of listAdapters()) {
       expect(a.nextSteps.length).toBeGreaterThan(0);
-      expect(a.files.length).toBeGreaterThan(0);
+      // Either it copies fixed files, or it generates them from the app
+      // (vercel picks static vs serverless from the build summary).
+      expect(a.files.length > 0 || typeof a.generate === "function").toBe(true);
     }
   });
 });

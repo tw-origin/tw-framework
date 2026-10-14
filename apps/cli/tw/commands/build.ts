@@ -18,6 +18,7 @@
 import { join, resolve, dirname, extname } from "node:path";
 import { createHash } from "node:crypto";
 import { parseCacheBody as parseCacheBodyShared, resolveCache as resolveCacheShared, maskSourceStringsAndComments } from "@tw/shared";
+import { scanComponents as scanComponentsShared, registerImportedComponents } from "../components";
 import { existsSync, mkdirSync, writeFileSync, readFileSync, readdirSync, statSync, copyFileSync, unlinkSync, rmdirSync } from "node:fs";
 
 // --- Compiler loader (same as dev.ts) --------------------------------------
@@ -171,45 +172,18 @@ function collectComponentUsages(node: any, out: Set<string>): void {
   }
 }
 
-function registerComponentsFrom(dir: string): void {
-  if (!existsSync(dir)) return;
-  for (const file of readdirSync(dir).filter(f => f.endsWith(".tw"))) {
-    const name = file.replace(/\.tw$/, "");
-    const filePath = join(dir, file);
-    try {
-      const source = readFileSync(filePath, "utf-8");
-      const result = _compileSync(source, { filePath, transforms: false, optimize: false, diagnostics: false });
-      if (result.ast) {
-        _registerComponentTemplate(name, result.ast);
-        registeredComponentNames.add(name);
-        console.log("  \x1b[32m\u2713\x1b[0m component: " + name);
-      }
-    } catch (e: any) {
-      console.log("  \x1b[33m! component " + name + ": " + e.message + "\x1b[0m");
-    }
-  }
-}
-
-function collectPrivateComponentDirs(dir: string, out: string[]): void {
-  if (!existsSync(dir)) return;
-  for (const entry of readdirSync(dir)) {
-    const full = join(dir, entry);
-    if (!statSync(full).isDirectory()) continue;
-    if (entry.startsWith("_")) {
-      out.push(full);
-    } else if (!entry.startsWith("@")) {
-      collectPrivateComponentDirs(full, out);
-    }
-  }
-}
-
+// Component-registry seeding lives in ../components so `tw build`, `tw dev`
+// and `tw check` all resolve components the same way.
 function scanComponents(rootDir: string): void {
-  _clearComponentRegistry();
-  registerComponentsFrom(join(rootDir, "components"));
-
-  const privDirs: string[] = [];
-  collectPrivateComponentDirs(join(rootDir, "home"), privDirs);
-  for (const d of privDirs) registerComponentsFrom(d);
+  scanComponentsShared(
+    rootDir,
+    { compileSync: _compileSync, registerComponentTemplate: _registerComponentTemplate, clearComponentRegistry: _clearComponentRegistry },
+    (name) => {
+      registeredComponentNames.add(name);
+      console.log("  \x1b[32m\u2713\x1b[0m component: " + name);
+    },
+    (name, message) => console.log("  \x1b[33m! component " + name + ": " + message + "\x1b[0m"),
+  );
 }
 
 
@@ -800,6 +774,19 @@ export async function buildCommand(): Promise<void> {
   // -- 1. Compile all page.tw files to HTML --------------------------------
   const pageFiles: string[] = [];
   collectFiles(homeDir, "page", pageFiles);
+  // A page may import a .tw component by path -- including one outside
+  // components/ (say lib/Gate.tw). Register those from each page's imports so
+  // the tag resolves exactly like a scanned component does.
+  for (const pf of pageFiles) {
+    try {
+      registerImportedComponents(
+        pf, rootDir,
+        { compileSync: _compileSync, registerComponentTemplate: _registerComponentTemplate, clearComponentRegistry: _clearComponentRegistry },
+        readFileSync(pf, "utf-8"),
+        (name) => registeredComponentNames.add(name),
+      );
+    } catch { /* a page we cannot read is reported by its own compile */ }
+  }
   // page.tw + index.tw in one directory resolve
   // to the same route with index.tw winning at runtime -- and the build
   // said nothing. Warn loudly instead.
@@ -1537,6 +1524,16 @@ const runtimeSrc = _bundleDir
   console.log("  Pages: " + pageCount + " compiled" + (requestRenderedCount > 0 ? " (+" + requestRenderedCount + " rendered at request time)" : ""));
   if (pageCount === 0) console.warn("  [!] No static pages were compiled -- every page is SSR/API. Static hosts (Vercel/Cloudflare Pages output) will serve an empty site. Use `render static` or check your render modes.");
   console.log("  APIs:  " + apiCount + " routes");
+  // A machine-readable build summary -- deployment adapters read it to decide
+  // whether a static host can serve the app at all (see `tw adapter` / `tw ship`).
+  try {
+    writeFileSync(join(outDir, "build-summary.json"), JSON.stringify({
+      staticPages: pageCount,
+      ssrPages: requestRenderedCount,
+      apiRoutes: apiCount,
+      middleware: existsSync(join(rootDir, "middleware.twm")),
+    }, null, 2));
+  } catch { /* best effort */ }
   if (buildOpts?.incremental) {
     try { writeFileSync(join(outDir, ".build-cache.json"), JSON.stringify(incNext)); } catch { /* best effort */ }
     if (skippedPages > 0) console.log("  \x1b[36m~\x1b[0m incremental: " + skippedPages + " page(s) unchanged, reused");

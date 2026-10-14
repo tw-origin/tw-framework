@@ -7,6 +7,7 @@
 
 import { join, resolve, dirname } from "node:path";
 import { existsSync, readFileSync, readdirSync, statSync } from "node:fs";
+import { scanComponents as scanComponentsShared, collectPrivateComponentDirs } from "../components";
 
 // --- Compiler loader ---------------------------------------------------------
 
@@ -158,47 +159,15 @@ function findLayoutDev(dir: string, homeDir: string): string | null {
 // Scans components/ directory, compiles each .tw file, registers in codegen registry.
 // This allows <Header /> or Header { } in pages to inline the component's HTML.
 
-function registerComponentsFrom(rootDir: string, dir: string): void {
-  if (!existsSync(dir)) return;
-  for (const file of readdirSync(dir).filter(f => f.endsWith(".tw"))) {
-    const name = file.replace(/\.tw$/, "");
-    const filePath = join(dir, file);
-    try {
-      const source = readFileSync(filePath, "utf-8");
-      const result = compileSync(source, { filePath, transforms: false, optimize: false, diagnostics: false });
-      if (result.ast) {
-        registerComponentTemplate(name, result.ast);
-      }
-    } catch (e: any) {
-      console.log("    Warning: Failed to compile component " + file + ": " + e.message);
-    }
-  }
-}
-
-function collectPrivateComponentDirs(dir: string, out: string[]): void {
-  if (!existsSync(dir)) return;
-  for (const entry of readdirSync(dir)) {
-    const full = join(dir, entry);
-    if (!existsSync(full)) continue;
-    let isDir = false;
-    try { isDir = statSync(full).isDirectory(); } catch { continue; }
-    if (!isDir) continue;
-    if (entry.startsWith("_")) {
-      out.push(full);
-    } else if (!entry.startsWith("@")) {
-      collectPrivateComponentDirs(full, out);
-    }
-  }
-}
-
+// Component-registry seeding lives in ../components so `tw build`, `tw dev`
+// and `tw check` all resolve components the same way.
 function scanComponents(rootDir: string): void {
-  clearComponentRegistry();
-  // Global components/
-  registerComponentsFrom(rootDir, join(rootDir, "components"));
-  // Private folders co-located with routes: home/(marketing)/_components/Hero.tw
-  const privDirs: string[] = [];
-  collectPrivateComponentDirs(join(rootDir, "home"), privDirs);
-  for (const d of privDirs) registerComponentsFrom(rootDir, d);
+  scanComponentsShared(
+    rootDir,
+    { compileSync, registerComponentTemplate, clearComponentRegistry },
+    undefined,
+    (_name, message) => console.log("    Warning: Failed to compile a component: " + message),
+  );
 }
 
 // Re-scan components when the components/ dir changes (added/edited files),

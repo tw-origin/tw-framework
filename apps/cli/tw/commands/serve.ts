@@ -146,7 +146,16 @@ export async function serveCommand(): Promise<void> {
     // Keep the process alive through stray async failures (Node 15+ would
     // otherwise crash on an unhandled rejection from one bad route).
     process.on("unhandledRejection", (reason: any) => {
-      console.warn("[TW] Unhandled promise rejection:", reason?.message ?? reason);
+      const msg = String(reason?.message ?? reason ?? "");
+      // A WASM/engine allocation failure under memory pressure (an image
+      // optimizer or a fetch stack) is not fatal -- say what happened and keep
+      // serving instead of printing it as a mystery rejection.
+      if (/WebAssembly|out of memory|OOM/i.test(msg)) {
+        console.warn("[TW] A background task ran out of memory and was skipped:", msg);
+        console.warn("     The server is still running. If it repeats, lower image concurrency or raise the memory limit.");
+        return;
+      }
+      console.warn("[TW] Unhandled promise rejection:", msg);
     });
   } catch (e) {
     console.debug("[TW] Ignored error:", e);

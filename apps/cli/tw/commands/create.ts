@@ -303,12 +303,11 @@ ${name}/
 }
 
 async function createVercelJson(dir: string): Promise<void> {
-  // The old config was a STATIC deployment
-  // (outputDirectory: .tw) while the scaffold app is SSR + API routes --
-  // home and /api/* had nothing to serve on Vercel. The scaffold now ships
-  // a serverless function that runs the TW server, with every route
-  // rewritten to it. installCommand matches the shipped package-lock.json.
-  const config = {
+  // A scaffold app is SSR + API routes, so it needs Vercel's serverless path
+  // (a function that runs the whole TW server) -- a static outputDirectory
+  // would deploy an empty site. Same source as `tw adapter vercel` / `tw ship`.
+  const shared: any = await import("../../../../packages/adapters/tw/vercel.ts").catch(() => null);
+  const config = shared?.vercelServerlessConfig?.() ?? {
     buildCommand: "npx tw build",
     installCommand: "npm install",
     functions: {
@@ -319,12 +318,12 @@ async function createVercelJson(dir: string): Promise<void> {
     ],
   };
 
-  await writeFile(join(dir, "vercel.json"), JSON.stringify(config, null, 2));
+  await writeFile(join(dir, "vercel.json"), JSON.stringify(config, null, 2) + "\n");
   console.log("  \u2713 vercel.json");
 
   const fnDir = join(dir, "api");
   await mkdir(fnDir, { recursive: true });
-  await writeFile(join(fnDir, "tw-server.ts"), [
+  const entry = shared?.vercelServerlessEntry?.() ?? [
     "// TW Framework -- Vercel serverless entry.",
     "// Runs the full TW server (SSR pages + .twm API routes) as a Vercel",
     "// function. vercel.json rewrites every route here.",
@@ -338,7 +337,8 @@ async function createVercelJson(dir: string): Promise<void> {
     "  return server.handleRequest(request);",
     "}",
     "",
-  ].join("\n"));
+  ].join("\n");
+  await writeFile(join(fnDir, "tw-server.ts"), entry);
   console.log("  \u2713 api/tw-server.ts");
 }
 
