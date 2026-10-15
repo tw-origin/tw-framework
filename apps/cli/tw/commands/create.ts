@@ -211,7 +211,7 @@ export default {
   headers: [],
   middleware: [],
   plugins: [],
-} satisfies TwConfig;
+} satisfies TwConfigInput;
 `;
 
   await writeFile(join(dir, "tw.config.ts"), config);

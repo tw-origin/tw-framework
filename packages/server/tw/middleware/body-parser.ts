@@ -23,6 +23,21 @@ export interface ParsedBody {
 
 const DEFAULT_LIMIT = 1024 * 1024; // 1MB
 
+/**
+ * Attach the parsed body to the request WITHOUT mutating a native Request.
+ * `body` is a getter-only accessor on Request.prototype, so `req.body = x`
+ * throws in strict mode (ESM) -- which is why every POST answered 400. Define
+ * an own property on the instance instead, shadowing the prototype getter.
+ */
+function setRequestBody(req: Request, value: unknown): void {
+  Object.defineProperty(req, "body", {
+    value,
+    writable: true,
+    configurable: true,
+    enumerable: true,
+  });
+}
+
 export function bodyParse(options: BodyParserOptions = {}): (req: Request, res: Response, next: () => void) => Promise<void> {
   const jsonOpts = { limit: DEFAULT_LIMIT, strict: true, type: "application/json", ...options.json };
   const urlencodedOpts = { limit: DEFAULT_LIMIT, extended: false, ...options.urlencoded };
@@ -46,21 +61,21 @@ export function bodyParse(options: BodyParserOptions = {}): (req: Request, res: 
       if (contentType.includes("application/json") && jsonOpts) {
         const text = await readBody(req, jsonOpts.limit);
         const parsed = JSON.parse(text);
-        (req as unknown as { body: unknown }).body = jsonOpts.strict ? ensureObject(parsed) : parsed;
+        setRequestBody(req, jsonOpts.strict ? ensureObject(parsed) : parsed);
       } else if (contentType.includes("application/x-www-form-urlencoded") && urlencodedOpts) {
         const text = await readBody(req, urlencodedOpts.limit);
         const parsed = parseUrlEncoded(text);
-        (req as unknown as { body: Record<string, string> }).body = parsed;
+        setRequestBody(req, parsed);
       } else if (contentType.match(textOpts.type ?? "text/*") && textOpts) {
         const text = await readBody(req, textOpts.limit);
-        (req as unknown as { body: string }).body = text;
+        setRequestBody(req, text);
       } else if (contentType.includes(rawOpts.type ?? "application/octet-stream") && rawOpts) {
         const buffer = await readBuffer(req, rawOpts.limit);
-        (req as unknown as { body: Buffer }).body = buffer;
+        setRequestBody(req, buffer);
       } else if (contentType.includes("multipart/form-data") && multipartOpts) {
         const buffer = await readBuffer(req, multipartOpts.limit);
         const parsed = parseMultipart(buffer, contentType, multipartOpts);
-        (req as unknown as { body: ParsedBody["multipart"] }).body = parsed;
+        setRequestBody(req, parsed);
       }
     } catch (error) {
       (res as any).status = 400;

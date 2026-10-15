@@ -61,6 +61,17 @@ export interface FoldResult {
 
 // --- Main Constant Folder --------------------------------------------
 
+/**
+ * Parse a signed binary (`0b101`) or octal (`0o17`) integer literal.
+ * `Number()` understands the `0b`/`0o` prefixes but rejects a leading sign
+ * (`Number("-0b101")` is NaN), so the sign is applied here.
+ */
+function parseRadixLiteral(expr: string): number {
+  const negative = expr.startsWith("-");
+  const magnitude = Number(negative ? expr.slice(1) : expr);
+  return negative ? -magnitude : magnitude;
+}
+
 export class ConstantFolder {
   /** Variables known to be constant (from @state with literal values) */
   private constants = new Map<string, ConstValue>();
@@ -225,10 +236,14 @@ export class ConstantFolder {
       return { type: "number", value: parseInt(expr, 16) };
     }
     if (/^-?0b[01]+$/i.test(expr)) {
-      return { type: "number", value: parseInt(expr.slice(2, 10), 2) };
+      // Parse the WHOLE literal: the old `slice(2, 10)` dropped every bit
+      // past the eighth (`0b111111111` -> 255) and mangled a leading sign
+      // (`-0b101` -> NaN). `Number` parses `0b...`/`0o...`, but not with a
+      // sign in front -- apply the sign ourselves.
+      return { type: "number", value: parseRadixLiteral(expr) };
     }
     if (/^-?0o[0-7]+$/i.test(expr)) {
-      return { type: "number", value: parseInt(expr.slice(2, 10), 8) };
+      return { type: "number", value: parseRadixLiteral(expr) };
     }
     if (/^-?\d+$/.test(expr)) {
       return { type: "number", value: parseInt(expr, 10) };

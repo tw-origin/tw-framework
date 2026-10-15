@@ -8,6 +8,8 @@
 import { join, resolve, dirname } from "node:path";
 import { existsSync, readFileSync, readdirSync, statSync } from "node:fs";
 import { scanComponents as scanComponentsShared, collectPrivateComponentDirs } from "../components";
+// Same render-mode extraction `tw build` uses, so dev emits the same manifests.
+import { extractRenderMode } from "./build";
 
 // --- Compiler loader ---------------------------------------------------------
 
@@ -449,7 +451,9 @@ export async function devCommand(): Promise<void> {
     } catch { /* ignore */ }
   }
 
-  const homeDir = join(rootDir, "home");
+  // source directory -- config `source` (default `home/`); reassigned below once
+  // the config is loaded so dev matches `tw build`.
+  let homeDir = join(rootDir, "home");
   const publicDir = join(rootDir, "public");
   const stylePath = join(rootDir, "style.css");
 
@@ -600,17 +604,38 @@ async function ensureDevClientBundle(rootDir: string, pageSource: string, layout
   // tw.config.ts redirects + headers in dev (both forms, like `tw serve`)
   let devRedirects: { from: string; to: string; status?: number }[] = [];
   let devCfgHeaders: { source: string; headers: Record<string, string> }[] = [];
+  // rewrites: [{ from, to }] -- rewritten in place, before redirects (`tw serve`).
+  let devRewrites: { from: string; to: string }[] = [];
   let devSigCfg: any = undefined;
+  // config `source` / `router.apiDir` / `strategies.signals.transport`, read so
+  // dev behaves like `tw build` and `tw serve`.
+  let devApiDir = "api";
+  let devSignalTransport: "sse" | "ws" | "long-poll" = "sse";
   try {
     const cfgFile = join(rootDir, "tw.config.ts");
     if (existsSync(cfgFile)) {
       const { twImportTs } = await import("@tw/shared/tw/node-import");
       const cfgMod: any = await twImportTs(cfgFile);
       const cfg: any = cfgMod.default ?? cfgMod;
+      // source directory (default home/)
+      if (typeof cfg?.source === "string" && cfg.source.trim()) homeDir = join(rootDir, cfg.source);
+      // router.apiDir -- the API directory (and URL prefix) under the source.
+      try {
+        const { resolveRouterOptions } = await import("@tw/shared");
+        const router = resolveRouterOptions(cfg);
+        if (router?.apiDir) devApiDir = router.apiDir;
+      } catch { /* keep the api default */ }
       if (cfg?.redirects) {
         devRedirects = Array.isArray(cfg.redirects)
           ? cfg.redirects
           : Object.entries(cfg.redirects).map(([from, to]: any) =>
+              typeof to === "string" ? { from, to } : { from, ...to });
+      }
+      // rewrites: { "/games": "/category/games" } or [{ from, to }]
+      if (cfg?.rewrites) {
+        devRewrites = Array.isArray(cfg.rewrites)
+          ? cfg.rewrites
+          : Object.entries(cfg.rewrites).map(([from, to]: any) =>
               typeof to === "string" ? { from, to } : { from, ...to });
       }
       if (cfg?.headers) {
@@ -618,9 +643,22 @@ async function ensureDevClientBundle(rootDir: string, pageSource: string, layout
           ? cfg.headers
           : Object.entries(cfg.headers).map(([source, headers]: any) => ({ source, headers }));
       }
+      const st = cfg?.strategies?.signals?.transport;
+      if (st === "sse" || st === "ws" || st === "long-poll") devSignalTransport = st;
       if (cfg?.signalStream) devSigCfg = cfg.signalStream;
     }
   } catch { /* config optional */ }
+  // CLI flags override config, same precedence as `tw build`. Only apply when a
+  // strategy flag was actually given -- resolveStrategies() fills defaults, so
+  // calling it unconditionally would overwrite the config's transport with sse.
+  try {
+    const { parseStrategyFlags, resolveStrategies } = await import("@tw/shared");
+    const f: any = parseStrategyFlags(process.argv.slice(2));
+    if (Object.keys(f).length > 0 && f.signals) {
+      const r: any = resolveStrategies({ signals: f.signals } as any);
+      if (r?.signals?.transport) devSignalTransport = r.signals.transport;
+    }
+  } catch { /* flags optional */ }
   const devPathMatch = (pattern: string, pathname: string): boolean =>
     pattern === pathname ||
     (pattern.endsWith("/**") && pathname.startsWith(pattern.slice(0, -2) + "/")) ||
@@ -685,7 +723,8 @@ async function ensureDevClientBundle(rootDir: string, pageSource: string, layout
       }
 
       // -- 1c. Client-side npm modules bundle ----------------------------------
-      if (/^\/js\/(c|p|tw-client)-[a-z0-9]+\.js$/.test(path)) {
+      // e-* are build.entryPoints chunks; c-*/p-* are client module chunks.
+      if (/^\/js\/(c|p|e|tw-client)-[a-z0-9]+\.js$/.test(path)) {
         const clientBundlePath = join(rootDir, ".tw", path.slice(1));
         if (existsSync(clientBundlePath)) {
           return new Response(readFileSync(clientBundlePath, "utf-8"), {
@@ -725,16 +764,41 @@ async function ensureDevClientBundle(rootDir: string, pageSource: string, layout
       // -- 5. Route resolution ------------------------------------------------
       const routePath = path === "/" ? "" : path;
 
-      // -- 5a. API route (.twm): /api -> home/api/route.twm (with [param] dirs)
-      const resolvedTwm = resolveHomeFile(homeDir, path, ["route.twm"]);
+      // -- 5a. API route (.twm): /<router.apiDir> -> <source>/<router.apiDir>/route.twm
+      const devApiPrefix = "/" + devApiDir;
+      let resolvedTwm = resolveHomeFile(homeDir, path, ["route.twm"]);
+      // Explicit lookup in the configured API directory (router.apiDir) when the
+      // generic scan above missed -- keeps a non-default apiDir working.
+      if (!resolvedTwm && (path === devApiPrefix || path.startsWith(devApiPrefix + "/"))) {
+        resolvedTwm = resolveHomeFile(join(homeDir, devApiDir), "/" + path.slice(devApiPrefix.length), ["route.twm"]);
+      }
       const twmFile = resolvedTwm ? resolvedTwm.file : join(homeDir, routePath, "route.twm");
       if (resolvedTwm) {
         try {
           // Parse request body for POST/PUT
           let requestBody: any = {};
           if (req.method === "POST" || req.method === "PUT") {
-            const contentType = req.headers.get("content-type") || "";
-            if (contentType.includes("application/json")) {
+            const contentType = (req.headers.get("content-type") || "").toLowerCase();
+            if (contentType.includes("multipart/form-data")) {
+              // Same shape the shared @tw/server loader builds (twm-loader.ts):
+              // request.body = { ...fields, multipart: { fields, files } }.
+              // Dev used to flatten formData with Object.fromEntries, so a file
+              // upload arrived as a File object instead of { filename, data }.
+              try {
+                const fd = await req.formData();
+                const fields: Record<string, string> = {};
+                const files: any[] = [];
+                for (const [k, v] of (fd as any).entries()) {
+                  if (v && typeof v === "object" && typeof (v as any).arrayBuffer === "function") {
+                    const data = Buffer.from(await (v as any).arrayBuffer());
+                    files.push({ filename: (v as any).name, contentType: (v as any).type, data });
+                  } else {
+                    fields[k] = String(v);
+                  }
+                }
+                requestBody = { ...fields, multipart: { fields, files } };
+              } catch { requestBody = {}; }
+            } else if (contentType.includes("application/json")) {
               try { requestBody = await req.json(); } catch {}
             } else {
               try {
@@ -963,6 +1027,22 @@ async function ensureDevClientBundle(rootDir: string, pageSource: string, layout
 
           html = html.replace("</head>", "<style>" + css + "</style>\n</head>");
 
+          // Signal Streaming manifest -- `tw build` emits __TW_SIGNALS__ for a
+          // `render signalStream` page so the client runtime knows which
+          // transport to open; dev did not, so streamed signals never connected
+          // in development.
+          if (extractRenderMode(source) === "signalStream") {
+            const sigs = (result as any).streamedSignals ?? {};
+            if (Object.keys(sigs).length > 0) {
+              const manifest = JSON.stringify({ v: 1, route: path, transport: devSignalTransport, signals: sigs })
+                .replace(/</g, "\\u003c");
+              html = html.replace(
+                "</body>",
+                '  <script id="__TW_SIGNALS__" type="application/json">' + manifest + "</script>\n</body>",
+              );
+            }
+          }
+
           const errors = result.diagnostics.filter((d: any) => d.severity === "error");
           console.log("    -> 200 OK (" + html.length + " bytes, " + errors.length + " errors)");
 
@@ -1056,6 +1136,20 @@ async function ensureDevClientBundle(rootDir: string, pageSource: string, layout
         const { writeSignalFromClient } = await import("../../../../packages/server/tw/routing/signal-stream.ts");
         return writeSignalFromClient(req, { clientWrites: devSigCfg?.clientWrites });
       }
+    }
+    // tw.config.ts rewrites: applied BEFORE redirects, matching `tw serve` --
+    // the URL is rewritten in place, the browser never sees a redirect. Dev
+    // only applied redirects, so every configured rewrite was silently ignored.
+    if (devRewrites.length > 0) {
+      try {
+        const { applyRewrites } = await import("@tw/server");
+        const u = new URL(req.url);
+        const rewritten = applyRewrites(devRewrites as any, u.pathname);
+        if (rewritten !== null && rewritten !== u.pathname) {
+          u.pathname = rewritten;
+          req = new Request(u.toString(), req);
+        }
+      } catch { /* rewrites are best-effort */ }
     }
     // tw.config.ts redirects first (same precedence as `tw serve`)
     const reqUrl = new URL(req.url);

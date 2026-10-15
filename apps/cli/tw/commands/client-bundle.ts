@@ -193,7 +193,7 @@ function rewriteRuntimeSpecifier(importLine: string): string {
  * Returns the input unchanged when esbuild is unavailable or fails -- a build
  * must never break because an optional optimiser is missing.
  */
-export function minifyJsSource(rootDir: string, source: string): string {
+export function minifyJsSource(rootDir: string, source: string, target: string = "es2019"): string {
   const bin = findEsbuildBin(rootDir);
   const stamp = contentHash(source);
   const inPath = join(rootDir, OUT_ROOT, ".min-in-" + stamp + ".js");
@@ -201,7 +201,7 @@ export function minifyJsSource(rootDir: string, source: string): string {
   try {
     mkdirSync(join(rootDir, OUT_ROOT), { recursive: true });
     writeFileSync(inPath, source);
-    const r = spawnSync(bin, [inPath, "--minify", "--target=es2019", "--format=iife", "--outfile=" + outPath], { cwd: rootDir });
+    const r = spawnSync(bin, [inPath, "--minify", "--target=" + (target || "es2019"), "--format=iife", "--outfile=" + outPath], { cwd: rootDir });
     if (r.status !== 0) return source;
     const out = readFileSync(outPath, "utf-8");
     return out || source;
@@ -213,11 +213,31 @@ export function minifyJsSource(rootDir: string, source: string): string {
   }
 }
 
+/**
+ * build.target -> the esbuild `--target` for emitted client JS.
+ *
+ * `build.target` names the RUNTIME (browser | node | bun | edge), which is not
+ * a value esbuild accepts (`--target=browser` is an error). Map it to the
+ * matching esbuild target so the documented field actually reaches the output
+ * instead of being silently pinned to es2019.
+ */
+export function esbuildTargetFor(target?: string): string {
+  switch (target) {
+    case "node": return "node18";
+    case "bun": return "esnext";
+    case "edge": return "esnext";
+    case "browser": return "es2019";
+    default: return "es2019";
+  }
+}
+
 /** build.* -- the esbuild flags a client chunk honours. */
 export interface BuildChunkFlags {
   minify?: boolean;
   sourcemap?: boolean | "external" | "inline";
   format?: "esm" | "cjs" | "iife";
+  /** esbuild `--target` (from build.target via esbuildTargetFor). */
+  target?: string;
   treeshake?: boolean;
   define?: Record<string, string>;
   externals?: string[];
@@ -257,7 +277,7 @@ export function buildEntryPoint(rootDir: string, entry: string, flags: BuildChun
 
 /** build.* -> the esbuild argv for one chunk. */
 export function chunkEsbuildArgs(f: BuildChunkFlags, outFile: string): string[] {
-  const args = ["--bundle", "--format=" + (f.format ?? "iife"), "--target=es2019", "--outfile=" + outFile];
+  const args = ["--bundle", "--format=" + (f.format ?? "iife"), "--target=" + (f.target ?? "es2019"), "--outfile=" + outFile];
   if (f.minify) args.push("--minify");
   if (f.sourcemap === "external") args.push("--sourcemap=external");
   else if (f.sourcemap === "inline") args.push("--sourcemap=inline");

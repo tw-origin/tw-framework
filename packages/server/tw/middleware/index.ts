@@ -100,22 +100,35 @@ export function corsMiddleware(opts: {
       allowedOrigin = origin;
     }
 
-    ctx.headers["access-control-allow-origin"] = allowedOrigin;
-    ctx.headers["access-control-allow-methods"] = methods;
-    ctx.headers["access-control-allow-headers"] = headers;
-    if (exposed) {
-      ctx.headers["access-control-expose-headers"] = exposed;
-    }
-    if (credentials) {
-      ctx.headers["access-control-allow-credentials"] = "true";
-    }
-    ctx.headers["access-control-max-age"] = String(maxAge);
+    // Mirror onto ctx.headers (kept for the documented `ctx.headers` surface),
+    // AND onto the actual RESPONSE -- ctx.headers are REQUEST headers and never
+    // reach the client, so without this the middleware emitted nothing.
+    const out: Record<string, string> = {
+      "access-control-allow-origin": allowedOrigin,
+      "access-control-allow-methods": methods,
+      "access-control-allow-headers": headers,
+      "access-control-max-age": String(maxAge),
+    };
+    if (exposed) out["access-control-expose-headers"] = exposed;
+    if (credentials) out["access-control-allow-credentials"] = "true";
+    for (const k of Object.keys(out)) ctx.headers[k] = out[k];
 
     if (ctx.method === "OPTIONS") {
+      // Answer the preflight directly with the CORS headers on the response
+      // (a bare `return` left the client with no response).
+      (ctx as any).response = new Response(null, { status: 204, headers: out });
       return;
     }
 
     await next();
+
+    // Attach the CORS headers to whatever response the chain produced.
+    const res = (ctx as any).response;
+    if (res instanceof Response) {
+      for (const k of Object.keys(out)) {
+        try { if (!res.headers.has(k)) res.headers.set(k, out[k]); } catch { /* immutable: skip */ }
+      }
+    }
   };
 }
 

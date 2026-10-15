@@ -47,7 +47,11 @@ describe("deployment adapters", () => {
     dirs.push(d);
     const written = generateAdapter("bun", d);
     const src = readFileSync(written[0], "utf-8");
-    expect(src).toContain("@tw/server");
+    // The adapter ships next to a real app, so it must import the PUBLIC
+    // package specifier -- the private workspace name `@tw/server` does not
+    // resolve outside the monorepo.
+    expect(src).toContain("tw-framework/server");
+    expect(src).not.toContain("@tw/server");
     expect(src).toContain("server.start()");
   });
 

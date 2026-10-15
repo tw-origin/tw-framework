@@ -101,16 +101,19 @@ export class StaticHandler {
     // Read file
     const bytes = await readBytes(filePath);
 
-    // Generate ETag
+    // Generate ETag -- CONTENT-based (a hash of the bytes). The old hash of
+    // path+mtime+size never changed when only the content did, so clients kept
+    // serving stale copies.
     let etagValue = "";
     if (this.etag) {
-      etagValue = `"${sha256(filePath + stat.mtime + stat.size).slice(0, 16)}"`;
+      etagValue = `"${sha256(bytes).slice(0, 16)}"`;
     }
 
     // Build headers
     const headers: Record<string, string> = {
       "Content-Type": contentType,
       "Content-Length": String(stat.size),
+      "Accept-Ranges": "bytes",
     };
 
     if (this.etag) {
@@ -135,6 +138,33 @@ export class StaticHandler {
       });
     }
 
+    // Range request: answer 206 with just the requested slice (416 when the
+    // range cannot be satisfied). Served uncompressed so byte offsets are
+    // exact.
+    if (request) {
+      const rangeHeader = request.headers.get("range");
+      if (rangeHeader) {
+        const range = this.parseRange(rangeHeader, bytes.length);
+        if (range === "unsatisfiable") {
+          return new Response(null, {
+            status: 416,
+            headers: { "Content-Range": `bytes */${bytes.length}`, "Accept-Ranges": "bytes" },
+          });
+        }
+        if (range) {
+          const slice = bytes.subarray(range.start, range.end + 1);
+          return new Response(slice, {
+            status: 206,
+            headers: {
+              ...headers,
+              "Content-Length": String(slice.length),
+              "Content-Range": `bytes ${range.start}-${range.end}/${bytes.length}`,
+            },
+          });
+        }
+      }
+    }
+
     // Gzip compression for compressible types when the client accepts it
     const COMPRESSIBLE = ["text/", "application/javascript", "application/json", "application/xml", "image/svg+xml"];
     const acceptEnc = request?.headers.get("accept-encoding") ?? "";
@@ -155,6 +185,40 @@ export class StaticHandler {
     }
 
     return new Response(bytes, { headers });
+  }
+
+  /**
+   * Parse a `Range: bytes=...` header against a known content length.
+   * Returns { start, end } (inclusive) for a satisfiable single range,
+   * "unsatisfiable" for a 416, or null to ignore the header (malformed /
+   * unsupported form -- the full body is served instead).
+   */
+  private parseRange(header: string, size: number): { start: number; end: number } | "unsatisfiable" | null {
+    const m = /^bytes=(.+)$/i.exec(header.trim());
+    if (!m) return null;
+    // Only the first range of a multi-range request is honoured.
+    const spec = m[1].split(",")[0].trim();
+    const dash = spec.indexOf("-");
+    if (dash === -1) return null;
+    const startStr = spec.slice(0, dash).trim();
+    const endStr = spec.slice(dash + 1).trim();
+
+    if (startStr === "") {
+      // Suffix range: the final N bytes.
+      if (endStr === "") return null;
+      const suffix = Number(endStr);
+      if (!Number.isFinite(suffix) || suffix <= 0) return "unsatisfiable";
+      if (size === 0) return "unsatisfiable";
+      return { start: Math.max(0, size - suffix), end: size - 1 };
+    }
+
+    const start = Number(startStr);
+    if (!Number.isFinite(start) || start < 0) return null;
+    if (start >= size) return "unsatisfiable";
+    let end = endStr === "" ? size - 1 : Number(endStr);
+    if (!Number.isFinite(end) || end < start) return "unsatisfiable";
+    if (end > size - 1) end = size - 1;
+    return { start, end };
   }
 
   handleConditionalRequest(request: Request, etag: string, mtime: number): boolean {

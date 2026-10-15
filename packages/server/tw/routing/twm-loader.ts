@@ -129,6 +129,9 @@ async function loadLibModule(rootDir: string, name: string): Promise<Record<stri
     .replace(/^@\//, "")
     .replace(/^\.\//, "")
     .replace(/^lib\//, "");
+  // Accept the documented `import ... from "lib/x.ts"` form: strip the
+  // extension so it is not doubled (`lib/x.ts.ts`), which 500'd at load time.
+  if (rel.endsWith(".ts")) rel = rel.slice(0, -3);
   const cacheKey = rootDir + "/" + rel;
   if (libCache.has(cacheKey)) return libCache.get(cacheKey)!;
 
@@ -255,8 +258,21 @@ export async function loadTWMModule(filePath: string, rootDir?: string): Promise
       moduleCache.set(cacheKey, mod);
       return mod;
     } catch (err) {
-      console.error("[twm-loader] Error parsing rules in " + filePath + ":", (err as Error).message);
-      const mod: TWMModule = {};
+      // FAIL CLOSED. A malformed middleware.twm used to return `{}` (no rules),
+      // which silently disabled EVERY guard -- the site ran wide open. Instead
+      // return one unconditional rule that blocks all matching requests (500)
+      // until the file is fixed, so a broken guard can never fail open.
+      const msg = (err as Error).message;
+      console.error("[twm-loader] Error parsing rules in " + filePath + ":", msg);
+      const mod: TWMModule = {
+        rules: [
+          {
+            name: "middleware-parse-error",
+            match: "/**",
+            response: { status: 500, json: { ok: false, error: "middleware.twm failed to parse: " + msg } },
+          },
+        ] as MiddlewareRule[],
+      };
       moduleCache.set(cacheKey, mod);
       return mod;
     }
@@ -305,6 +321,13 @@ export async function loadTWMModule(filePath: string, rootDir?: string): Promise
           const { join } = await import("node:path");
           runtime = await import(pathToFileURL(join(rd, "node_modules", "tw-framework", "dist", "tw-runtime-client.mjs")).href);
         } catch { runtime = null; }
+      }
+      if (!runtime) {
+        // Running from SOURCE (this repo / a workspace): the client bundle is
+        // not built, so resolve the `@tw/runtime` package directly. Without
+        // this the documented `import ... from "@tw/runtime"` was unresolved
+        // and every imported name stayed undefined.
+        try { runtime = await import("@tw/runtime"); } catch { runtime = null; }
       }
       if (runtime) {
         for (const name of imp.names) {

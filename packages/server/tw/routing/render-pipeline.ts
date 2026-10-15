@@ -390,8 +390,12 @@ export class RenderPipeline {
     }
   }
 
-  render(pathname: string, stateVars?: Record<string, string>, opts?: { bypassCache?: boolean }): RouteRenderResult {
+  render(pathname: string, stateVars?: Record<string, string>, opts?: { bypassCache?: boolean; __refresh?: boolean }): RouteRenderResult {
     const bypassCache = opts?.bypassCache === true;
+    // Internal: this call IS the background SWR refresh, so it must fall
+    // through to a real render (and re-write the cache) instead of serving
+    // the stale entry again.
+    const isRefresh = opts?.__refresh === true;
     // Unicode routes: the request pathname arrives percent-encoded (browsers
     // always encode non-ASCII); the route tree stores decoded segments.
     // Decode each segment so Hindi/emoji route folders match.
@@ -423,12 +427,20 @@ export class RenderPipeline {
       // re-render in the background -- never blocking a visitor. An entry
       // past expireAt is dropped and the request falls through to a
       // blocking MISS render.
-      if (cached && now < expireAt && (cached as any).swr && !this.pendingRefresh.has(cacheKey)) {
-        this.pendingRefresh.add(cacheKey);
-        void Promise.resolve().then(() => {
-          try { this.render(pathname, stateVars); } catch { /* background */ }
-          finally { this.pendingRefresh.delete(cacheKey); }
-        });
+      if (cached && now < expireAt && (cached as any).swr && !isRefresh) {
+        // Serve the stale entry to EVERY concurrent request; kick off exactly
+        // one background refresh. Previously a request that arrived while a
+        // refresh was already pending fell through to a blocking MISS render,
+        // so a burst of concurrent requests all re-rendered (thundering herd).
+        // The refresh call itself is flagged (__refresh) so it does NOT take
+        // this branch and instead re-renders for real.
+        if (!this.pendingRefresh.has(cacheKey)) {
+          this.pendingRefresh.add(cacheKey);
+          void Promise.resolve().then(() => {
+            try { this.render(pathname, stateVars, { __refresh: true }); } catch { /* background */ }
+            finally { this.pendingRefresh.delete(cacheKey); }
+          });
+        }
         return {
           ...cached.result,
           fromCache: true,

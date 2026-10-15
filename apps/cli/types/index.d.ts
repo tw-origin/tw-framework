@@ -238,17 +238,17 @@ declare module "tw-framework" {
   /** The strategy layer: pick which option each subsystem uses. */
   export interface StrategiesConfig {
     signals: { transport: "sse" | "ws" | "long-poll" };
-    css: { engine: "tss" | "css" | "scss" | "tailwind" };
-    render: { engine: "tw-vdom" | "react" | "preact" | "vue" | "svelte" };
-    runtime: { server: "bun" | "node" | "deno" | "workerd" };
-    api: { runtime: "node" | "edge" | "worker" };
+    css: { engine: "tss" | "tailwind" | "css" | "scss" };
+    render: { engine: "tw-vdom" | "react" | "preact" | "none" };
+    runtime: { server: "auto" | "bun" | "node" | "deno" | "edge" };
+    api: { runtime: "node" | "edge" };
     state: { model: "signals" | "hooks" | "store" };
-    auth: { model: "none" | "session" | "jwt" | "oauth" };
-    data: { layer: "rest" | "graphql" | "trpc" };
-    cache: { mode: "memory" | "filesystem" | "redis" | "swr" | "none" };
-    db: { adapter: string };
+    auth: { model: "session" | "jwt" | "oauth" };
+    data: { layer: "routes" | "graphql" | "trpc" };
+    cache: { mode: "isr" | "swr" | "none" | "cdn" };
+    db: { adapter: "sql" | "kv" | "vector" };
     hydration: { mode: "auto" | "full" | "islands" | "none" };
-    packages: { manager: "bun" | "npm" | "pnpm" | "yarn" };
+    packages: { manager: "auto" | "npm" | "pnpm" | "yarn" | "bun" };
   }
 
   /**

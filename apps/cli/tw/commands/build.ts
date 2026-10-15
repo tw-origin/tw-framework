@@ -19,6 +19,7 @@ import { join, resolve, dirname, extname } from "node:path";
 import { createHash } from "node:crypto";
 import { parseCacheBody as parseCacheBodyShared, resolveCache as resolveCacheShared, maskSourceStringsAndComments } from "@tw/shared";
 import { scanComponents as scanComponentsShared, registerImportedComponents } from "../components";
+import { esbuildTargetFor } from "./client-bundle";
 import { existsSync, mkdirSync, writeFileSync, readFileSync, readdirSync, statSync, copyFileSync, unlinkSync, rmdirSync } from "node:fs";
 
 // --- Compiler loader (same as dev.ts) --------------------------------------
@@ -342,6 +343,24 @@ function stripServerRegionsForScan(source: string): string {
 
 export async function buildCommand(): Promise<void> {
   const rootDir = process.cwd();
+
+  // .env support: `tw dev` and `tw serve` load KEY=VALUE lines into process.env
+  // (without overwriting); build did not, so a value a page reads at build time
+  // (server blocks, fetch tokens) differed between dev and the build. Load it
+  // FIRST, before tw.config.ts is imported, so the config can read it too.
+  const envPath = join(rootDir, ".env");
+  if (existsSync(envPath)) {
+    try {
+      for (const line of readFileSync(envPath, "utf-8").split("\n")) {
+        const m = /^\s*([A-Za-z_][A-Za-z0-9_]*)\s*=\s*(.*)\s*$/.exec(line);
+        if (m && !(m[1] in process.env)) {
+          process.env[m[1]] = m[2].replace(/^["']|["']$/g, "");
+        }
+      }
+      console.log("  Env: .env loaded");
+    } catch { /* ignore */ }
+  }
+
   let errorCount = 0;
   // --profile: emit a stage-by-stage timing report (docs/build-profiler.md)
   const profile = process.argv.slice(2).includes("--profile");
@@ -355,15 +374,20 @@ export async function buildCommand(): Promise<void> {
   let incCache: Record<string, string> = {};
   const incNext: Record<string, string> = {};
   const incHash = (t: string): string => createHash("sha256").update(t).digest("hex").slice(0, 16);
-  const homeDir = join(rootDir, "home");
+  // source directory -- config `source` (default `home/`), resolved from the
+  // config below. Default keeps today's layout.
+  let homeDir = join(rootDir, "home");
   let outDir = join(rootDir, ".tw");
+  // router.apiDir -- directory (under the source dir) holding .twm API routes.
+  let apiDirName = "api";
+  // The loaded tw.config.ts, kept so the paths above can be resolved from it.
+  let resolvedCfg: any = null;
   const publicDir = join(rootDir, "public");
   const libDir = join(rootDir, "lib");
   const stylePath = join(rootDir, "style.css");
 
   console.log("\n  \x1b[36mtw build\x1b[0m -- compiling project for production\n");
   console.log("  Root:   " + rootDir);
-  console.log("  Output: " + outDir + "\n");
 
   // Client-side npm modules via the dependency graph (spec):
   //  - each unique import -> one shared content-hashed chunk (c-*.js)
@@ -384,12 +408,6 @@ export async function buildCommand(): Promise<void> {
   begin("styles");
   let css = loadGlobalStyles(rootDir);
   end("styles");
-
-  // Clean output directory
-  if (existsSync(outDir)) {
-    rmDirRecursive(outDir);
-  }
-  mkdirSync(outDir, { recursive: true });
 
   // Scan and register components
   begin("scan");
@@ -448,6 +466,8 @@ export async function buildCommand(): Promise<void> {
         chunkNames: buildOpts.chunkNames,
         assetNames: buildOpts.assetNames,
         loaders: buildOpts.loaders,
+        // build.target (browser | node | bun | edge) -> the esbuild --target.
+        target: esbuildTargetFor(buildOpts.target),
       }
     : { minify: cfgMinify, sourcemap: cfgSourcemap };
   // build.publicPath -- prefix for emitted asset/chunk URLs.
@@ -514,6 +534,7 @@ export async function buildCommand(): Promise<void> {
       const { twImportTs } = await import("@tw/shared/tw/node-import");
       const cfgMod: any = await twImportTs(cfgPath);
       const cfg = cfgMod.default ?? cfgMod;
+      resolvedCfg = cfg;
       serverBlocksOn = cfg?.server?.blocks ?? cfg?.experimental?.serverBlocks ?? true;
       serverOnlyPackages = Array.isArray(cfg?.server?.onlyPackages) ? cfg.server.onlyPackages : [];
       fetchTimeoutMs = cfg?.server?.fetchTimeoutMs;
@@ -585,6 +606,30 @@ export async function buildCommand(): Promise<void> {
       if (re === "tw-vdom" || re === "react" || re === "preact" || re === "none") renderEngine = re;
     }
   } catch { /* defaults */ }
+
+  // config `source` and `router.apiDir` -- documented (docs/configuration.md)
+  // but read by nothing, so a project that set them was silently ignored.
+  if (resolvedCfg) {
+    try {
+      if (typeof resolvedCfg.source === "string" && resolvedCfg.source.trim()) {
+        homeDir = join(rootDir, resolvedCfg.source);
+      }
+    } catch { /* keep the home/ default */ }
+    try {
+      const { resolveRouterOptions } = await import("@tw/shared");
+      const router = resolveRouterOptions(resolvedCfg);
+      if (router?.apiDir) apiDirName = router.apiDir;
+    } catch { /* keep the api default */ }
+  }
+
+  // Clean the output directory AFTER the config has resolved build.outputDir.
+  // The old order cleaned `.tw` first and only then switched to the configured
+  // dir, so a non-default outputDir kept every stale file from the last build.
+  if (existsSync(outDir)) {
+    rmDirRecursive(outDir);
+  }
+  mkdirSync(outDir, { recursive: true });
+  console.log("  Output: " + outDir + "\n");
 
   // CLI flag overrides config: --signals=ws / --transport=long-poll
   {
@@ -746,8 +791,11 @@ export async function buildCommand(): Promise<void> {
   // fails here with a fix rather than at run time.
   if (apiRuntime === "edge") {
     const { checkEdgeSafety } = await import("@tw/shared");
+    // API handlers live in the source's API directory (router.apiDir, default
+    // "api"); scan there, falling back to the whole source when it is absent.
     const apiFiles: string[] = [];
-    collectFiles(homeDir, "route.twm", apiFiles);
+    const apiRoot = join(homeDir, apiDirName);
+    collectFiles(existsSync(apiRoot) ? apiRoot : homeDir, "route.twm", apiFiles);
     const violations: any[] = [];
     for (const f of apiFiles) {
       try { violations.push(...checkEdgeSafety(readFileSync(f, "utf-8"), f)); } catch { /* unreadable */ }
@@ -1486,6 +1534,46 @@ export async function buildCommand(): Promise<void> {
     m.clearCssCapture?.();
   }
   end("css");
+
+  // -- 7b. 404 page: home/not-found.tw -> <outDir>/404.html -------------------
+  // The node and deno adapters probe `<outDir>/404.html` for a custom 404, but
+  // the build only emitted files named `page`/`index`, so a project's
+  // home/not-found.tw never reached the output and those servers fell back to
+  // a plain-text 404.
+  {
+    const nfFile = join(homeDir, "not-found.tw");
+    if (existsSync(nfFile)) {
+      try {
+        const nfSource = readFileSync(nfFile, "utf-8");
+        try {
+          registerImportedComponents(
+            nfFile, rootDir,
+            { compileSync: _compileSync, registerComponentTemplate: _registerComponentTemplate, clearComponentRegistry: _clearComponentRegistry },
+            nfSource,
+            (name) => registeredComponentNames.add(name),
+          );
+        } catch { /* report via its own compile */ }
+        const nfResult: any = _compileSync(nfSource, { filePath: nfFile });
+        let nfHtml = nfResult.html;
+        // Same layout chain a page uses (root layout.tw -> ... -> nearest).
+        const nfChain = findLayoutChain(dirname(nfFile), homeDir);
+        if (nfChain.length > 0 && _generateWithLayoutChain) {
+          const layoutPrograms = nfChain
+            .map(lp => _compileSync(readFileSync(lp, "utf-8"), { filePath: lp }).ast)
+            .filter(Boolean);
+          if (layoutPrograms.length > 0) nfHtml = _generateWithLayoutChain(layoutPrograms, nfResult.ast, {});
+        }
+        if (css) nfHtml = nfHtml.replace("</head>", "<style>" + css + "</style>\n</head>");
+        const finalNf = await runBuildHookValue("transform:html", nfHtml, { route: "/404" });
+        writeFileSync(join(outDir, "404.html"), finalNf);
+        console.log("  \x1b[32mOK\x1b[0m /404 -> 404.html (" + nfFile.replace(rootDir + "/", "") + ")");
+      } catch (e: any) {
+        console.log("  \x1b[31mX\x1b[0m " + nfFile.replace(rootDir + "/", "") + ": " + e.message + "\x1b[0m");
+        errorCount++;
+      }
+    }
+  }
+
   // -- Summary ---------------------------------------------------------------
   if (needsRuntime) {
     // Bundled CLI (Node) lives at apps/cli/dist; source lives at apps/cli/tw/commands.
@@ -1503,7 +1591,7 @@ const runtimeSrc = _bundleDir
       let code = raw;
       try {
         const cb: any = await import("./client-bundle.ts");
-        code = cb.minifyJsSource?.(rootDir, raw) ?? raw;
+        code = cb.minifyJsSource?.(rootDir, raw, esbuildTargetFor(buildOpts?.target)) ?? raw;
       } catch { /* keep the unminified source */ }
       writeFileSync(join(outDir, "__tw_runtime.js"), code);
       const saved = raw.length - code.length;

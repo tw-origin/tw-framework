@@ -46,11 +46,11 @@
 
 export { CSPBuilder, CSRFProtection, InputValidator, RateLimiter, XSSSanitizer } from "./policy";
 export type { CSPDirective, CSPSource, RateLimitConfig } from "./policy";
-export { JWTManager, PasswordPolicy, SQLInjectionDetector, XSSDetector, createJWTManager, createPasswordPolicy, createSQLInjectionDetector, createXSSDetector } from "./xss-detector";
+export { PasswordPolicy, SQLInjectionDetector, XSSDetector, createPasswordPolicy, createSQLInjectionDetector, createXSSDetector } from "./xss-detector";
 export type { XSSDetectionResult } from "./xss-detector";
 export { AuditLogger, createAuditLogger } from "./audit";
 export type { AuditConfig, AuditEvent, AuditFilter } from "./audit";
-export { MemorySessionStore, PasswordManager, SessionManager, createPasswordManager, createSessionManager } from "./auth";
+export { JWTManager, MemorySessionStore, PasswordManager, SessionManager, createJWTManager, createPasswordManager, createSessionManager } from "./auth";
 export type { JWTConfig, JWTHeader, JWTPayload, JWTToken, JWTVerifyOptions, JWTVerifyResult, PasswordConfig, PasswordHashResult, PasswordStrengthResult, SessionConfig, SessionData, SessionStore } from "./auth";
 export { BotDetector, createBotDetector } from "./bot-detection";
 export type { BotDetectionResult, BotDetectorConfig } from "./bot-detection";

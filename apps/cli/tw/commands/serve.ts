@@ -42,7 +42,9 @@ export async function serveCommand(): Promise<void> {
   }
 
   const rootDir = process.cwd();
-  const outDir = join(rootDir, ".tw");
+  // Resolved from build.outputDir after the config loads (see below); the
+  // default keeps today's `.tw` for a project that sets nothing.
+  let outDir = join(rootDir, ".tw");
 
   // .env support: load KEY=VALUE lines into process.env (without overwriting)
   const envPath = join(rootDir, ".env");
@@ -88,6 +90,14 @@ export async function serveCommand(): Promise<void> {
   } catch { /* shared unavailable -- fall back to bare defaults */ }
   if (!hostSet && srv?.host) host = srv.host;
 
+  // build.outputDir -- `tw build` may write somewhere other than `.tw`; serve
+  // must read the SAME resolved value or it would look in the wrong directory.
+  try {
+    const { resolveBuildOptions } = await import("@tw/shared");
+    const buildOpts = resolveBuildOptions(config);
+    if (buildOpts?.outputDir) outDir = join(rootDir, buildOpts.outputDir);
+  } catch { /* shared unavailable -- keep the .tw default */ }
+
   console.debug("\n  tw serve -- starting production server\n");
 
   // Check for built output
@@ -96,9 +106,20 @@ export async function serveCommand(): Promise<void> {
     process.exit(1);
   }
 
+  // Resolve the server package FIRST, on its own. Only a genuinely-missing
+  // @tw/server may fall back to the static-only Bun server; every other
+  // startup failure must be reported and exit non-zero rather than being
+  // silently downgraded to a static site that hides the real error.
+  let TWServer: any = null;
   try {
-    const { TWServer } = await import("@tw/server");
+    ({ TWServer } = await import("@tw/server"));
+  } catch (e: any) {
+    console.debug("  @tw/server not installed (" + (e?.message ?? e) + ") -- starting static-only file server...\n");
+    startStaticServer(outDir, port, host);
+    return;
+  }
 
+  try {
     // Plugins: load from plugins/ per tw.config.ts (config is the
     // authority; without a plugins field every plugins/*.ts loads).
     let pluginManager: any = null;
@@ -157,48 +178,58 @@ export async function serveCommand(): Promise<void> {
       }
       console.warn("[TW] Unhandled promise rejection:", msg);
     });
-  } catch (e) {
-    console.debug("[TW] Ignored error:", e);
-    // Fallback: simple Bun static file server
-    console.debug("  Server package not found, starting static file server...\n");
-
-    const server = Bun.serve({
-      port,
-      hostname: host,
-      async fetch(req) {
-        const url = new URL(req.url);
-        let path = url.pathname;
-
-        // Default to index.html
-        if (path === "/") path = "/index.html";
-
-        // Try exact path
-        let file = Bun.file(join(outDir, path));
-        if (await file.exists()) {
-          return new Response(file);
-        }
-
-        // Try path + .html (for clean URLs)
-        file = Bun.file(join(outDir, `${path}.html`));
-        if (await file.exists()) {
-          return new Response(file, {
-            headers: { "Content-Type": "text/html" },
-          });
-        }
-
-        // 404
-        const notFoundPath = join(outDir, "404.html");
-        if (existsSync(notFoundPath)) {
-          const nf = Bun.file(notFoundPath);
-          return new Response(nf, { status: 404, headers: { "Content-Type": "text/html" } });
-        }
-
-        return new Response("404 Not Found", { status: 404 });
-      },
-    });
-
-    console.debug(`  -> http://${host}:${port}\n`);
-    console.debug("  Serving from: " + outDir);
-    console.debug("  Press Ctrl+C to stop\n");
+  } catch (e: any) {
+    // A real startup failure -- a bad route, the port already in use, a broken
+    // middleware.twm or plugin -- must surface. It used to be swallowed here
+    // and downgraded to a static file server, which hid the failure and served
+    // a site with no SSR, APIs or middleware.
+    console.error("[TW] Failed to start server:", e?.stack ?? e?.message ?? e);
+    process.exit(1);
   }
+}
+
+/**
+ * Static-only fallback: used ONLY when the `@tw/server` package is genuinely
+ * not installed. It maps request paths to files under `outDir`, honouring
+ * clean URLs and a built `404.html`; it runs no SSR, `.twm` APIs or middleware.
+ */
+function startStaticServer(outDir: string, port: number, host: string): void {
+  Bun.serve({
+    port,
+    hostname: host,
+    async fetch(req) {
+      const url = new URL(req.url);
+      let path = url.pathname;
+
+      // Default to index.html
+      if (path === "/") path = "/index.html";
+
+      // Try exact path
+      let file = Bun.file(join(outDir, path));
+      if (await file.exists()) {
+        return new Response(file);
+      }
+
+      // Try path + .html (for clean URLs)
+      file = Bun.file(join(outDir, `${path}.html`));
+      if (await file.exists()) {
+        return new Response(file, {
+          headers: { "Content-Type": "text/html" },
+        });
+      }
+
+      // 404
+      const notFoundPath = join(outDir, "404.html");
+      if (existsSync(notFoundPath)) {
+        const nf = Bun.file(notFoundPath);
+        return new Response(nf, { status: 404, headers: { "Content-Type": "text/html" } });
+      }
+
+      return new Response("404 Not Found", { status: 404 });
+    },
+  });
+
+  console.debug(`  -> http://${host}:${port}\n`);
+  console.debug("  Serving from: " + outDir);
+  console.debug("  Press Ctrl+C to stop\n");
 }

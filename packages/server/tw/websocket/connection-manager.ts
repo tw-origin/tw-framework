@@ -299,6 +299,11 @@ export class WebSocketConnectionManager {
   }
 
   handleMessage(connection: WebSocketConnection, data: string): void {
+    // Any inbound frame is activity -- refresh the liveness clock so an
+    // actively-messaging socket is never reaped by the ping check (lastPing
+    // used to be set only at connect time, so busy sockets were killed after
+    // pingTimeout regardless of how much they talked).
+    connection.lastPing = Date.now();
     try {
       const message = JSON.parse(data) as WebSocketMessage;
       message.timestamp = Date.now();
@@ -327,6 +332,9 @@ export class WebSocketConnectionManager {
         } else {
           try {
             connection.socket.send(JSON.stringify({ type: "ping", timestamp: now }));
+            // The ping itself is activity on a live socket: refresh lastPing so
+            // the reap branch above only fires for genuinely silent/dead ones.
+            connection.lastPing = now;
           } catch {
             connection.isAlive = false;
           }

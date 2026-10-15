@@ -124,17 +124,30 @@ export function parseStatements(
             cursor.advance(); // consume "{
             // Collect raw token text until the matching RBRACE.
             let depth = 1;
-            const parts: string[] = [];
+            const toks: Token[] = [];
             while (!cursor.done) {
               const tk = cursor.peek();
               if (!tk || tk.type === "EOF") break;
               if (tk.type === "LBRACE") depth++;
               else if (tk.type === "RBRACE") depth--;
               if (depth === 0) { cursor.advance(); break; }
-              parts.push(tk.value);
+              toks.push(tk);
               cursor.advance();
             }
-            const content = parts.join(" ").replace(/\s*\{\s*/g, " {").replace(/\s*\}\s*/g, "}").replace(/\s*:\s*/g, ": ").replace(/\s*;\s*/g, "; ");
+            // Rebuild the block from the original token text, preserving the
+            // source's own whitespace. The previous join(" ") + `:`/`;`
+            // normalisation inserted spaces *inside* values, turning
+            // `url(data:image/png;base64,...)` into `url ( data: image / png; ... )`
+            // and `url(https://x)` into `url(https: //x)`.
+            let content = "";
+            let prevWS = false;
+            for (const tk of toks) {
+              const raw = (tk as any).raw ?? tk.value;
+              if (content && prevWS) content += " ";
+              content += raw;
+              prevWS = !!(tk as any).followedByWhitespace;
+            }
+            content = content.trim();
             return {
               type: "StyleBlock",
               content,
@@ -170,6 +183,11 @@ export function parseStatements(
           (nextTok.type === "IDENT" && VOID_HEAD_TAGS.has(token.value)) ||
           (nextTok.type === "IDENT" && KNOWN_ATTRS.has(nextTok.value) && nextNext && nextNext.type === "STRING") ||
           (nextTok.type === "IDENT" && nextNext && nextNext.type === "MINUS") ||
+          // Component attribute props -- the documented `Card title="x" { }`
+          // and `Card title={expr} { }` forms. An IDENT attribute name
+          // followed by `=` is an attribute list, not text content; without
+          // this the whole tag leaked into the page as literal text.
+          (nextTok.type === "IDENT" && nextNext && (nextNext.type === "ASSIGN" || nextNext.type === "EQUALS" || nextNext.type === "ATTR_VALUE")) ||
           // Event binding after the tag name: `button on:click "handler" { ... }`
           (nextTok.type === "IDENT" && nextTok.value === "on" && nextNext && nextNext.type === "COLON") ||
           (nextTok.type === "IDENT" && nextTok.value === "bind" && nextNext && nextNext.type === "COLON") ||
@@ -582,13 +600,41 @@ function parseTWSelector(
           attrName += "-" + hyphNext.value;
         } else break;
       }
-      const vToken = cursor.peek();
-      if (vToken && (vToken.type === "STRING" || vToken.type === "NUMBER")) {
+      // `name = value` / `name={expr}` -- the documented attribute-prop form
+      // (`Card title="x" { }` / `Card title={expr} { }`).
+      let hasEquals = false;
+      if (cursor.peek() && (cursor.peek()!.type === "ASSIGN" || cursor.peek()!.type === "EQUALS")) {
+        hasEquals = true;
         cursor.advance();
-        el.attrs.push(createAttribute(attrName, vToken.value, t.pos.line, t.pos.col));
+        cursor.skipWhitespace();
+      }
+      const vToken = cursor.peek();
+      if (hasEquals && vToken && vToken.type === "LBRACE") {
+        // Dynamic prop: collect the full expression inside the braces.
+        cursor.advance(); // consume `{`
+        let expr = "";
+        let depth = 1;
+        let prevFollowedWS = false;
+        while (!cursor.done) {
+          const tk = cursor.peek();
+          if (!tk || tk.type === "EOF") break;
+          if (tk.type === "LBRACE") depth++;
+          else if (tk.type === "RBRACE") {
+            depth--;
+            if (depth === 0) { cursor.advance(); break; }
+          }
+          if (expr && prevFollowedWS) expr += " ";
+          expr += (tk as any).raw ?? tk.value;
+          prevFollowedWS = !!(tk as any).followedByWhitespace;
+          cursor.advance();
+        }
+        el.attrs.push(createAttribute(attrName, expr.trim(), t.pos.line, t.pos.col, true));
+      } else if (vToken && (vToken.type === "STRING" || vToken.type === "NUMBER" || vToken.type === "ATTR_VALUE")) {
+        cursor.advance();
+        el.attrs.push(createAttribute(attrName, vToken.value, t.pos.line, t.pos.col, vToken.type === "ATTR_VALUE"));
       } else if (vToken && (vToken.type === "IDENT" || vToken.type === "KEYWORD") && vToken.pos.line === t.pos.line) {
         cursor.advance();
-        el.attrs.push(createAttribute(attrName, vToken.value, t.pos.line, t.pos.col));
+        el.attrs.push(createAttribute(attrName, vToken.value, t.pos.line, t.pos.col, hasEquals));
       } else {
         el.attrs.push(createAttribute(attrName, true, t.pos.line, t.pos.col));
       }
@@ -794,6 +840,9 @@ function parseElement(
     // Parse as control flow: <if cond='...'>body</if>
     // Consume attributes to extract condition
     let condition = "";
+    // Bare attributes (`<for item in {list.items}>` tokenizes as the bare
+    // ATTR_NAMEs `item`, `in`, `list.items`) are re-joined into the header.
+    const bareAttrs: string[] = [];
     while (!cursor.done) {
       const token = cursor.peek();
       if (!token) break;
@@ -811,10 +860,16 @@ function parseElement(
             cursor.advance();
             if (attrName === "cond" || attrName === "condition") condition = val.value;
           }
+        } else {
+          bareAttrs.push(attrName);
         }
         continue;
       }
       cursor.advance();
+    }
+    // `<for item in {list.items}>` -- the header lives in the bare attrs.
+    if (!condition && bareAttrs.length > 0 && tag.toLowerCase() === "for") {
+      condition = bareAttrs.join(" ");
     }
     
     // Parse children until CLOSE_TAG
@@ -829,8 +884,11 @@ function parseElement(
       return node as any;
     }
     if (tag.toLowerCase() === "for") {
-      // Parse "item in {items}" from condition
-      const parts = condition.match(/(\w+)\s+(?:in|of)\s*\{?(\w+)\}?/);
+      // Parse "item in {items}" from condition. The iterable is a full
+      // member expression (`obj.list`, `list.items`) -- a `\w+` capture
+      // truncated it to the first identifier (`obj`), leaking `list}` into
+      // the page as literal text.
+      const parts = condition.match(/(\w+)\s+(?:in|of)\s*\{?([^}\s]+)\}?/);
       const varName = parts ? parts[1] : "";
       const iterable = parts ? parts[2] : condition;
       const node = createFor(varName, iterable, tagToken.pos.line, tagToken.pos.col);
@@ -1469,22 +1527,42 @@ function parseForStatement(
     cursor.advance();
     cursor.skipWhitespace();
   }
-  // Handle {items} syntax (LBRACE IDENT RBRACE) or bare IDENT
+  // Handle {items} syntax or a bare member expression. The iterable is a
+  // full member expression (`obj.list`, `list.items`) -- taking only the
+  // first token truncated it to `obj` and leaked `list}` as page text.
   if (cursor.match("LBRACE")) {
     cursor.skipWhitespace();
-    const iterToken = cursor.peek();
-    if (iterToken) {
-      iterable = iterToken.value;
+    let expr = "";
+    let depth = 1;
+    let prevFollowedWS = false;
+    while (!cursor.done) {
+      const tk = cursor.peek();
+      if (!tk || tk.type === "EOF") break;
+      if (tk.type === "LBRACE") depth++;
+      else if (tk.type === "RBRACE") {
+        depth--;
+        if (depth === 0) { cursor.advance(); break; }
+      }
+      if (expr && prevFollowedWS) expr += " ";
+      expr += (tk as any).raw ?? tk.value;
+      prevFollowedWS = !!(tk as any).followedByWhitespace;
       cursor.advance();
     }
-    cursor.skipWhitespace();
-    cursor.consumeIf("RBRACE");
+    iterable = expr.trim();
   } else {
-    const iterToken = cursor.peek();
-    if (iterToken) {
-      iterable = iterToken.value;
+    let expr = "";
+    let prevFollowedWS = false;
+    while (!cursor.done) {
+      cursor.skipWhitespace();
+      const tk = cursor.peek();
+      if (!tk || tk.type === "EOF") break;
+      if (tk.type === "LBRACE" || tk.type === "RBRACE") break;
+      if (expr && prevFollowedWS) expr += " ";
+      expr += (tk as any).raw ?? tk.value;
+      prevFollowedWS = !!(tk as any).followedByWhitespace;
       cursor.advance();
     }
+    iterable = expr.trim();
   }
 
   cursor.skipWhitespace();

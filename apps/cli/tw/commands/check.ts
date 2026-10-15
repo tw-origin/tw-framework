@@ -26,8 +26,19 @@ export async function checkCommand(): Promise<void> {
   let totalWarnings = 0;
   let totalInfo = 0;
 
+  // Load the compiler ONCE, and fall back to the basic syntax check ONLY when
+  // the module genuinely cannot be imported. The old outer `catch` wrapped the
+  // whole run: a compiler that loaded and then threw mid-loop silently re-ran
+  // the fallback over every file, double-counting the errors already reported.
+  let compilerMod: any = null;
   try {
-    const { compile, compileSync, registerComponentTemplate, clearComponentRegistry } = await import("@tw/compiler");
+    compilerMod = await import("@tw/compiler");
+  } catch (e: any) {
+    console.debug("  Compiler unavailable (" + (e?.message ?? e) + ") -- running basic checks...\n");
+  }
+
+  if (compilerMod) {
+    const { compile, compileSync, registerComponentTemplate, clearComponentRegistry } = compilerMod;
 
     // Seed the codegen component registry the same way `tw build` does. Without
     // it, every imported component compiles as "unknown component" even though
@@ -112,10 +123,8 @@ export async function checkCommand(): Promise<void> {
         console.debug(`  X ${relativePath}: ${err.message}`);
       }
     }
-  } catch {
-    // Fallback: basic syntax check
-    console.debug("  Compiler not found, running basic checks...\n");
-
+  } else {
+    // Fallback: basic syntax check -- the compiler module could not be loaded.
     for (const filePath of twFiles) {
       const relativePath = filePath.replace(rootDir + "/", "");
       const source = readFileSync(filePath, "utf-8");

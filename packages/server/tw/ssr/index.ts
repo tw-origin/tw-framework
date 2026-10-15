@@ -260,10 +260,15 @@ export async function* streamSSR(
   pathname: string,
   renderFn: () => Promise<string>
 ): AsyncGenerator<string> {
-  // Stream the opening HTML
-  yield "<!DOCTYPE html><html><head>";
-  // Stream the body in chunks
   const body = await renderFn();
+  // A full-document renderer already emits <!DOCTYPE html>/<html>...; wrapping
+  // it again nested a second <html> inside the first. Detect and pass through.
+  if (/<!doctype\s+html/i.test(body) || /<html[\s>]/i.test(body)) {
+    yield body;
+    return;
+  }
+  // Fragment renderer: supply the document shell around it.
+  yield "<!DOCTYPE html><html><head>";
   yield body;
   yield "</head></html>";
 }

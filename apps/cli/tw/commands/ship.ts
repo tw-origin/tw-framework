@@ -1,7 +1,7 @@
 /** tw ship -- deploy to platform. */
 
 import { join, resolve } from "node:path";
-import { existsSync, readFileSync } from "node:fs";
+import { existsSync, readFileSync, writeFileSync } from "node:fs";
 
 /** Load the adapters package the same way `tw adapter` does (monorepo or node_modules). */
 async function loadAdapters(rootDir: string): Promise<any> {
@@ -138,7 +138,6 @@ async function generateVercelConfig(rootDir: string, outDir: string): Promise<vo
   }
 
   // Adapters package unavailable -- fall back to a build-aware config inline.
-  const { writeFileSync } = require("node:fs");
   writeFileSync(configPath, JSON.stringify({ buildCommand: "npx tw build", installCommand: "npm install", outputDirectory: ".tw", framework: null }, null, 2));
   console.log("  OK Generated vercel.json");
 }
@@ -155,7 +154,6 @@ function generateNetlifyConfig(rootDir: string, outDir: string): void {
   const existing = existsSync(configPath);
 
   if (!existing) {
-    const { writeFileSync } = require("node:fs");
     writeFileSync(configPath, config);
     console.log("  OK Generated netlify.toml");
   } else {
@@ -174,7 +172,6 @@ directory = ".tw"`;
   const existing = existsSync(configPath);
 
   if (!existing) {
-    const { writeFileSync } = require("node:fs");
     writeFileSync(configPath, config);
     console.log("  OK Generated wrangler.toml");
   } else {
@@ -183,19 +180,46 @@ directory = ".tw"`;
 }
 
 function generateDockerfile(rootDir: string, outDir: string): void {
-  const dockerfile = `FROM oven/bun:latest
+  // A real app depends on the PUBLISHED `tw-framework` package; it does not
+  // contain the TW monorepo. The old template ran `bun run apps/cli/tw/bin.ts`,
+  // which only exists inside this repo -- the image failed to build anywhere
+  // else. Use the same two-stage image `tw adapter docker` ships: install the
+  // CLI from npm, build with `bunx tw build`, run with `bunx tw serve`.
+  const dockerfile = `# TW Framework -- production Docker image (pages + .twm API routes).
+#   docker build -t tw-app .
+#   docker run -p 8000:8000 tw-app
+
+# ---- Stage 1: install + build ----
+FROM oven/bun:1 AS build
 WORKDIR /app
-COPY . .
+
+# Install dependencies first (layer cache)
+COPY package.json bun.lock* ./
 RUN bun install
-RUN bun run apps/cli/tw/bin.ts build
+
+# The TW CLI (published as tw-framework on npm)
+RUN bun add -d tw-framework
+
+COPY . .
+RUN bunx tw build
+
+# ---- Stage 2: runtime ----
+FROM oven/bun:1
+WORKDIR /app
+
+ENV NODE_ENV=production
+ENV PORT=8000
+ENV HOST=0.0.0.0
+
+COPY --from=build /app ./
+
 EXPOSE 8000
-CMD ["bun", "run", "apps/cli/tw/bin.ts", "serve", "--port", "8000"]`;
+CMD ["bunx", "tw", "serve"]`;
 
   const configPath = join(rootDir, "Dockerfile");
   const existing = existsSync(configPath);
 
   if (!existing) {
-    const { writeFileSync } = require("node:fs");
     writeFileSync(configPath, dockerfile);
     console.log("  OK Generated Dockerfile");
   } else {

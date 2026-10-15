@@ -180,7 +180,12 @@ export class TWServer {
 
   constructor(options: TWServerOptions) {
     this.options = {
-      cors: true,
+      // CORS is opt-in. `cors: true` now really applies CORS headers to the
+      // response (see the constructor branch below), so leaving the implicit
+      // default as `true` would turn CORS on for every app -- contradicting
+      // the tw.config default (`server.cors.enabled: false`) and the CLI,
+      // which only passes a cors block when it is enabled.
+      cors: false,
       compression: true,
       securityHeaders: true,
       ...options,
@@ -307,8 +312,12 @@ export class TWServer {
     if (this.options.cors) {
       const co: any = this.options.cors;
       if (co === true) {
-        // Legacy default: keep the pipeline middleware (today's behaviour).
-        this.pipeline.use("cors", corsMiddleware({ origin: "*", credentials: true }));
+        // `cors: true` used to register ONLY the pipeline middleware, which
+        // writes to ctx.headers (REQUEST headers) and never reaches the
+        // response -- so no Access-Control-* headers were ever emitted. Route
+        // it through applyCors() instead, which sets real RESPONSE headers on
+        // every response (static, SSR and API alike).
+        this.corsConfig = { enabled: true, origin: "*", credentials: true };
       } else if (co.enabled !== false) {
         // Full server.cors block from tw.config.ts. The pipeline writes to
         // ctx.headers (request headers), which never reach the response -- so
@@ -896,18 +905,20 @@ export class TWServer {
   }
 
   /**
-   * The client IP for rate limiting. With `server.trustProxy: false` the
-   * connection's own address is used, so a spoofed X-Forwarded-For cannot
-   * rotate the bucket; otherwise the forwarded headers are honoured.
+   * The client IP for rate limiting. X-Forwarded-For (and the other proxy
+   * header families) are honoured ONLY when `server.trustProxy === true`.
+   * Unset or false uses the connection's own address, so a spoofed
+   * X-Forwarded-For cannot rotate the rate-limit bucket (previously an unset
+   * trustProxy trusted the forwarded header).
    */
   private clientIpFor(request: Request): string {
-    if (this.options.trustProxy === false) {
+    if (this.options.trustProxy !== true) {
       try {
         const info = (this.server as any)?.requestIP?.(request);
         if (info?.address) return String(info.address);
       } catch { /* fall through */ }
     }
-    return ipAddress(request, { trustProxy: this.options.trustProxy !== false }) || "local";
+    return ipAddress(request, { trustProxy: this.options.trustProxy === true }) || "local";
   }
 
   /**

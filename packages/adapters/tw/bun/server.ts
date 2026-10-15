@@ -10,7 +10,7 @@
  * Env: PORT (default 3000) HOST (default 0.0.0.0) TW_ROOT (default .tw)
  */
 
-import { TWServer } from "@tw/server";
+import { TWServer } from "tw-framework/server";
 import { join } from "node:path";
 
 const rootDir = process.cwd();

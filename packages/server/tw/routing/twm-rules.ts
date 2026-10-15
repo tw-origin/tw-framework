@@ -428,6 +428,13 @@ function matchPath(pattern: string, pathname: string): boolean {
 function ruleBlocked(rule: MiddlewareRule, request: Request, pathname: string): boolean {
   const headers = request.headers;
 
+  // Path guards must see the DECODED path: a request to `/%61dmin/secret`
+  // reaches the server percent-encoded, and matching the raw string against
+  // a `/admin` prefix rule would silently let it through. Decode once (like
+  // matchPath already does) so prefixes/contains/traversal checks are honest.
+  let path = pathname;
+  try { path = decodeURIComponent(pathname); } catch { /* malformed encoding: keep raw */ }
+
   // a rule with ONLY `match` + `response` (no
   // condition sections) used to NEVER fire -- ruleBlocked() had nothing to
   // trip on, so an unconditional exact-path guard was silently inactive.
@@ -452,11 +459,11 @@ function ruleBlocked(rule: MiddlewareRule, request: Request, pathname: string): 
   // path conditions
   if (rule.path) {
     const p = rule.path;
-    if ((p.prefixes ?? []).some((x) => pathname === x || pathname.startsWith(x.endsWith("/") ? x : x + "/"))) return true;
-    if ((p.contains ?? []).some((x) => pathname.includes(x))) return true;
-    if ((p.extensions ?? []).some((x) => pathname.toLowerCase().endsWith(x.startsWith(".") ? x.toLowerCase() : "." + x.toLowerCase()))) return true;
-    if (p.denyTraversal && (pathname.includes("..") || pathname.toLowerCase().includes("%2e%2e"))) return true;
-    if (p.denyNullBytes && (pathname.includes("\0") || pathname.toLowerCase().includes("%00"))) return true;
+    if ((p.prefixes ?? []).some((x) => path === x || path.startsWith(x.endsWith("/") ? x : x + "/"))) return true;
+    if ((p.contains ?? []).some((x) => path.includes(x))) return true;
+    if ((p.extensions ?? []).some((x) => path.toLowerCase().endsWith(x.startsWith(".") ? x.toLowerCase() : "." + x.toLowerCase()))) return true;
+    if (p.denyTraversal && (path.includes("..") || pathname.toLowerCase().includes("%2e%2e"))) return true;
+    if (p.denyNullBytes && (path.includes("\0") || pathname.toLowerCase().includes("%00"))) return true;
   }
 
   // auth: verified JWT in a cookie

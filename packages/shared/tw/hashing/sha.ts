@@ -1,3 +1,4 @@
+import { createHash } from "node:crypto";
 import { md5 } from "./md5";
 import { crc32 } from "./crc32";
 /** SHA-1, SHA-256, SHA-384, SHA-512 hashing - sync + async variants. */
@@ -63,13 +64,11 @@ class BunHashSync {
   private hasher: any;
 
   constructor(algorithm: string) {
-    // Bun has crypto.createHash -- try it
-    const nodeCrypto = (globalThis as any).require?.("node:crypto") || (globalThis as any).crypto;
-    if (nodeCrypto?.createHash) {
-      this.hasher = nodeCrypto.createHash(algorithm);
-    } else {
-      throw new Error("No sync hash available");
-    }
+    // Import node:crypto directly (not via a globalThis.require probe): under
+    // Node ESM globalThis.require is undefined, so the old probe threw and
+    // sha256() silently fell back to the 32-bit FNV-1a hash -- colliding
+    // cache keys. createHash works on both Node and Bun.
+    this.hasher = createHash(algorithm);
   }
 
   update(data: string | Uint8Array): this {

@@ -84,36 +84,43 @@ export function evaluate(expr: string, vars: Record<string, string>, sandbox?: S
     }
   }
 
-  // Member access: obj.prop
-  if (expr.includes(".")) {
-    const parts = expr.split(".");
-    let current: any = vars[parts[0]];
-    for (let k = 1; k < parts.length; k++) {
+  // Member / index access: obj.prop, obj.a.b, obj["k"], obj[var], arr[1+1].
+  // The old code only handled `obj.prop` and `obj[<digits>]` -- string
+  // indexes, variable indexes and simple arithmetic indexes all failed and
+  // fell through to "return raw".
+  const access = parseMemberAccess(expr);
+  if (access) {
+    let current: any = vars[access.base];
+    if (current === undefined) return "";
+    for (const key of access.keys) {
       if (current === undefined || current === null) return "";
-      try { current = JSON.parse(current); } catch { /* ignored */ }
+      if (typeof current === "string") {
+        try { current = JSON.parse(current); } catch { /* keep the string */ }
+      }
+      let k: string;
+      if (key.type === "prop") {
+        k = key.value;
+      } else {
+        const inner = key.value.trim();
+        if ((inner.startsWith('"') && inner.endsWith('"')) || (inner.startsWith("'") && inner.endsWith("'"))) {
+          k = inner.slice(1, -1);
+        } else if (/^-?\d+(\.\d+)?$/.test(inner)) {
+          k = inner;
+        } else if (vars[inner] !== undefined) {
+          k = vars[inner];
+        } else {
+          k = evaluate(inner, vars, sb);
+        }
+      }
       if (typeof current === "object" && current !== null) {
-        current = current[parts[k]];
+        current = current[k];
+      } else if (typeof current === "string" && /^\d+$/.test(k)) {
+        current = current[parseInt(k, 10)];
       } else {
         return "";
       }
     }
-    return current !== undefined ? String(current) : "";
-  }
-
-  // Array index: arr[0]
-  const idxMatch = expr?.match(/^(\w+)\[(\d+)\]$/);
-  if (idxMatch) {
-    const arrVar = vars[idxMatch[1]];
-    if (arrVar) {
-      try {
-        const arr = JSON.parse(arrVar);
-        if (Array.isArray(arr)) {
-          const idx = parseInt(idxMatch[2], 10);
-          return arr[idx] !== undefined ? String(arr[idx]) : "";
-        }
-      } catch { /* ignored */ }
-    }
-    return "";
+    return current !== undefined && current !== null ? String(current) : "";
   }
 
   // Function call: fn(args). If the expression is not a call, fall through
@@ -165,6 +172,60 @@ function resolve(token: string, vars: Record<string, string>, sandbox: Sandbox):
 }
 
 
+
+/**
+ * Split `base.prop`, `base.a.b`, `base["k"]`, `base[var]`, `base[1+1]` into a
+ * base identifier plus a list of accessors. Returns null when the whole
+ * expression is not a pure member/index chain (so other branches can try).
+ */
+function parseMemberAccess(
+  expr: string,
+): { base: string; keys: Array<{ type: "prop" | "index"; value: string }> } | null {
+  const baseMatch = expr.match(/^[A-Za-z_$][A-Za-z0-9_$]*/);
+  if (!baseMatch) return null;
+  const base = baseMatch[0];
+  const keys: Array<{ type: "prop" | "index"; value: string }> = [];
+  let i = base.length;
+  let sawAccess = false;
+
+  while (i < expr.length) {
+    const ch = expr[i];
+    if (ch === ".") {
+      const nm = expr.slice(i + 1).match(/^[A-Za-z_$][A-Za-z0-9_$]*/);
+      if (!nm) return null;
+      keys.push({ type: "prop", value: nm[0] });
+      i += 1 + nm[0].length;
+      sawAccess = true;
+    } else if (ch === "[") {
+      let depth = 1;
+      let j = i + 1;
+      let inStr: string | null = null;
+      while (j < expr.length && depth > 0) {
+        const c = expr[j];
+        if (inStr) {
+          if (c === inStr && expr[j - 1] !== "\\") inStr = null;
+        } else if (c === '"' || c === "'") {
+          inStr = c;
+        } else if (c === "[") {
+          depth++;
+        } else if (c === "]") {
+          depth--;
+          if (depth === 0) break;
+        }
+        j++;
+      }
+      if (depth !== 0) return null;
+      keys.push({ type: "index", value: expr.slice(i + 1, j) });
+      i = j + 1;
+      sawAccess = true;
+    } else {
+      return null;
+    }
+  }
+
+  if (!sawAccess) return null;
+  return { base, keys };
+}
 
 function compare(left: string, op: string, right: string): string {
   const leftNum = parseFloat(left);

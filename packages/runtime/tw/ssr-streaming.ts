@@ -198,9 +198,14 @@ export function renderToStream(node: VNode | VNodeChild, options: StreamOptions 
     },
   });
 
+  // `stream.tee()` LOCKS the original stream, so returning `stream` handed the
+  // caller a locked (unreadable) ReadableStream. Split once instead: consume
+  // one branch to assemble the full HTML and return the other branch.
+  const [htmlBranch, returnStream] = stream.tee();
+
   const html = (async () => {
     const parts: string[] = [];
-    const reader = stream.tee()[0].getReader();
+    const reader = htmlBranch.getReader();
     // Read everything from the tee to assemble full HTML.
     try {
       while (true) {
@@ -218,7 +223,7 @@ export function renderToStream(node: VNode | VNodeChild, options: StreamOptions 
   // Fallback: assemble from collected chunks if the tee approach is unavailable.
   const htmlSafe = html.catch(() => chunks.join(''));
 
-  return { html: htmlSafe, stream };
+  return { html: htmlSafe, stream: returnStream };
 }
 
 // ---------------------------------------------------------------------------

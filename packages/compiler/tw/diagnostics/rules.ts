@@ -50,6 +50,8 @@ const HTML_ATTRIBUTES = new Set([
   "translate", "type", "usemap", "value", "width", "wrap", "integrity", "crossorigin",
   "nonce", "slot", "is", "part", "role", "tabindex", "enterkeyhint", "inert",
   "inputmode", "itemscope", "itemprop", "itemtype", "itemid", "itemref",
+  // RDFa / Open Graph (`<meta property="og:title" content="...">`)
+  "property", "resource", "typeof", "vocab", "prefix",
 ]);
 
 const GLOBAL_ATTRIBUTES = new Set([
@@ -198,9 +200,14 @@ function escapeHtml(s) {
 
 
 export function checkUnknownTags(program: Program, filePath: string, diags: Diagnostic[]): void {
-  forEachNode(program, (node) => {
+  forEachNode(program, (node, ctx) => {
     if (!isElement(node)) return;
     if (node.tag[0] === node.tag[0]?.toUpperCase()) return; // Component
+    // A bare `name "value"` written inside a component tag parses as a child
+    // element (`Button { variant "primary" }` -> <variant>primary</variant>);
+    // that is a prop, not an unknown HTML tag.
+    const parent: any = (ctx as any)?.parent;
+    if (parent && ((parent.type === "Element" && typeof parent.tag === "string" && parent.tag[0] === parent.tag[0]?.toUpperCase()) || parent.type === "Component")) return;
     if (HTML_ELEMENTS.has(node.tag.toLowerCase())) return;
     diags.push(createDiagnostic("TW003", node.line, node.col, filePath, `<${node.tag}>`, [
       "Check spelling or use a known HTML tag",
@@ -253,8 +260,13 @@ export function checkAttributes(program: Program, filePath: string, diags: Diagn
       }
       seen.add(attr.name);
 
-      if (!GLOBAL_ATTRIBUTES.has(attr.name) && !HTML_ATTRIBUTES.has(attr.name) &&
+      // Attributes on a capitalized tag are component props, not HTML
+      // attributes; `tw-*` is framework markup (`<img tw-optimize>`).
+      const onComponent = node.tag[0] === node.tag[0]?.toUpperCase();
+      if (!onComponent &&
+          !GLOBAL_ATTRIBUTES.has(attr.name) && !HTML_ATTRIBUTES.has(attr.name) &&
           !attr.name.startsWith("data-") && !attr.name.startsWith("aria-") &&
+          !attr.name.startsWith("tw-") &&
           !attr.name.startsWith("on")) {
         diags.push(createDiagnostic("TW006", attr.line, attr.col, filePath, attr.name));
       }

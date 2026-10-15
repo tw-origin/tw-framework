@@ -56,9 +56,14 @@ export const TSS_SHORTHANDS: Record<string, string> = {
   p: "padding", pt: "padding-top", pb: "padding-bottom", pl: "padding-left", pr: "padding-right",
   m: "margin", mt: "margin-top", mb: "margin-bottom", ml: "margin-left", mr: "margin-right",
   w: "width", h: "height", minw: "min-width", minh: "min-height", maxw: "max-width", maxh: "max-height",
+  // Documented hyphenated box shorthands (docs/tss-syntax.md): without these
+  // `min-w`/`max-w`/`min-h`/`max-h` passed through as invalid CSS properties.
+  "min-w": "min-width", "max-w": "max-width", "min-h": "min-height", "max-h": "max-height",
   // borders
   bd: "border", "bd-t": "border-top", "bd-b": "border-bottom", "bd-l": "border-left", "bd-r": "border-right",
   br: "border-radius", "br-t": "border-top-left-radius", bxsh: "box-shadow", bxz: "box-sizing",
+  // `box` is the documented box-sizing shorthand (docs/tss-syntax.md).
+  box: "box-sizing",
   // typography
   ff: "font-family", fs: "font-size", fw: "font-weight", lh: "line-height", ls: "letter-spacing",
   ta: "text-align", td: "text-decoration", tt: "text-transform", ws: "white-space",
@@ -155,10 +160,18 @@ export function compileTSS(source: string): string {
     let line = 1;
     let inString: string | null = null;
     let inComment = false;
+    let inBlockComment = false;
     let inUrl = false;
     for (let i = 0; i < source.length; i++) {
       const ch = source[i];
       const prev = i > 0 ? source[i - 1] : "";
+      // /* ... */ comments may span lines and contain braces -- skip them
+      // entirely so a `/* { */` cannot unbalance the scan (TW303 false positive).
+      if (inBlockComment) {
+        if (ch === "\n") line++;
+        if (ch === "*" && source[i + 1] === "/") { inBlockComment = false; i++; }
+        continue;
+      }
       if (ch === "\n") { line++; inComment = false; continue; }
       if (inComment) continue;
       if (inString) { if (ch === inString && prev !== "\\") inString = null; continue; }
@@ -166,6 +179,7 @@ export function compileTSS(source: string): string {
       if (inUrl) { if (ch === ")") inUrl = false; continue; }
       if (ch === "/" && source[i + 1] === "/" && source.slice(Math.max(0, i - 3), i).includes(":")) { inUrl = true; continue; }
       if (ch === "u" && source.slice(i, i + 4) === "url(") { inUrl = true; i += 3; continue; }
+      if (ch === "/" && source[i + 1] === "*") { inBlockComment = true; i++; continue; }
       if (ch === "/" && source[i + 1] === "/") { inComment = true; continue; }
       if (ch === '"' || ch === "'") { inString = ch; continue; }
       if (ch === "{") depth++;

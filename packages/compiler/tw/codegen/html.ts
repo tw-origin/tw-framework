@@ -92,8 +92,90 @@ function getDirectiveValue(program: Program, key: string): string | undefined {
   return;
 }
 
+/**
+ * Scope a stylesheet's selectors with `[data-tw-scope="<id>"]`.
+ *
+ * Only *real* selectors are scoped. The naive regex this replaced also
+ * rewrote at-rule preludes (`@keyframes fade { ... }` became
+ * `fade[data-tw-scope=...]`), keyframe step selectors (`from`, `0%`) and
+ * `:root`, producing invalid CSS. This scans the sheet, tracks at-rule
+ * blocks (so keyframe steps are left alone) and skips bare pseudo/universal
+ * selectors.
+ */
 function addScope(css: string, scopeId: string): string {
-  return css.replace(/([.#]?[\w-]+)\s*\{/g, `$1[data-tw-scope="${scopeId}"] {`);
+  const attr = `[data-tw-scope="${scopeId}"]`;
+  const stack: Array<"keyframes" | "block"> = [];
+  let out = "";
+  let prelude = "";
+
+  const scopePrelude = (pre: string): string => {
+    return pre
+      .split(",")
+      .map((sel) => {
+        const s = sel.trim();
+        if (!s) return sel;
+        // Bare pseudo (`:root`, `::selection`) and the universal selector are
+        // global -- never scope them.
+        if (s.startsWith(":") || s.startsWith("*")) return sel;
+        return s + attr;
+      })
+      .join(", ");
+  };
+
+  for (let i = 0; i < css.length; i++) {
+    const ch = css[i];
+    // Comments are copied verbatim (never treated as selector text).
+    if (ch === "/" && css[i + 1] === "*") {
+      const end = css.indexOf("*/", i + 2);
+      const stop = end === -1 ? css.length : end + 2;
+      out += css.slice(i, stop);
+      i = stop - 1;
+      continue;
+    }
+    // String literals (`content: "{"`) must not confuse the brace scan.
+    if (ch === '"' || ch === "'") {
+      let j = i + 1;
+      while (j < css.length && css[j] !== ch) {
+        if (css[j] === "\\") j++;
+        j++;
+      }
+      prelude += css.slice(i, Math.min(j + 1, css.length));
+      i = j;
+      continue;
+    }
+    if (ch === "{") {
+      const trimmed = prelude.trim();
+      const top = stack[stack.length - 1];
+      if (trimmed.startsWith("@")) {
+        // At-rule prelude (`@keyframes name`, `@media ...`): keep as-is.
+        out += prelude + "{";
+        stack.push(/^@(-\w+-)?keyframes\b/.test(trimmed) ? "keyframes" : "block");
+      } else if (top === "keyframes") {
+        // Keyframe step selector (`from`, `to`, `0%`): keep as-is.
+        out += prelude + "{";
+        stack.push("block");
+      } else if (trimmed === "") {
+        out += prelude + "{";
+        stack.push("block");
+      } else {
+        out += scopePrelude(prelude) + "{";
+        stack.push("block");
+      }
+      prelude = "";
+    } else if (ch === "}") {
+      out += prelude + "}";
+      prelude = "";
+      stack.pop();
+    } else if (ch === ";" && stack.length === 0 && prelude.trim().startsWith("@")) {
+      // At-rule statement, e.g. `@import "x.css";`
+      out += prelude + ";";
+      prelude = "";
+    } else {
+      prelude += ch;
+    }
+  }
+  out += prelude;
+  return out;
 }
 
 function interpolate(expr: string, vars: Record<string, string>): string {
@@ -779,7 +861,9 @@ function renderAttrs(el: ElementNode, ctx: CodegenContext): string {
       parts.push(attr.name);
     } else if (attr.isInterpolated) {
       const val = interpolate(attr.value as string, ctx.stateVars);
-      parts.push(`${attr.name}="${escapeAttr(val)}"`);
+      // Sanitize URL-valued attributes too: an interpolated `href={url}`
+      // resolving to `javascript:...` must not survive into the markup.
+      parts.push(`${attr.name}="${escapeAttr(sanitizeUrlAttr(attr.name, val))}"`);
     } else if (typeof attr.value === "string" && !attr.name.startsWith("data-tw-event") && /\{[^}]+\}/.test(attr.value) && Object.keys(ctx.stateVars).length > 0) {
       // Values like href "/blog/{slug}" weren't flagged as interpolated by
       // the parser -- interpolate them anyway.
@@ -806,8 +890,10 @@ function renderEvents(events: EventBinding[], ctx: CodegenContext): string {
   if (events.length === 0) return "";
   const parts: string[] = [];
   for (const event of events) {
-    // In SSR mode, serialize as data attributes for hydration
-    parts.push(`data-tw-event-${event.event}="${event.handler}"`);
+    // In SSR mode, serialize as data attributes for hydration. The handler
+    // is page-authored code; escape it so a quote cannot break out of the
+    // attribute and inject markup.
+    parts.push(`data-tw-event-${event.event}="${escapeAttr(String(event.handler ?? ""))}"`);
     if (event.preventDefault) parts.push(`data-tw-event-${event.event}-prevent="true"`);
     if (event.stopPropagation) parts.push(`data-tw-event-${event.event}-stop="true"`);
   }
@@ -818,7 +904,7 @@ function renderBindings(bindings: PropertyBinding[], ctx: CodegenContext): strin
   if (bindings.length === 0) return "";
   const parts: string[] = [];
   for (const binding of bindings) {
-    parts.push(`data-tw-bind-${binding.property}="${binding.expression}"`);
+    parts.push(`data-tw-bind-${binding.property}="${escapeAttr(String(binding.expression ?? ""))}"`);
   }
   return parts.join(" ");
 }
@@ -828,7 +914,7 @@ function renderDirectives(directives: ElementDirective[], ctx: CodegenContext): 
   const parts: string[] = [];
   for (const dir of directives) {
     const val = dir.value || dir.condition || dir.varName || "";
-    parts.push(`data-tw-${dir.kind}="${val}"`);
+    parts.push(`data-tw-${dir.kind}="${escapeAttr(String(val))}"`);
   }
   return parts.join(" ");
 }

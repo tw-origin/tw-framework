@@ -120,7 +120,12 @@ export class RouteRegistry {
 
     for (const file of files) {
       let routePath = file.replace(/\.tw$/, "").replace(/\\/g, "/");
-      
+
+      // Handle catch-all [...slug].tw -> /slug/* FIRST. This used to run after
+      // the [param] pass below, which had already rewritten `[...slug]` into
+      // `:...slug` -- so the catch-all never became `*` and the route was dead.
+      routePath = routePath.replace(/\[\.\.\.([^\]]+)\]/g, "*");
+
       // Handle [slug].tw -> /slug/:slug
       const paramMatches = routePath.match(/\[([^\]]+)\]/g);
       if (paramMatches) {
@@ -135,8 +140,9 @@ export class RouteRegistry {
         routePath = routePath.slice(0, -6) || "/";
       }
 
-      // Handle catch-all [...slug].tw -> /slug/*
-      routePath = routePath.replace(/\[\.\.\.([^\]]+)\]/g, "*");
+      // Request pathnames always start with "/", and the `basePath` join below
+      // assumes the route path does too (`/api` + `/docs/*`), so normalize it.
+      if (!routePath.startsWith("/")) routePath = "/" + routePath;
 
       const fullPattern = basePath === "/" ? routePath : `${basePath}${routePath}`;
       
