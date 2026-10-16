@@ -6,6 +6,7 @@
  */
 
 import { join, resolve, dirname } from "node:path";
+import { devErrorPage, CLIENT_OVERLAY_SCRIPT } from "../dev-overlay";
 import { existsSync, readFileSync, readdirSync, statSync } from "node:fs";
 import { scanComponents as scanComponentsShared, collectPrivateComponentDirs } from "../components";
 // Same render-mode extraction `tw build` uses, so dev emits the same manifests.
@@ -999,7 +1000,7 @@ async function ensureDevClientBundle(rootDir: string, pageSource: string, layout
             devClientTag += `<script>(function(){try{var es=new EventSource("//${hHost}:${hPort}/__tw_hmr");es.onmessage=function(){${soft}};}catch(e){}})();</script>\n`;
           }
           if (/<\/body>/.test(html)) {
-            html = html.replace("</body>", devClientTag + "  <script src=\"/__tw_runtime.js\"></script>\n</body>");
+            html = html.replace("</body>", devClientTag + (devOpts?.overlay === false ? "" : CLIENT_OVERLAY_SCRIPT) + "  <script src=\"/__tw_runtime.js\"></script>\n</body>");
           }
 
           // Head.tw: home/head.tw is GLOBAL head content for every page;
@@ -1056,8 +1057,12 @@ async function ensureDevClientBundle(rootDir: string, pageSource: string, layout
             return new Response("500 - Compile Error\n\n" + e.message,
               { status: 500, headers: { "Content-Type": "text/plain; charset=utf-8" } });
           }
-          return new Response("<!DOCTYPE html><html><body><h1>500 - Compile Error</h1><pre>" + e.message + "</pre></body></html>",
-            { status: 500, headers: { "Content-Type": "text/html" } });
+          return new Response(devErrorPage({
+            title: "Server Error",
+            message: e?.message ?? String(e),
+            stack: e?.stack,
+            file: typeof resolved?.file === "string" ? resolved.file : undefined,
+          }), { status: 500, headers: { "Content-Type": "text/html; charset=utf-8" } });
         }
       }
 
