@@ -1,16 +1,29 @@
 name: Release
+
+# Tag push par chalta hai. workflow_dispatch se kisi bhi maujooda tag (jaise
+# v2.0.0) ke liye dobara chalaya ja sakta hai.
+
 on:
   push:
     tags: ["v*"]
+  workflow_dispatch:
+    inputs:
+      tag:
+        description: "Tag to release (e.g. v2.0.0)"
+        required: true
+        default: "v2.0.0"
+
+permissions:
+  contents: write
 
 jobs:
   publish:
     name: Publish to npm
     runs-on: ubuntu-latest
-    permissions:
-      contents: write
     steps:
       - uses: actions/checkout@v4
+        with:
+          ref: ${{ github.event.inputs.tag || github.ref }}
 
       - uses: oven-sh/setup-bun@v2
         with:
@@ -21,11 +34,17 @@ jobs:
           node-version: 20
           registry-url: https://registry.npmjs.org
 
-      # Tag se HI saare versions set karo — koi package kabhi miss nahi
-      # hoga (v1.0.7 me create package isi wajah se atka tha).
+      - name: Resolve tag and version
+        id: v
+        run: |
+          if [ -n "${{ github.event.inputs.tag }}" ]; then TAG="${{ github.event.inputs.tag }}"; else TAG="$GITHUB_REF_NAME"; fi
+          echo "tag=$TAG" >> "$GITHUB_OUTPUT"
+          echo "ver=${TAG#v}" >> "$GITHUB_OUTPUT"
+
+      # Tag se HI saare versions set karo — koi package kabhi miss nahi hoga.
       - name: Bump ALL package versions from tag
         run: |
-          VER="${GITHUB_REF_NAME#v}"
+          VER="${{ steps.v.outputs.ver }}"
           for f in apps/cli/package.json apps/create-tw-framework/package.json; do
             sed -i 's/"version": "[^"]*"/"version": "'"$VER"'"/' "$f"
           done
@@ -46,18 +65,42 @@ jobs:
       - name: Build node bundle
         run: cd apps/cli && bun scripts/build-node.ts
 
-      # Already-published version = skip, fail nahi (idempotent release)
+      # Idempotent: version pehle se npm par ho to skip, warna publish.
+      # Publish FAIL ho to job fail hoti hai — fail chhupta nahi.
       - name: Publish tw-framework
-        run: cd apps/cli && (npm publish --access public || echo "::warning::tw-framework already published - skip")
         env:
           NODE_AUTH_TOKEN: ${{ secrets.NPM_TOKEN }}
+        run: |
+          cd apps/cli
+          VER=$(node -p "require('./package.json').version")
+          if npm view "tw-framework@$VER" version >/dev/null 2>&1; then
+            echo "tw-framework@$VER already on npm — skipping"
+          else
+            npm publish --access public
+          fi
 
       - name: Publish create-tw-framework
-        run: cd apps/create-tw-framework && (npm publish --access public || echo "::warning::create-tw-framework already published - skip")
         env:
           NODE_AUTH_TOKEN: ${{ secrets.NPM_TOKEN }}
+        run: |
+          cd apps/create-tw-framework
+          VER=$(node -p "require('./package.json').version")
+          if npm view "create-tw-framework@$VER" version >/dev/null 2>&1; then
+            echo "create-tw-framework@$VER already on npm — skipping"
+          else
+            npm publish --access public
+          fi
 
-      - name: Create GitHub Release
-        uses: softprops/action-gh-release@v2
-        with:
-          generate_release_notes: true
+      - name: Pack the npm artifact
+        run: |
+          mkdir -p "$GITHUB_WORKSPACE/dist-release"
+          ( cd apps/cli && npm pack --pack-destination "$GITHUB_WORKSPACE/dist-release" )
+          ( cd "$GITHUB_WORKSPACE/dist-release" && sha256sum *.tgz > SHA256SUMS && cat SHA256SUMS )
+
+      - name: Create/refresh the GitHub release with assets
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          TAG="${{ steps.v.outputs.tag }}"
+          gh release view "$TAG" >/dev/null 2>&1 || gh release create "$TAG" --title "TW Framework $TAG" --generate-notes
+          gh release upload "$TAG" dist-release/*.tgz dist-release/SHA256SUMS --clobber
