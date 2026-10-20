@@ -987,6 +987,12 @@ export async function buildCommand(): Promise<void> {
     if ((renderMode === "ssr" || renderMode === "stream") && !hasExplicitParams) {
       requestRenderedCount++;
       console.log("  \x1b[36m~\x1b[0m " + routePath + " [" + renderMode + ": rendered at request time]");
+      // Register the route so `tw serve` knows it exists. The server learns a
+      // route's existence from .tw/routes.json, which was written only for
+      // routes with a `cache { }` window -- so a request-time route (ssr or
+      // stream) with no cache block fell through to the 404 page. A bare 0
+      // means "no revalidate window", not "not a route".
+      isrRoutes.set(routePath === "" ? "/" : routePath, 0);
       try {
         const src = readFileSync(pageFile, "utf-8");
         // Server blocks are checked at build time for every page, not only
