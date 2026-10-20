@@ -444,6 +444,14 @@ function parseTWSelector(
         while (!cursor.done) {
           const ct = cursor.peek();
           if (!ct) break;
+          // Don't swallow `on:` event bindings: `button.btn.primary on:click "h"`
+          // tokenizes as IDENT("on") COLON -- stop the class name there, exactly
+          // as the first-class scan above does. Without this the second class
+          // absorbed the `on` ("primaryon") and the event became a binding.
+          if (ct.type === "IDENT" && ct.value === "on") {
+            const after = cursor.peek(1);
+            if (after && after.type === "COLON") break;
+          }
           if (
             ct.type === "IDENT" && !nextPrevMinus && nextClass.length > 0 &&
             (CLASS_BOUNDARY_BOOLEAN_ATTRS.has(ct.value) || inlineAttrStartsAt(cursor))

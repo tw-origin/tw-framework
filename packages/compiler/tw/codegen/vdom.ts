@@ -104,10 +104,19 @@ export function generateWithLayoutChain(
   };
 
   let pageTitle = "TW Page";
+  let pageDescription = "";
   for (const dir of pageProgram.directives || []) {
-    if (dir.type === "PageDirective" && (dir as any).key === "title") {
-      const t = (dir as any).value;
-      if (t != null && String(t) !== "") pageTitle = String(t);
+    if (dir.type === "PageDirective") {
+      if ((dir as any).key === "title") {
+        const t = (dir as any).value;
+        if (t != null && String(t) !== "") pageTitle = String(t);
+      } else if ((dir as any).key === "description") {
+        // `{page.description}` is a valid binding like `{page.title}` -- it
+        // used to resolve to an empty string, so a layout referencing it
+        // emitted an empty <meta name="description">.
+        const d = (dir as any).value;
+        if (d != null) pageDescription = String(d);
+      }
     }
   }
 
@@ -120,7 +129,7 @@ export function generateWithLayoutChain(
   // with the page's title directive. Previously this referenced `ctx` (the
   // alias declared much further down) BEFORE its declaration -- a TDZ
   // ReferenceError swallowed by the try/catch on every single render.
-  try { pageCtx.stateVars["page"] = JSON.stringify({ title: pageTitle }); } catch { /* ignore */ }
+  try { pageCtx.stateVars["page"] = JSON.stringify({ title: pageTitle, description: pageDescription }); } catch { /* ignore */ }
   // Builtin component imports (import Image from "@tw/optImage") — page first,
   // then layouts as fallback.
   {
