@@ -226,7 +226,13 @@ export class PluginManager {
 
   async runHook(name: HookName, ctx: any, ...args: any[]): Promise<unknown> {
     const results = await this.runHooks(name, ctx, ...args);
-    return results[results.length - 1];
+    // Interception hooks (onRequest / onResponse) expect a returned Response to
+    // short-circuit the request. A plugin that does not handle that path returns
+    // undefined, and returning only the LAST result dropped an earlier plugin's
+    // Response -- e.g. @tw/plugin-health stopped answering /health as soon as
+    // @tw/plugin-sitemap was enabled after it. First non-undefined wins.
+    for (const r of results) if (r !== undefined) return r;
+    return undefined;
   }
 
   // Value-chaining hook: each plugin receives the previous plugin's return
