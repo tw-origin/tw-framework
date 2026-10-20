@@ -73,6 +73,10 @@ export class StaticHandler {
       filePath = join(this.root, safePath + ".html");
     }
 
+    // A miss that falls back to 404.html must be answered with status 404 --
+    // it used to be served as a normal static file, so unmatched paths came
+    // back 200 with the 404 body (a soft-404 for search engines and monitors).
+    let notFoundFallback = false;
     if (!existsSync(filePath)) {
       // Try index.html in subdirectory
       filePath = join(this.root, safePath, this.indexFile);
@@ -88,6 +92,7 @@ export class StaticHandler {
       } else {
         // Try 404.html
         filePath = join(this.root, "404.html");
+        notFoundFallback = true;
         if (!existsSync(filePath)) {
           return new Response("Not Found", { status: 404, headers: { "Content-Type": "text/plain" } });
         }
@@ -179,12 +184,12 @@ export class StaticHandler {
           const gzHeaders = { ...headers, "Content-Encoding": "gzip", "Content-Length": String(gz.length), Vary: "Accept-Encoding" };
           delete gzHeaders["Content-Length"];
           if (this.lastModified) delete gzHeaders["Last-Modified"];
-          return new Response(gz, { headers: gzHeaders });
+          return new Response(gz, { headers: gzHeaders, status: notFoundFallback ? 404 : 200 });
         }
       } catch { /* gzip unavailable -- serve uncompressed */ }
     }
 
-    return new Response(bytes, { headers });
+    return new Response(bytes, { headers, status: notFoundFallback ? 404 : 200 });
   }
 
   /**
