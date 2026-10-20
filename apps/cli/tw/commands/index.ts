@@ -53,7 +53,20 @@ export async function run(): Promise<void> {
     return;
   }
 
-  const handler = commands[parsed.command];
+  let handler = commands[parsed.command];
+  if (!handler) {
+    // Plugin commands: `tw <name>` runs a handler a plugin registered with
+    // api.registerCommand(). The manager collects them (getCommands) but the
+    // CLI never consulted it, so a registered command only printed the help.
+    try {
+      const { loadPlugins } = await import("@tw/plugins");
+      const pm: any = await loadPlugins(process.cwd());
+      const cmd = pm?.getCommands?.()[parsed.command];
+      if (typeof cmd === "function") {
+        handler = async () => { await cmd(process.argv.slice(3)); };
+      }
+    } catch { /* plugins are optional */ }
+  }
   if (!handler) {
     console.error(`  ${colors.red("?")} Unknown command: ${parsed.command}`);
     console.log("\n" + helpText);
