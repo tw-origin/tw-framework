@@ -200,7 +200,53 @@ export function evaluate(expr: string, vars: Record<string, string>, sandbox?: S
   }
 
   // Unknown -- return raw
+  // Last resort: an expression this hand-written evaluator does not model --
+  // string concatenation (`user.first + ' ' + user.last`), a method call
+  // (`name.toUpperCase()`) or `.length` on a string. Evaluate it against the
+  // page's own state, but only when the expression is a whitelisted shape, so
+  // arbitrary code is never run.
+  const dyn = evalWithVars(expr, vars);
+  if (dyn !== null) return dyn;
+
   return expr;
+}
+
+/** Property names / methods an interpolation expression may use. */
+const SAFE_MEMBERS = new Set([
+  "length", "toUpperCase", "toLowerCase", "trim", "trimStart", "trimEnd",
+  "slice", "substring", "substr", "charAt", "at", "includes", "indexOf",
+  "lastIndexOf", "startsWith", "endsWith", "replace", "replaceAll", "split",
+  "join", "concat", "repeat", "padStart", "padEnd", "toString", "toFixed",
+  "map", "filter", "find", "some", "every", "reduce", "sort", "reverse",
+]);
+
+/**
+ * Evaluate `expr` against the page's state values. Returns null when the
+ * expression is not a whitelisted shape or throws, so the caller keeps the
+ * literal text (the previous behaviour) rather than failing the build.
+ */
+function evalWithVars(expr: string, vars: Record<string, string>): string | null {
+  if (!expr || /[`\\]/.test(expr)) return null;
+  // Only identifiers, member/index access, literals, operators and calls.
+  if (!/^[\w\s.$[\]()'"`,+\-*/%?:<>=!&|]*$/.test(expr)) return null;
+  for (const m of expr.matchAll(/\.([A-Za-z_$][\w$]*)/g)) {
+    if (!SAFE_MEMBERS.has(m[1])) return null;
+  }
+  const names: string[] = [];
+  const vals: any[] = [];
+  for (const k of Object.keys(vars)) {
+    if (!/^[A-Za-z_$][\w$]*$/.test(k)) continue;
+    names.push(k);
+    try { vals.push(JSON.parse(vars[k])); } catch { vals.push(vars[k]); }
+  }
+  try {
+    const fn = new Function(...names, `"use strict"; return (${expr});`);
+    const out = fn(...vals);
+    if (out === undefined || out === null) return null;
+    return typeof out === "object" ? JSON.stringify(out) : String(out);
+  } catch {
+    return null;
+  }
 }
 
 function resolve(token: string, vars: Record<string, string>, sandbox: Sandbox): string {
