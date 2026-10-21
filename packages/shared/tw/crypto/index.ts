@@ -252,9 +252,23 @@ export async function decryptString(encryptedData: string, password: string, sal
   return decryptAES(encrypted, key, iv);
 }
 
+/**
+ * Generate an RSA key pair for signing (RSASSA-PKCS1-v1_5), which is what
+ * signData()/verifySignature() require. generateRSAKeyPair() returns RSA-OAEP
+ * keys, usable only for encryption, so the documented sign/verify path had no
+ * supported key source.
+ */
+export async function generateRSASigningKeyPair(bits: number = 2048): Promise<CryptoKeyPair> {
+  return crypto.subtle.generateKey(
+    { name: "RSASSA-PKCS1-v1_5", modulusLength: bits, publicExponent: new Uint8Array([1, 0, 1]), hash: "SHA-256" },
+    true,
+    ["sign", "verify"],
+  );
+}
+
 export async function generateRSAKeyPair(bits: number = 2048): Promise<CryptoKeyPair> {
   return crypto.subtle.generateKey(
-    { name: "RSA-OAEP", modulusLength: bits, publicExponent: new Uint8Array([1, 0, 1]), hash: "sha256" },
+    { name: "RSA-OAEP", modulusLength: bits, publicExponent: new Uint8Array([1, 0, 1]), hash: "SHA-256" },
     true,
     ["encrypt", "decrypt"],
   );

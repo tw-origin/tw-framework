@@ -42,10 +42,12 @@ export function diffTextNode(
 // ---------------------------------------------------------------------------
 
 const HTML_ESCAPE_MAP: Record<string, string> = {
-  '&': '&',
-  '<': '<',
-  '>': '>',
-  '"': '"',
+  // These four mapped to THEMSELVES, so a <script> tag passed through
+  // untouched -- only ' was actually escaped.
+  '&': '&amp;',
+  '<': '&lt;',
+  '>': '&gt;',
+  '"': '&quot;',
   "'": '&#39;',
 };
 

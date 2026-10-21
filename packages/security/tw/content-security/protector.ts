@@ -23,6 +23,13 @@ export interface ContentTypeResult {
 
 /** Allowed file types with their MIME types and signatures. */
 const FILE_SIGNATURES: Array<{ ext: string[]; mime: string; signature: number[]; maxSignatureOffset?: number }> = [
+  // Executables and HTML: without these, content renamed to an image extension
+  // had no detected type, the signature check was skipped, and the upload was
+  // accepted as risk "low" -- the exact rename bypass the check exists for.
+  { ext: ["exe", "dll", "sys"], mime: "application/x-msdownload", signature: [0x4D, 0x5A] },
+  { ext: ["elf", "so", "bin"], mime: "application/x-executable", signature: [0x7F, 0x45, 0x4C, 0x46] },
+  { ext: ["html", "htm", "xhtml"], mime: "text/html", signature: [0x3C, 0x68, 0x74, 0x6D, 0x6C] },
+  { ext: ["html", "htm"], mime: "text/html", signature: [0x3C, 0x21, 0x44, 0x4F, 0x43, 0x54, 0x59, 0x50, 0x45] },
   { ext: ["jpg", "jpeg"], mime: "image/jpeg", signature: [0xFF, 0xD8, 0xFF] },
   { ext: ["png"], mime: "image/png", signature: [0x89, 0x50, 0x4E, 0x47, 0x0D, 0x0A, 0x1A, 0x0A] },
   { ext: ["gif"], mime: "image/gif", signature: [0x47, 0x49, 0x46, 0x38] },
@@ -192,7 +199,9 @@ export class ContentSecurityProtector {
         reason: "Empty file",
         sanitizedFilename: sanitized,
         detectedType: "unknown",
-        risk: "low",
+        // Unknown content is not low risk -- it is content whose type we could
+        // not establish, which is what a rename bypass looks like.
+        risk: "medium",
       };
     }
 
