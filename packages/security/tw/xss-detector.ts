@@ -193,6 +193,12 @@ export class SQLInjectionDetector {
       { name: "SQL comment", regex: /--\s/g, severity: "medium", recommendation: "Check for SQL comment injection" },
       { name: "Stacked queries", regex: /;\s*(SELECT|INSERT|UPDATE|DELETE|DROP|UNION)/gi, severity: "high", recommendation: "Prevent stacked queries" },
       { name: "UNION injection", regex: /UNION\s+SELECT/gi, severity: "critical", recommendation: "Filter UNION SELECT from user input" },
+      // Comment-only injections (`admin'--`, `admin'#`, `admin'/*`): a quote
+      // followed by a comment truncates the query and bypasses the login
+      // check, with no OR/UNION for the other patterns to catch.
+      { name: "Comment-terminated injection", regex: /['"`]\s*(--|#|\/\*)/g, severity: "high", recommendation: "A quote followed by a comment truncates the query -- use parameterized queries" },
+      // Parenthesised boolean injection: `') OR ('1'='1`.
+      { name: "Parenthesised boolean injection", regex: /['"`]?\s*\)\s*(OR|AND)\s*\(?\s*['"`]?\s*\d/i, severity: "high", recommendation: "Use parameterized queries instead of building boolean expressions" },
       { name: "Boolean-based injection", regex: /OR\s+1\s*=\s*1/gi, severity: "high", recommendation: "Use parameterized queries to prevent boolean injection" },
       { name: "Time-based injection", regex: /WAITFOR\s+DELAY/gi, severity: "high", recommendation: "Filter WAITFOR DELAY from user input" },
       { name: "DROP statement", regex: /DROP\s+(TABLE|DATABASE)/gi, severity: "critical", recommendation: "Prevent DROP statements in queries" },

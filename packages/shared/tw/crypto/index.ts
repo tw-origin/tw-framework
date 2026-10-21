@@ -158,11 +158,26 @@ export async function md5(data: string): Promise<string> {
   return hashWithWebCrypto("md5" as HashAlgorithm, data);
 }
 
+/**
+ * WebCrypto wants the hyphenated, uppercase name ("SHA-256"), while the public
+ * HashAlgorithm type is the lower-case, unhyphenated form ("sha256"). Passing
+ * the type's own values straight through made crypto.subtle throw
+ * "Unrecognized algorithm name" -- so hmac() failed with its default argument.
+ */
+function webcryptoHashName(algorithm: string): string {
+  const key = String(algorithm).toLowerCase().replace(/[-_]/g, "");
+  const map: Record<string, string> = {
+    md5: "MD5", sha1: "SHA-1", sha224: "SHA-224",
+    sha256: "SHA-256", sha384: "SHA-384", sha512: "SHA-512",
+  };
+  return map[key] ?? algorithm;
+}
+
 export async function hmac(data: string, key: string, algorithm: HashAlgorithm = "sha256"): Promise<string> {
   const encoder = new TextEncoder();
   const keyData = encoder.encode(key);
   const messageData = encoder.encode(data);
-  const cryptoKey = await crypto.subtle.importKey("raw", keyData, { name: "HMAC", hash: algorithm }, false, ["sign"]);
+  const cryptoKey = await crypto.subtle.importKey("raw", keyData, { name: "HMAC", hash: webcryptoHashName(algorithm) }, false, ["sign"]);
   const signature = await crypto.subtle.sign("HMAC", cryptoKey, messageData);
   const hashArray = Array.from(new Uint8Array(signature));
   return hashArray.map((b) => b.toString(16).padStart(2, "0")).join("");
@@ -172,7 +187,7 @@ export async function pbkdf2(password: string, salt: string, iterations: number 
   const encoder = new TextEncoder();
   const keyMaterial = await crypto.subtle.importKey("raw", encoder.encode(password), "PBKDF2", false, ["deriveBits"]);
   const derivedBits = await crypto.subtle.deriveBits(
-    { name: "PBKDF2", salt: encoder.encode(salt), iterations, hash: "sha256" },
+    { name: "PBKDF2", salt: encoder.encode(salt), iterations, hash: "SHA-256" },
     keyMaterial,
     keyLength,
   );

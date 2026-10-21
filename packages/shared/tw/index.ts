@@ -1,3 +1,4 @@
+import { createHmac } from "node:crypto";
 
 import { sha256 } from "./hashing/sha";
 
@@ -121,21 +122,20 @@ export function merkleRoot(hashes: string[]): string {
 }
 
 export function hmacSign(data: string, key: string): string {
-  // Simple HMAC-like signature (not cryptographically secure)
-  let h1 = 0, h2 = 0;
-  for (let i = 0; i < data.length; i++) {
-    h1 = ((h1 << 5) - h1) + data.charCodeAt(i);
-    h1 |= 0;
-  }
-  for (let i = 0; i < key.length; i++) {
-    h2 = ((h2 << 5) - h2) + key.charCodeAt(i);
-    h2 |= 0;
-  }
-  return (h1 ^ h2).toString(16);
+  // Real HMAC-SHA256. The previous body was a 32-bit Java-style hashCode
+  // accumulation (~24 bits of output, no collision resistance, not keyed per
+  // message) under a name that promised HMAC -- a forgeable signature behind a
+  // security-sounding API.
+  return createHmac("sha256", key).update(data).digest("hex");
 }
 
 export function hmacVerify(data: string, key: string, signature: string): boolean {
-  return hmacSign(data, key) === signature;
+  const expected = hmacSign(data, key);
+  if (expected.length !== signature.length) return false;
+  // Constant-time compare: a plain === leaks where the first mismatch is.
+  let diff = 0;
+  for (let i = 0; i < expected.length; i++) diff |= expected.charCodeAt(i) ^ signature.charCodeAt(i);
+  return diff === 0;
 }
 
 export const HTML_TAGS = new Set([
