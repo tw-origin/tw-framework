@@ -130,6 +130,11 @@ export class CSRFTokenManager {
   private tokens: Map<string, TokenEntry> = new Map();
 
   constructor(options: CSRFTokenOptions) {
+    // `createCSRFManager()` with no options used to fail with
+    // "TypeError: undefined is not an object (evaluating 'options.secret')".
+    if (!options || typeof options.secret !== "string" || options.secret.length === 0) {
+      throw new Error("createCSRFManager: options.secret is required (the HMAC key used to sign tokens)");
+    }
     this.secret = options.secret;
     this.tokenLength = options.tokenLength ?? 32;
     this.ttl = options.ttl ?? 3600000; // 1 hour

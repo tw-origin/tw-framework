@@ -339,7 +339,7 @@ export function createImageHandler(options: ImageHandlerOptions) {
     // No sharp (or unsupported format): serve the original bytes untouched.
     if (!warnedNoSharp) {
       warnedNoSharp = true;
-      console.warn("  [tw/image] sharp not installed — serving original images (bun add sharp to enable resizing/WebP/AVIF)");
+      console.warn("  [tw/image] sharp not installed — using the built-in converter (WebP/AVIF); install sharp for faster resizing");
     }
     return { data, contentType: "", viaSharp: false };
   }
