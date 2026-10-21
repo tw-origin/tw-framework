@@ -132,6 +132,15 @@ export function evaluate(expr: string, vars: Record<string, string>, sandbox?: S
     }
   }
 
+  // An expression this hand-written evaluator does not model: string
+  // concatenation (`user.first + ' ' + user.last` -- the arithmetic branch
+  // above gave up on it, parseFloat -> NaN), a method call
+  // (`name.toUpperCase()`) or `.length` on a string (the member branch below
+  // answers ""). Evaluated against the page's own state, but only when the
+  // expression is a whitelisted shape, so arbitrary code is never run.
+  const dyn = evalWithVars(expr, vars);
+  if (dyn !== null) return dyn;
+
   // Member / index access: obj.prop, obj.a.b, obj["k"], obj[var], arr[1+1].
   // The old code only handled `obj.prop` and `obj[<digits>]` -- string
   // indexes, variable indexes and simple arithmetic indexes all failed and
@@ -200,14 +209,6 @@ export function evaluate(expr: string, vars: Record<string, string>, sandbox?: S
   }
 
   // Unknown -- return raw
-  // Last resort: an expression this hand-written evaluator does not model --
-  // string concatenation (`user.first + ' ' + user.last`), a method call
-  // (`name.toUpperCase()`) or `.length` on a string. Evaluate it against the
-  // page's own state, but only when the expression is a whitelisted shape, so
-  // arbitrary code is never run.
-  const dyn = evalWithVars(expr, vars);
-  if (dyn !== null) return dyn;
-
   return expr;
 }
 
@@ -229,7 +230,9 @@ function evalWithVars(expr: string, vars: Record<string, string>): string | null
   if (!expr || /[`\\]/.test(expr)) return null;
   // Only identifiers, member/index access, literals, operators and calls.
   if (!/^[\w\s.$[\]()'"`,+\-*/%?:<>=!&|]*$/.test(expr)) return null;
-  for (const m of expr.matchAll(/\.([A-Za-z_$][\w$]*)/g)) {
+  // Only CALLS are checked against the allow-list -- a plain property read
+  // (`user.first`) must pass, or every object access bailed out of here.
+  for (const m of expr.matchAll(/\.([A-Za-z_$][\w$]*)\s*\(/g)) {
     if (!SAFE_MEMBERS.has(m[1])) return null;
   }
   const names: string[] = [];
