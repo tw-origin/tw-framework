@@ -16,6 +16,20 @@ export function evaluate(expr: string, vars: Record<string, string>, sandbox?: S
     return vars[expr];
   }
 
+  // `(expr)` -- a fully wrapping pair of parens is grouping, not part of the
+  // expression. Without this, `a ? (b ? 'x' : 'y') : 'z'` resolved the
+  // consequent with its parens attached and fell through to a boolean.
+  if (expr.startsWith("(") && expr.endsWith(")")) {
+    let d = 0;
+    let wraps = true;
+    for (let i = 0; i < expr.length; i++) {
+      const ch = expr[i];
+      if (ch === "(") d++;
+      else if (ch === ")") { d--; if (d === 0 && i < expr.length - 1) { wraps = false; break; } }
+    }
+    if (wraps && d === 0) return evaluate(expr.slice(1, -1).trim(), vars, sb);
+  }
+
   // Numeric literal
   if (/^-?\d+(\.\d+)?$/.test(expr)) return expr;
 
@@ -30,10 +44,44 @@ export function evaluate(expr: string, vars: Record<string, string>, sandbox?: S
   if (expr === "null" || expr === "undefined") return "";
 
   // Ternary (highest priority after primary expressions)
-  const ternMatch = expr.match(/^(.+?)\s*\?\s*(.+?)\s*:\s*(.+)$/);
-  if (ternMatch) {
-    const cond = isTruthy(resolve(ternMatch[1].trim(), vars, sb));
-    return cond ? resolve(ternMatch[2].trim(), vars, sb) : resolve(ternMatch[3].trim(), vars, sb);
+  // Ternary -- split at the TOP level only. The old regex took the first `?`
+  // and the first `:`, so a ternary nested inside another collapsed to a bare
+  // boolean (`a ? b ? 'x' : 'y' : 'z'` -> false/true). Ternaries are
+  // right-associative: the first `:` that has no unmatched nested `?` closes
+  // the outermost one.
+  {
+    let depth = 0;
+    let pending = 0;
+    let q = -1;
+    let quote = "";
+    for (let i = 0; i < expr.length; i++) {
+      const ch = expr[i];
+      if (quote) {
+        if (ch === "\\") { i++; continue; }
+        if (ch === quote) quote = "";
+        continue;
+      }
+      if (ch === "'" || ch === '"' || ch === "`") { quote = ch; continue; }
+      if (ch === "(" || ch === "[" || ch === "{") { depth++; continue; }
+      if (ch === ")" || ch === "]" || ch === "}") { depth--; continue; }
+      if (depth !== 0) continue;
+      if (ch === "?") {
+        if (pending === 0) q = i;
+        pending++;
+        continue;
+      }
+      if (ch === ":" && pending > 0) {
+        pending--;
+        if (pending > 0) continue;
+        const cond = expr.slice(0, q).trim();
+        const cons = expr.slice(q + 1, i).trim();
+        const alt = expr.slice(i + 1).trim();
+        if (cond && cons && alt) {
+          return isTruthy(resolve(cond, vars, sb)) ? resolve(cons, vars, sb) : resolve(alt, vars, sb);
+        }
+        break;
+      }
+    }
   }
 
   // Logical OR
