@@ -904,7 +904,23 @@ function renderBindings(bindings: PropertyBinding[], ctx: CodegenContext): strin
   if (bindings.length === 0) return "";
   const parts: string[] = [];
   for (const binding of bindings) {
-    parts.push(`data-tw-bind-${binding.property}="${escapeAttr(String(binding.expression ?? ""))}"`);
+    const expr = String(binding.expression ?? "");
+    // Render the initial value server-side, not just the binding marker: a
+    // `:src` image with no src and a `:href` link with no href are broken
+    // until the client runtime runs (and invisible to crawlers/no-JS).
+    let initial = "";
+    try {
+      if (/^[A-Za-z_$][\w$]*$/.test(expr)) {
+        const v = (ctx.stateVars as any)[expr];
+        if (v !== undefined && v !== null) initial = String(v);
+      } else if (expr) {
+        initial = interpolate("{" + expr + "}", ctx.stateVars);
+      }
+    } catch { /* leave it client-only */ }
+    if (initial && !/[{}]/.test(initial)) {
+      parts.push(`${binding.property}="${escapeAttr(initial)}"`);
+    }
+    parts.push(`data-tw-bind-${binding.property}="${escapeAttr(expr)}"`);
   }
   return parts.join(" ");
 }
@@ -1068,8 +1084,17 @@ function generateComponent(comp: ComponentNode, ctx: CodegenContext): string {
   const savedStateVars = { ...ctx.stateVars };
   for (const prop of comp.props) {
     if (typeof prop.value === "string") {
-      const resolved = interpolate(prop.value, ctx.stateVars);
-      ctx.stateVars[prop.name] = resolved;
+      const raw = String(prop.value);
+      // `uname={userName}` -- an interpolated prop arrives as the bare
+      // expression (no braces), so interpolate() returned the literal text.
+      // Bind it when the name is a known state variable; leave a plain string
+      // prop alone.
+      const head = raw.split(/[.[]/)[0];
+      if (!/[{}]/.test(raw) && Object.prototype.hasOwnProperty.call(ctx.stateVars, head)) {
+        ctx.stateVars[prop.name] = interpolate("{" + raw + "}", ctx.stateVars);
+      } else {
+        ctx.stateVars[prop.name] = interpolate(raw, ctx.stateVars);
+      }
     }
   }
 

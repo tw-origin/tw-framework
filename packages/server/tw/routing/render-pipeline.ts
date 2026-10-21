@@ -1151,7 +1151,7 @@ export class RenderPipeline {
       };
       let tags = "";
       const description = pick("description");
-      if (description) tags += `    <meta name="description" content="${esc(description)}">\n`;
+      // description is emitted by the head builder (codegen/html.ts) -- not here.
       const keywords = pick("keywords");
       if (keywords) tags += `    <meta name="keywords" content="${esc(keywords)}">\n`;
       const ogTitle = pick("og_title");
