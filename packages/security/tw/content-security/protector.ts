@@ -53,10 +53,21 @@ const DANGEROUS_EXTENSIONS = new Set([
   ".htaccess", ".htpasswd",
   ".svg", // Can contain JavaScript
   ".xml", // Can contain XXE
+  // Active-content types the set used to let through while still blocking .svg
+  // "because it can contain JavaScript" -- .html/.js are script-capable by
+  // definition, so an accepted upload served from our own origin is stored XSS.
+  ".html", ".htm", ".xhtml", ".shtml",
+  ".js", ".mjs", ".cjs", ".jsx", ".ts", ".tsx",
+  ".mhtml", ".hta", ".jsp", ".asp", ".aspx", ".cgi", ".pl",
 ]);
 
 /** Dangerous MIME types. */
 const DANGEROUS_MIME_TYPES = new Set([
+  // Active-content types: they can carry script (svg, xhtml, xml) or be
+  // rendered as a document (html, pdf). Blocking .svg by extension while
+  // reporting isContentTypeSafe("image/svg+xml") === true was inconsistent.
+  "image/svg+xml", "text/html", "application/xhtml+xml",
+  "application/pdf", "text/xml", "application/xml",
   "application/javascript", "text/javascript",
   "application/x-javascript", "application/ecmascript",
   "text/ecmascript",

@@ -128,6 +128,11 @@ export class CSRFTokenManager {
   private rotateAfterUse: boolean;
   private maxTokens: number;
   private tokens: Map<string, TokenEntry> = new Map();
+  /** Tokens this manager issued and already consumed. A rotated token is
+   *  deleted from `tokens`, so without this marker a replay found no entry and
+   *  fell through to the stateless branch, which accepted it -- defeating the
+   *  documented single-use guarantee of `rotateAfterUse`. */
+  private consumedTokens = new Set<string>();
 
   constructor(options: CSRFTokenOptions) {
     // `createCSRFManager()` with no options used to fail with
@@ -274,12 +279,19 @@ export class CSRFTokenManager {
       entry.used = true;
 
       if (this.rotateAfterUse) {
+        this.consumedTokens.add(headerPart);
         this.tokens.delete(headerPart);
         const rotated = await this.generate(sessionId ?? undefined);
         return { valid: true, rotated };
       }
 
       return { valid: true };
+    }
+
+    // A token this manager already consumed must not fall through to the
+    // stateless branch below and validate a second time.
+    if (this.consumedTokens.has(headerPart)) {
+      return { valid: false, reason: "Token already used" };
     }
 
     // Stateless validation -- verify HMAC without server-side store

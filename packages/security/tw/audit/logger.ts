@@ -67,6 +67,11 @@ export class AuditLogger {
 
   /** Records an audit event. */
   log(event: Omit<AuditEvent, "id" | "timestamp">): AuditEvent {
+    // `AuditEvent` declares type/actor/resource as required, but a caller could
+    // omit them and the record was filed anyway -- putting "undefined" into
+    // byType and producing entries that cannot be filtered by type. Fill the
+    // required fields instead of recording a broken record.
+    event = { type: "system", actor: "unknown", resource: "unknown", ...event } as any;
     const fullEvent: AuditEvent = {
       ...event,
       id: crypto.randomUUID(),

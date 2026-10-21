@@ -113,6 +113,9 @@ export class NonceManager {
   validate(nonce: string): boolean {
     const entry = this.nonces.get(nonce);
     if (!entry) return false;
+    // A consumed nonce is not valid: validate() used to ignore `used`, so a
+    // caller gating a one-time action accepted the same nonce repeatedly.
+    if (entry.used) return false;
     if (Date.now() > entry.expiresAt) {
       this.nonces.delete(nonce);
       return false;
