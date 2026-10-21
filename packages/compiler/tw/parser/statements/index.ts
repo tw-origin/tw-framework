@@ -712,12 +712,17 @@ function parseTWSelector(
       // treated as an attribute block even though `for` is also a valid HTML
       // attribute name -- otherwise the loop header is swallowed as attrs.
       const CONTROL_FLOW = new Set(["for", "if", "while", "switch", "else", "try", "catch"]);
+      // A component prop written in the block form -- `Loop { items={["x","y"]} }`.
+      // The name is not a known HTML attribute, so this used to fall through to
+      // the children branch and the prop never reached the component.
+      const third = cursor.peek(2);
+      const isPropBlock = second && second.type === "ASSIGN" && third && third.type === "LBRACE";
       const isAttrBlock = first
         && (first.type === "IDENT" || first.type === "KEYWORD")
         && !CONTROL_FLOW.has(first.value)
-        && HTML_ATTRS_ONLY.has(first.value)
+        && (HTML_ATTRS_ONLY.has(first.value) || isPropBlock)
         && second
-        && (second.type === "STRING" || second.type === "NUMBER" || second.type === "IDENT" || second.type === "KEYWORD");
+        && (second.type === "STRING" || second.type === "NUMBER" || second.type === "IDENT" || second.type === "KEYWORD" || second.type === "ASSIGN");
       if (isAttrBlock) {
         // Parse as attributes
         while (!cursor.done) {
@@ -726,6 +731,33 @@ function parseTWSelector(
           if (t.type === "IDENT" || t.type === "KEYWORD") {
             const attrName = t.value;
             cursor.advance();
+            // `name={expr}` -- the block-form prop. Collect the whole
+            // expression inside the braces so the value survives intact.
+            if (cursor.peek() && (cursor.peek()!.type === "ASSIGN" || cursor.peek()!.type === "EQUALS")) {
+              cursor.advance();
+              cursor.skipWhitespace();
+              if (cursor.peek() && cursor.peek()!.type === "LBRACE") {
+                cursor.advance();
+                let expr = "";
+                let depth = 1;
+                let prevWS = false;
+                while (!cursor.done) {
+                  const tk = cursor.peek();
+                  if (!tk || tk.type === "EOF") break;
+                  if (tk.type === "LBRACE") depth++;
+                  else if (tk.type === "RBRACE") {
+                    depth--;
+                    if (depth === 0) { cursor.advance(); break; }
+                  }
+                  if (expr && prevWS) expr += " ";
+                  expr += (tk as any).raw ?? tk.value;
+                  prevWS = !!(tk as any).followedByWhitespace;
+                  cursor.advance();
+                }
+                el.attrs.push(createAttribute(attrName, expr.trim(), t.pos.line, t.pos.col, true));
+                continue;
+              }
+            }
             const vToken = cursor.peek();
             if (vToken && (vToken.type === "STRING" || vToken.type === "NUMBER")) {
               cursor.advance();
