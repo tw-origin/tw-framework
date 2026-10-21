@@ -199,10 +199,18 @@ function escapeHtml(s) {
 
 
 
+/**
+ * Compile-time components that are lowercase in source and therefore not caught
+ * by the capitalised-component check below. `optImage` used to raise a TW003
+ * "Unknown HTML tag" warning on correct code.
+ */
+const BUILTIN_COMPONENT_TAGS = new Set(["optImage", "twImage", "twLink", "twImg"]);
+
 export function checkUnknownTags(program: Program, filePath: string, diags: Diagnostic[]): void {
   forEachNode(program, (node, ctx) => {
     if (!isElement(node)) return;
     if (node.tag[0] === node.tag[0]?.toUpperCase()) return; // Component
+    if (BUILTIN_COMPONENT_TAGS.has(node.tag)) return;
     // A bare `name "value"` written inside a component tag parses as a child
     // element (`Button { variant "primary" }` -> <variant>primary</variant>);
     // that is a prop, not an unknown HTML tag.

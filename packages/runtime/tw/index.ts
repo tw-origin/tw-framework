@@ -94,6 +94,9 @@ export { createGestureRecognizer, onDoubleTap, onLongPress, onPinch, onSwipe } f
 export type { GestureEvent, GestureOptions, Point, SwipeDirection } from "./gesture-recognition";
 export { __setMountVNode, hydrate, hydrateElementById, markForHydration, unmarkForHydration } from "./hydration";
 export type { HydrationError, HydrationMode, HydrationOptions, HydrationStats } from "./hydration";
+// The public i18n API: initI18n / t / tn / setLocale / getLocale and the
+// formatting helpers. This is what docs/i18n.md documents and what an app
+// should import.
 export { formatCurrency, formatDate, formatList, formatNumber, formatRelativeTime, getI18n, getLocale, getTextDirection, initI18n, isRTL, setLocale, t, tn, useLocale, useTranslation } from "./i18n-runtime";
 export type { I18nOptions, Locale, MessageParams, PluralCategory } from "./i18n-runtime";
 export { clearRegisteredIds, createIdGenerator, decodeHashId, encodeHashId, isIdUsed, nanoId, registerId, releaseId, resetSequentialCounter, sequentialId, setSnowflakeWorkerId, snowflake, ulid, uniqueId, uuid } from "./id-generator";
@@ -154,6 +157,9 @@ export { closeAllConnections, closeConnection, createConnection, getConnection }
 export type { ConnectionStatus, WSMessage, WSOptions } from "./websocket-manager";
 export { createInlineWorker, createWorkerPool, getWorkerPool, terminateAllPools } from "./worker-pool";
 export type { WorkerPoolOptions, WorkerTask } from "./worker-pool";
+// Internal managers (not the documented i18n API). I18nManager / createI18n
+// live in ./i18n and are a lower-level implementation used by the runtime; an
+// app should use the exports above instead.
 export { DragDropManager, FormValidator, GestureRecognizer, I18nManager, ThemeManager, createDragDropManager, createFormValidator, createI18n, createThemeManager } from "./i18n";
 export type { GestureData, LocaleConfig, TranslationEntry, TranslationMessages, ValidationRule } from "./i18n";
 

@@ -98,7 +98,10 @@ export function imageAttributesFor(
   // path form would not survive URL `//` normalization.
   const isRemote = /^https?:\/\//i.test(opts.src);
   const src = isRemote
-    ? `/_tw/img/_remote?src=${encodeURIComponent(opts.src)}&w=${opts.width ?? ""}&h=${opts.height ?? ""}&q=${quality}&f=auto`
+    // Only include the dimensions that were actually given: an absent height
+    // used to emit `h=` (empty), which disagreed with the srcset entries that
+    // omit it.
+    ? `/_tw/img/_remote?src=${encodeURIComponent(opts.src)}${opts.width ? `&w=${opts.width}` : ""}${opts.height ? `&h=${opts.height}` : ""}&q=${quality}&f=auto`
     : optimizedImageUrl(opts.src, { width: opts.width, height: opts.height, quality });
 
   // Responsive srcset: every breakpoint up to 2x the declared width.
