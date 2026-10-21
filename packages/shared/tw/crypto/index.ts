@@ -183,6 +183,20 @@ export async function hmac(data: string, key: string, algorithm: HashAlgorithm =
   return hashArray.map((b) => b.toString(16).padStart(2, "0")).join("");
 }
 
+/**
+ * Verify an HMAC produced by `hmac()` above. Same argument order as `hmac` --
+ * `(data, key, signature)` -- which is what the docs show. `@tw/shared` used to
+ * re-export a second `verifyHmac` from ./hashing that took `(key, message, ...)`,
+ * so the documented call could never return true even once both worked.
+ */
+export async function verifyHmac(data: string, key: string, signature: string, algorithm: HashAlgorithm = "sha256"): Promise<boolean> {
+  const expected = await hmac(data, key, algorithm);
+  if (expected.length !== signature.length) return false;
+  let diff = 0;
+  for (let i = 0; i < expected.length; i++) diff |= expected.charCodeAt(i) ^ signature.charCodeAt(i);
+  return diff === 0;
+}
+
 export async function pbkdf2(password: string, salt: string, iterations: number = 100000, keyLength: number = 256): Promise<string> {
   const encoder = new TextEncoder();
   const keyMaterial = await crypto.subtle.importKey("raw", encoder.encode(password), "PBKDF2", false, ["deriveBits"]);
