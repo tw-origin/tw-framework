@@ -386,7 +386,14 @@ export function usePathname(opts?: { pattern: string }): string | PathnameMatch 
 export function matchPathPattern(path: string, pattern: string): PathnameMatch {
   const pSeg = path.split("/").filter(Boolean);
   const tSeg = pattern.split("/").filter(Boolean);
-  if (pSeg.length !== tSeg.length) return { matches: false, params: {}, score: 0 };
+  const catchAllAt = tSeg.findIndex((t) => t.startsWith("[...") || t.startsWith(":..."));
+  // A catch-all pattern matches one OR MORE trailing segments; every other
+  // pattern must match segment-for-segment.
+  if (catchAllAt === -1) {
+    if (pSeg.length !== tSeg.length) return { matches: false, params: {}, score: 0 };
+  } else if (pSeg.length < tSeg.length) {
+    return { matches: false, params: {}, score: 0 };
+  }
 
   const params: Record<string, string> = {};
   let literal = 0;
@@ -394,8 +401,15 @@ export function matchPathPattern(path: string, pattern: string): PathnameMatch {
     const t = tSeg[i];
     const isParam = (t.startsWith("[") && t.endsWith("]")) || t.startsWith(":");
     if (isParam) {
-      const name = t.startsWith("[") ? t.slice(1, -1).replace(/\.\.\.$/, "") : t.slice(1);
-      params[name] = decodeURIComponent(pSeg[i]);
+      // `[...slug]` -> the dots are at the START, so the old /\.\.\.$/ never
+        // stripped them and the bound key was "...slug" (params.slug undefined).
+        const name = t.startsWith("[") ? t.slice(1, -1).replace(/^\.\.\./, "") : t.slice(1);
+      // A catch-all captures every REMAINING segment (`/docs/a/b/c` ->
+      // slug "a/b/c"), not just the one at this position.
+      const isCatchAll = t.startsWith("[...") || t.startsWith(":...");
+      params[name] = isCatchAll
+        ? pSeg.slice(i).map((seg) => decodeURIComponent(seg)).join("/")
+        : decodeURIComponent(pSeg[i]);
     } else if (t !== pSeg[i]) {
       return { matches: false, params: {}, score: 0 };
     } else {

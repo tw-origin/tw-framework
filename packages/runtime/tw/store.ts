@@ -16,7 +16,7 @@ import type { TWComponent } from './component';
 // Core reactive primitives
 // ---------------------------------------------------------------------------
 
-export type Listener = () => void;
+export type Listener = (value?: unknown) => void;
 export type Unsubscribe = () => void;
 
 export interface Subscription {
@@ -54,9 +54,13 @@ export class ReactiveValue<T> {
   }
 
   private _notify(): void {
+    const current = (this as any).value ?? (this as any)._value;
     for (const l of this._listeners) {
       try {
-        l();
+        // Docs: "The listener fires with the new value on every set" -- the
+        // listener was called with no argument, so `(value) => ...` got
+        // undefined (and the try/catch hid the resulting throw).
+        l(current);
       } catch {
         // A failing listener should not break other subscribers.
       }
@@ -174,7 +178,17 @@ export function defineStore<
     const getterDeps: ReactiveValue<unknown>[] = Object.values(reactiveState);
     for (const key of Object.keys(getters)) {
       const getter = (getters as Record<string, () => unknown>)[key];
-      getterValues[key] = computed(getterDeps, getter);
+      // Docs/stores.md: `count: (state) => state.items.length`. The getter was
+      // passed as a bare fn, so it was called with no argument and no receiver
+      // and any getter reading state threw at store creation.
+      // Reads a plain snapshot of the reactive state: the mutable proxy is
+      // created further down, and a getter only reads, so this avoids a
+      // temporal-dead-zone reference while still giving the getter its state.
+      getterValues[key] = computed(getterDeps, () => {
+        const snap: Record<string, unknown> = {};
+        for (const k of Object.keys(reactiveState)) snap[k] = reactiveState[k].value;
+        return getter.call(snap, snap);
+      });
     }
 
     // --- listeners ---
@@ -226,7 +240,11 @@ export function defineStore<
       const fn = (actions as unknown as Record<string, (this: StoreContext, ...args: unknown[]) => unknown>)[key];
       boundActions[key] = (...args: unknown[]) => {
         actionListeners.forEach((cb) => cb({ name: key, args }));
-        return fn.call(ctx, stateProxy, ...args);
+        // Docs/stores.md: `add(item) { this.items.push(item) }`. `this` was the
+        // store context (no state keys), so the documented form threw. `this` is
+        // now the mutable state proxy; the proxy is still passed as the first
+        // argument, so the (state, ...) form keeps working too.
+        return fn.call(stateProxy, stateProxy, ...args);
       };
     }
 
