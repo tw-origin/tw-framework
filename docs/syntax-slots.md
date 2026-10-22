@@ -85,13 +85,13 @@ A layout can define several holes, each filled by name:
 // home/dashboard/layout.tw
 div.dashboard {
   div.sidebar {
-    slot name "sidebar" { }      // ← @sidebar content goes here
+    <slot name="sidebar" />      // ← @sidebar content goes here
   }
   div.main {
     slot { }                      // ← default slot (page content)
   }
   div.right-panel {
-    slot name "analytics" { }     // ← @analytics content goes here
+    <slot name="analytics" />     // ← @analytics content goes here
   }
 }
 ```
@@ -199,10 +199,16 @@ Write `slot { }` in `.tw` files. The `<slot />` forms exist for HTML compatibili
 ## Quick Reference
 
 ```tw
-slot { }                    // default slot
-slot name "sidebar" { }     // named slot
-slot { p "fallback" }      // slot with fallback content
+slot { }                       // default slot
+<slot name="sidebar" />        // named slot -- filled from the @sidebar folder
+slot { p "fallback" }          // slot with fallback content
 ```
+
+A named slot is filled from the `@name` folder beside the route: `<slot name="sidebar" />`
+takes the body of `@sidebar/page.tw` (see [Project Structure](./project-tree.md)).
+Writing the slot name as a capitalised tag — `Sidebar { }` — is accepted too and
+resolves to the same `@sidebar` folder.
+
 
 ## Related
 
