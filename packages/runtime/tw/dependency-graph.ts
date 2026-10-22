@@ -51,6 +51,44 @@ let batchDepth = 0;
 const batchedEffects = new Set<Subscriber>();
 
 /**
+ * Propagation queue. Subscribers used to run the instant a signal changed, so
+ * an effect reading two computeds derived from one signal could run after only
+ * the first had been recomputed and observe a state no single value of the
+ * signal can produce (a "diamond" glitch). Work is queued and drained until the
+ * queue is empty, so every effect sees one consistent snapshot.
+ */
+let pendingSubs: Set<Subscriber> | null = null;
+let isFlushing = false;
+
+function flushPendingSubs(): void {
+  if (isFlushing || !pendingSubs) return;
+  isFlushing = true;
+  try {
+    let guard = 0;
+    while (pendingSubs && pendingSubs.size > 0 && guard++ < 100000) {
+      const batchOf = pendingSubs;
+      pendingSubs = new Set();
+      for (const sub of batchOf) {
+        try {
+          sub();
+        } catch (e) {
+          console.error("[TW Reactivity] Signal subscriber error:", e);
+        }
+      }
+    }
+  } finally {
+    isFlushing = false;
+    pendingSubs = null;
+  }
+}
+
+function enqueueSubs(subs: Iterable<Subscriber>): void {
+  if (!pendingSubs) pendingSubs = new Set();
+  for (const s of subs) pendingSubs.add(s);
+  if (batchDepth === 0) flushPendingSubs();
+}
+
+/**
  * Start a batch -- all signal updates inside are collected and run together.
  */
 export function startBatch(): void {
@@ -66,13 +104,8 @@ export function endBatch(): void {
     batchDepth = 0;
     const effects = Array.from(batchedEffects);
     batchedEffects.clear();
-    for (const eff of effects) {
-      try {
-        eff();
-      } catch (e) {
-        console.error("[TW Reactivity] Batch effect error:", e);
-      }
-    }
+    // Same ordering guarantee as an unbatched set.
+    enqueueSubs(effects);
   }
 }
 
@@ -113,22 +146,12 @@ class SignalImpl<T> {
 
     this.value = value;
 
-    // Notify subscribers
+    // Notify through the propagation queue so a dependent effect never sees a
+    // half-propagated snapshot.
     if (batchDepth > 0) {
-      for (const sub of this.subscribers) {
-        batchedEffects.add(sub);
-      }
-    } else {
-      // Clone to avoid issues with modifications during iteration
-      const subs = Array.from(this.subscribers);
-      for (const sub of subs) {
-        try {
-          sub();
-        } catch (e) {
-          console.error("[TW Reactivity] Signal subscriber error:", e);
-        }
-      }
+      for (const sub of this.subscribers) batchedEffects.add(sub);
     }
+    enqueueSubs(this.subscribers);
   }
 
   update(fn: (prev: T) => T): void {
@@ -234,14 +257,13 @@ class ComputedImpl<T> {
   }
 
   private notify(): void {
-    const subs = Array.from(this.subscribers);
-    for (const sub of subs) {
-      try {
-        sub();
-      } catch (e) {
-        console.error("[TW Reactivity] Computed subscriber error:", e);
-      }
+    // Queued, not called inline: this is the other half of the diamond fix --
+    // notifying immediately here let an effect run between two computeds.
+    if (batchDepth > 0) {
+      for (const sub of this.subscribers) batchedEffects.add(sub);
+      return;
     }
+    enqueueSubs(this.subscribers);
   }
 
   set(_value: T): void {
