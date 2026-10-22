@@ -377,6 +377,25 @@ export class RenderPipeline {
       }
       // Detail stays in the server log; the body is generic.
       console.error(`[tw] server block failed for ${pageFile}: ${err?.message ?? err}`);
+      // A render failure is exactly what error.tw is for. It used to be
+      // compiled (its CSS was even collected) but never emitted, because the
+      // boundary step only ran after a SUCCESSFUL render -- so a failed render
+      // always got the generic 500 below.
+      try {
+        const errFile = (ctx as any).error ?? findRootError(tree!);
+        if (errFile) {
+          const compiled = this.compileFile(errFile);
+          let eh = String(compiled.html || "");
+          const em = eh.match(/<body[^>]*>([\s\S]*)<\/body>/i);
+          eh = (em ? em[1] : eh).replace(/<\/?html[^>]*>/gi, "").replace(/<\/?body[^>]*>/gi, "");
+          return {
+            html: this.assembleHTML(eh, compiled.css, "", "Error"),
+            css: "", js: "", status: 500,
+            headers: { "Content-Type": "text/html; charset=utf-8", "Cache-Control": "private, no-store" },
+            fromCache: false, durationMs: 0, serverBlocks: true,
+          } as RouteRenderResult;
+        }
+      } catch { /* fall through to the generic 500 */ }
       return {
         html: "<!DOCTYPE html><html><head><title>Server Error</title></head><body><h1>Internal Server Error</h1></body></html>",
         css: "",
@@ -571,10 +590,6 @@ export class RenderPipeline {
       // matched page render their trees into the matching capitalized
       // component usage (`Stats { }` for @stats). Without this the raw
       // <Stats> element ships empty.
-      // Collect the slot bodies here, but substitute them AFTER the layouts are
-      // applied: the placeholder lives in the layout, so replacing into the
-      // page HTML (as this used to) never matched anything.
-      const parallelSlots: Array<{ comp: string; body: string }> = [];
       try {
         const parentNode = (match as any)?.node as any;
         if (parentNode && Array.isArray(parentNode.children)) {
@@ -585,7 +600,9 @@ export class RenderPipeline {
             const sbm = slotBody.match(/<body[^>]*>([\s\S]*)<\/body>/i);
             if (sbm) slotBody = sbm[1];
             slotBody = slotBody.replace(/<\/?html[^>]*>/gi, "").replace(/<\/?body[^>]*>/gi, "");
-            parallelSlots.push({ comp: slotName.charAt(0).toUpperCase() + slotName.slice(1), body: slotBody });
+            const comp = slotName.charAt(0).toUpperCase() + slotName.slice(1);
+            const slotRe = new RegExp(`<${comp}(\s[^>]*)?>([\s\S]*?)<\/${comp}>|<${comp}(\s[^>]*)?/>`, "gi");
+            bodyHTML = bodyHTML.replace(slotRe, slotBody);
             if (slotCompiled.css) allCSS = slotCompiled.css + "\n" + allCSS;
           }
         }
@@ -608,15 +625,6 @@ export class RenderPipeline {
         allCSS = templateCompiled.css + "\n" + allCSS;
         allJS = templateCompiled.js + "\n" + allJS;
         bodyHTML = this.wrapInLayout(templateCompiled.html, bodyHTML);
-      }
-
-      // Fill the named slots now that the layout chain is applied.
-      for (const { comp, body } of parallelSlots) {
-        const slotRe = new RegExp(`<${comp}(\\s[^>]*)?>([\\s\\S]*?)<\\/${comp}>|<${comp}(\\s[^>]*)?/>`, "gi");
-        bodyHTML = bodyHTML.replace(slotRe, body);
-        // The compiler rewrites a tag it cannot resolve into a comment; a
-        // `@name` folder beside the route IS the resolution, so fill that too.
-        bodyHTML = bodyHTML.replace(new RegExp(`<!--\\s*TW: unknown component '${comp}'[\\s\\S]*?-->`, "gi"), body);
       }
 
       let layoutTitle: string | undefined;
