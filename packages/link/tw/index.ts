@@ -49,7 +49,19 @@ export interface LinkAttributes {
  * and browser-native scheme URLs (mailto:, tel:, sms:, ftp:) are external —
  * they never take part in SPA navigation.
  */
+/**
+ * Schemes that execute script when used in an href. Whitespace and control
+ * characters are stripped first, because "java\tscript:" still runs.
+ */
+const DANGEROUS_SCHEME = /^(javascript|data|vbscript):/i;
+
+export function isDangerousHref(href: string): boolean {
+  return DANGEROUS_SCHEME.test(href.replace(/[\u0000-\u0020]/g, ""));
+}
+
 export function isExternalHref(href: string): boolean {
+  // A script-capable scheme is neither a web URL nor a browser-native scheme.
+  if (isDangerousHref(href)) return false;
   return (
     /^[a-z][a-z0-9+.-]*:/i.test(href) || // any scheme: http(s), mailto, tel, ...
     href.startsWith("//")                  // protocol-relative
@@ -72,7 +84,9 @@ function isWebExternal(href: string): boolean {
  * defaults (new tab + noopener) unless the caller overrides them.
  */
 export function linkAttributesFor(opts: LinkTagOptions): LinkAttributes {
-  const href = (opts.href ?? "").trim();
+  const rawHref = (opts.href ?? "").trim();
+  // Never emit a script-capable URL: neutralise it rather than pass it through.
+  const href = isDangerousHref(rawHref) ? "#" : rawHref;
   const external = opts.external === true || isExternalHref(href);
 
   const attrs: Record<string, string> = {};

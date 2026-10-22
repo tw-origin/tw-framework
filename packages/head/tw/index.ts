@@ -83,7 +83,10 @@ export function twitter(values: {
 
 /** A JSON-LD payload, as a `<script type="application/ld+json">` entry. */
 export function jsonLd(data: Record<string, unknown>): string {
-  return JSON.stringify(data);
+  // The payload goes inside <script type="application/ld+json">, so a literal
+  // "</" in the data would close the element early. Escaped the same way
+  // headTagsFor does it.
+  return JSON.stringify(data).replace(/<\//g, "<\\/");
 }
 
 function esc(s: string): string {

@@ -79,6 +79,12 @@ export function optimizedImageUrl(
   if (opts.quality) p.set("q", String(opts.quality));
   p.set("f", opts.format ?? "auto");
   const qs = p.toString();
+  // A remote URL must use the proxy form the server actually recognises (the
+  // same one imageAttributesFor builds). Concatenating it onto /_tw/img/ made
+  // the server treat "https://..." as a local path, so it was never proxied.
+  if (/^https?:\/\//i.test(src)) {
+    return `/_tw/img/_remote?src=${encodeURIComponent(src)}&${qs}`;
+  }
   return `/_tw/img${src.startsWith("/") ? src : "/" + src}?${qs}`;
 }
 
