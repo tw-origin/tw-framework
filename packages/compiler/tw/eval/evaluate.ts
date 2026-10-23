@@ -1,7 +1,7 @@
 /** Expression evaluation - binary, unary, comparison, arithmetic. */
 
 import { Sandbox } from "./sandbox";
-import { callBuiltin, isBuiltinName } from "./builtins";
+import { callBuiltin } from "./builtins";
 import { applyFilter } from "./builtins";
 import { interpolate } from "./interpolate";
 
@@ -84,16 +84,6 @@ export function evaluate(expr: string, vars: Record<string, string>, sandbox?: S
     }
   }
 
-  // Real JS semantics for everything the branches below only approximate.
-  // `{n > 3 && name}` used to render "true" instead of the operand, `{items.map(x => x * 2)}`
-  // split on the `>` of the arrow and rendered "false", and a call in a larger
-  // expression printed its own source. Only a whitelisted shape is evaluated
-  // (identifiers, member/index access, literals, operators, calls to a fixed
-  // set of string/array members), so arbitrary code never runs; anything else
-  // still falls through to the branches below.
-  const dyn = evalWithVars(expr, vars);
-  if (dyn !== null) return dyn;
-
   // Logical OR
   const orParts = splitLogical(expr, "||");
   if (orParts.length > 1) {
@@ -142,6 +132,15 @@ export function evaluate(expr: string, vars: Record<string, string>, sandbox?: S
     }
   }
 
+  // An expression this hand-written evaluator does not model: string
+  // concatenation (`user.first + ' ' + user.last` -- the arithmetic branch
+  // above gave up on it, parseFloat -> NaN), a method call
+  // (`name.toUpperCase()`) or `.length` on a string (the member branch below
+  // answers ""). Evaluated against the page's own state, but only when the
+  // expression is a whitelisted shape, so arbitrary code is never run.
+  const dyn = evalWithVars(expr, vars);
+  if (dyn !== null) return dyn;
+
   // Member / index access: obj.prop, obj.a.b, obj["k"], obj[var], arr[1+1].
   // The old code only handled `obj.prop` and `obj[<digits>]` -- string
   // indexes, variable indexes and simple arithmetic indexes all failed and
@@ -187,11 +186,7 @@ export function evaluate(expr: string, vars: Record<string, string>, sandbox?: S
   // syntax like `{name | uppercase}`) render as empty and left the pipe
   // branches below unreachable dead code.
   const fnMatch = expr.match(/^(\w+)\((.*)\)$/);
-  // Only a known builtin. callBuiltin passes its argument through for an
-  // unknown name, so `{greet('X')}` -- a helper from another module -- emitted
-  // its argument ("X") instead of the call's result. An unknown callee now
-  // falls through so the expression stays visible rather than silently wrong.
-  if (fnMatch && isBuiltinName(fnMatch[1])) {
+  if (fnMatch) {
     const fn = fnMatch[1];
     const arg = resolve(fnMatch[2].trim(), vars, sb);
     return callBuiltin(fn, arg, sb);
@@ -224,6 +219,10 @@ const SAFE_MEMBERS = new Set([
   "lastIndexOf", "startsWith", "endsWith", "replace", "replaceAll", "split",
   "join", "concat", "repeat", "padStart", "padEnd", "toString", "toFixed",
   "map", "filter", "find", "some", "every", "reduce", "sort", "reverse",
+  // Static helpers on the built-ins (JSON.stringify, Object.keys, Math.round).
+  "stringify", "parse", "keys", "values", "entries", "from", "isArray",
+  "isInteger", "isFinite", "abs", "ceil", "floor", "round", "max", "min",
+  "pow", "sqrt", "random", "now", "toISOString",
 ]);
 
 /**
@@ -234,7 +233,9 @@ const SAFE_MEMBERS = new Set([
 function evalWithVars(expr: string, vars: Record<string, string>): string | null {
   if (!expr || /[`\\]/.test(expr)) return null;
   // Only identifiers, member/index access, literals, operators and calls.
-  if (!/^[\w\s.$[\]()'"`,+\-*/%?:<>=!&|]*$/.test(expr)) return null;
+  // Braces are allowed: an object literal in the expression
+  // (`{JSON.stringify({a:1})}`) is ordinary JS.
+  if (!/^[\w\s.$[\]{}()'"`,+\-*/%?:<>=!&|]*$/.test(expr)) return null;
   // Only CALLS are checked against the allow-list -- a plain property read
   // (`user.first`) must pass, or every object access bailed out of here.
   for (const m of expr.matchAll(/\.([A-Za-z_$][\w$]*)\s*\(/g)) {

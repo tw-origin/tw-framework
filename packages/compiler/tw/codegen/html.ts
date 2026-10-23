@@ -178,6 +178,48 @@ function addScope(css: string, scopeId: string): string {
   return out;
 }
 
+
+/**
+ * Replace every top-level `{expr}` with its value. Braces are counted (and
+ * string literals skipped), so a `}` inside the expression -- an object literal
+ * or a nested call -- does not end it early. The previous `/{([^}]+)}/g` stopped
+ * at the first `}`, so `{JSON.stringify({a:1})}` was cut in half.
+ */
+function interpolateBraces(input: string, vars: Record<string, string>): string {
+  let out = "";
+  let i = 0;
+  while (i < input.length) {
+    const ch = input[i];
+    if (ch !== "{") { out += ch; i++; continue; }
+    let depth = 1;
+    let j = i + 1;
+    let quote = "";
+    while (j < input.length && depth > 0) {
+      const c = input[j];
+      if (quote) {
+        if (c === "\\") { j += 2; continue; }
+        if (c === quote) quote = "";
+        j++;
+        continue;
+      }
+      if (c === "'" || c === '"' || c === "`") { quote = c; j++; continue; }
+      if (c === "{") depth++;
+      else if (c === "}") { depth--; if (depth === 0) break; }
+      j++;
+    }
+    if (depth !== 0) { out += ch; i++; continue; }
+    const key = input.slice(i + 1, j).trim();
+    if (/^[a-zA-Z_$][\w$]*$/.test(key)) {
+      out += vars[key] ?? "";
+    } else {
+      const val = evaluate(key, vars);
+      out += val === null ? "" : val;
+    }
+    i = j + 1;
+  }
+  return out;
+}
+
 function interpolate(expr: string, vars: Record<string, string>): string {
   // Brace escapes: \{ and \} print literal braces -- they never start
   // interpolation. Masked out before the pass and restored after, so
@@ -185,16 +227,7 @@ function interpolate(expr: string, vars: Record<string, string>): string {
   const masked = expr
     .replace(/\\\{/g, "\u0001O")
     .replace(/\\\}/g, "\u0001C");
-  const out = masked.replace(/\{([^}]+)\}/g, (_, name) => {
-    const key = name.trim();
-    // Bare identifier: simple lookup (missing -> "").
-    if (/^[a-zA-Z_$][\w$]*$/.test(key)) {
-      return vars[key] ?? "";
-    }
-    // Expression (e.g. `index + 1`, `count > 5`): use the evaluator.
-    const val = evaluate(key, vars);
-    return val === null ? "" : val;
-  });
+  const out = interpolateBraces(masked, vars);
   return out.replace(/\u0001O/g, "{").replace(/\u0001C/g, "}");
 }
 
