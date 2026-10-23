@@ -936,7 +936,33 @@ async function ensureDevClientBundle(rootDir: string, pageSource: string, layout
           const source = readFileSync(twFile, "utf-8");
           // capture this route's stylesheet chunks (tss/css imports + scoped <style>)
           if (typeof beginCssRouteCapture === "function") beginCssRouteCapture(path);
-          const result = compileSync(source, { filePath: twFile, stateVars: resolved.params });
+          let result = compileSync(source, { filePath: twFile, stateVars: resolved.params });
+          // Dev parity: `tw serve` runs the page's `server { }` blocks before
+          // rendering. Dev skipped them, so a throwing block was invisible here
+          // and the page rendered without its server data. Run them, and on
+          // failure show the dev error page -- that is what the overlay is for.
+          try {
+            const _c: any = await import("@tw/compiler");
+            const blocks = _c.collectServerBlocks((result as any).ast);
+            if (blocks.length) {
+              const values = await _c.executeServerBlocks(blocks.filter((b: any) => !b.deferred), { label: twFile });
+              if (values && Object.keys(values).length) {
+                result = compileSync(source, { filePath: twFile, stateVars: { ...resolved.params, ...values } });
+              }
+            }
+          } catch (e: any) {
+            console.log("    -> 500 Error (server block): " + (e?.message ?? e));
+            if (devOpts?.overlay === false) {
+              return new Response("500 - Server Error\n\n" + (e?.message ?? String(e)),
+                { status: 500, headers: { "Content-Type": "text/plain; charset=utf-8" } });
+            }
+            return new Response(devErrorPage({
+              title: "Server Error",
+              message: e?.message ?? String(e),
+              stack: e?.stack,
+              file: twFile,
+            }), { status: 500, headers: { "Content-Type": "text/html; charset=utf-8" } });
+          }
           let html = result.html;
 
           // Apply the FULL layout chain (root first, then section layouts)
