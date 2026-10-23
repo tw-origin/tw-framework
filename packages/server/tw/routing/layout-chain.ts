@@ -103,6 +103,19 @@ export function findRootError(rootNode: RouteNode): RouteFile | undefined {
   return (rootNode.files || []).find(f => f.type === "error");
 }
 
+export function findNearestNotFound(rootNode: RouteNode, pathParts: string[]): RouteFile | undefined {
+  let found = (rootNode.files || []).find((f) => f.type === "not-found");
+  let node: RouteNode | undefined = rootNode;
+  for (const part of pathParts) {
+    const child = (node.children || []).find((c: any) => c.segment === part);
+    if (!child) break;
+    const f = (child.files || []).find((x: any) => x.type === "not-found");
+    if (f) found = f;
+    node = child;
+  }
+  return found;
+}
+
 export function findRootNotFound(rootNode: RouteNode): RouteFile | undefined {
   return rootNode.files.find(f => f.type === "not-found");
 }

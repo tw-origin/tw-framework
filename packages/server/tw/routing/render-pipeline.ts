@@ -37,7 +37,7 @@ import type {
   RenderPipelineOptions,
 } from "@tw/shared";
 import { scanRouteTree, matchRoute } from "./scanner";
-import { resolveLayoutChain, findGlobalError, findRootError, findRootNotFound, collectParallelPages, clearRenderModeCache } from "./layout-chain";
+import { resolveLayoutChain, findGlobalError, findRootError, findRootNotFound, findNearestNotFound, collectParallelPages, clearRenderModeCache } from "./layout-chain";
 import { getSignalHub } from "./signal-stream";
 import { join } from "../../../sdk/tw/helpers";
 import { loadTWMModule } from "../index";
@@ -480,7 +480,7 @@ export class RenderPipeline {
     const match = matchRoute(tree, pathname);
     if (!match) {
       // Try root not-found.twm
-      const rootNotFound = findRootNotFound(tree);
+      const rootNotFound = findNearestNotFound(tree, pathname.split("/").filter(Boolean));
       if (rootNotFound) {
         const compiled = this.compileFile(rootNotFound);
         // not-found.tw compiles to a full document; keep only its body
