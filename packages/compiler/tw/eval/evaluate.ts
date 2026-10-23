@@ -1,7 +1,7 @@
 /** Expression evaluation - binary, unary, comparison, arithmetic. */
 
 import { Sandbox } from "./sandbox";
-import { callBuiltin } from "./builtins";
+import { callBuiltin, isBuiltinName } from "./builtins";
 import { applyFilter } from "./builtins";
 import { interpolate } from "./interpolate";
 
@@ -84,6 +84,15 @@ export function evaluate(expr: string, vars: Record<string, string>, sandbox?: S
     }
   }
 
+  // Real JS semantics for everything the branches below only approximate.
+  // `{n > 3 && name}` used to render "true" instead of the operand,
+  // `{items.map(x => x * 2)}` split on the `>` of the arrow and rendered
+  // "false", and a call in a larger expression printed its own source. Only a
+  // whitelisted shape is evaluated, so arbitrary code never runs; anything else
+  // falls through to the branches below.
+  const dyn = evalWithVars(expr, vars);
+  if (dyn !== null) return dyn;
+
   // Logical OR
   const orParts = splitLogical(expr, "||");
   if (orParts.length > 1) {
@@ -132,14 +141,6 @@ export function evaluate(expr: string, vars: Record<string, string>, sandbox?: S
     }
   }
 
-  // An expression this hand-written evaluator does not model: string
-  // concatenation (`user.first + ' ' + user.last` -- the arithmetic branch
-  // above gave up on it, parseFloat -> NaN), a method call
-  // (`name.toUpperCase()`) or `.length` on a string (the member branch below
-  // answers ""). Evaluated against the page's own state, but only when the
-  // expression is a whitelisted shape, so arbitrary code is never run.
-  const dyn = evalWithVars(expr, vars);
-  if (dyn !== null) return dyn;
 
   // Member / index access: obj.prop, obj.a.b, obj["k"], obj[var], arr[1+1].
   // The old code only handled `obj.prop` and `obj[<digits>]` -- string
@@ -186,7 +187,11 @@ export function evaluate(expr: string, vars: Record<string, string>, sandbox?: S
   // syntax like `{name | uppercase}`) render as empty and left the pipe
   // branches below unreachable dead code.
   const fnMatch = expr.match(/^(\w+)\((.*)\)$/);
-  if (fnMatch) {
+  // Only a known builtin. callBuiltin passes its argument through for an
+  // unknown name, so `{greet('X')}` -- a helper from another module -- emitted
+  // its argument ("X") instead of the call's result. An unknown callee falls
+  // through so the expression stays visible rather than silently wrong.
+  if (fnMatch && isBuiltinName(fnMatch[1])) {
     const fn = fnMatch[1];
     const arg = resolve(fnMatch[2].trim(), vars, sb);
     return callBuiltin(fn, arg, sb);
