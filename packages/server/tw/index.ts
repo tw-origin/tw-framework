@@ -1227,6 +1227,25 @@ export class TWServer {
     const isrLookupPath = pathname.length > 1 ? pathname.replace(/\/+$/, "") : pathname;
     if (this.staticHandler && !(this as any).isrRoutes.has(isrLookupPath)) {
       let staticResponse = await this.staticHandler.serve(pathname, request);
+      // Method gate: a FILE was served, so only the methods a static resource
+      // can have are allowed. This used to answer EVERY method with the page
+      // body and no Allow header (TRACE is the Cross-Site Tracing vector; a
+      // 200 for DELETE/PUT reads as a successful write). Applied only when the
+      // static handler actually found a file -- a POST to a page path is a
+      // route handler's business and must keep working.
+      if (staticResponse.status !== 404) {
+        const reqMethod = request.method.toUpperCase();
+        const allow = "GET, HEAD, OPTIONS";
+        if (reqMethod === "TRACE") {
+          return new Response("Method Not Allowed", { status: 405, headers: { Allow: allow } });
+        }
+        if (reqMethod === "OPTIONS") {
+          return new Response(null, { status: 204, headers: { Allow: allow } });
+        }
+        if (reqMethod !== "GET" && reqMethod !== "HEAD") {
+          return new Response("Method Not Allowed", { status: 405, headers: { Allow: allow } });
+        }
+      }
       // CSP nonces for prebuilt (static) HTML pages too. Read as raw bytes:
       // the static handler may have gzip-encoded the body, and reading it
       // as text() would be lossy. Gunzip, stamp, serve uncompressed.
