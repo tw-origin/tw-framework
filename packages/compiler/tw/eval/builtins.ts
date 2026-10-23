@@ -91,3 +91,78 @@ export function applyFilter(value: string, filter: string, args: string, vars: R
   return callBuiltin(filter, value, sandbox);
 }
 
+
+/**
+ * Names `callBuiltin` actually handles. Its default case passes the argument
+ * through, so calling it with an unknown name (e.g. a page helper that lives in
+ * another module) silently returned that argument as the output.
+ */
+const BUILTIN_NAMES = new Set<string>([
+  "Boolean",
+  "Number",
+  "String",
+  "abs",
+  "base64decode",
+  "base64encode",
+  "bool",
+  "camelCase",
+  "capitalize",
+  "ceil",
+  "cos",
+  "date",
+  "decodeURI",
+  "encodeURI",
+  "endsWith",
+  "exp",
+  "first",
+  "float",
+  "floor",
+  "includes",
+  "indexOf",
+  "int",
+  "join",
+  "json",
+  "kebabCase",
+  "last",
+  "len",
+  "length",
+  "log",
+  "lower",
+  "lowercase",
+  "match",
+  "max",
+  "min",
+  "now",
+  "num",
+  "padEnd",
+  "padStart",
+  "parseFloat",
+  "parseInt",
+  "parseJSON",
+  "pow",
+  "random",
+  "repeat",
+  "replace",
+  "reverse",
+  "round",
+  "sin",
+  "size",
+  "slice",
+  "snakeCase",
+  "split",
+  "sqrt",
+  "startsWith",
+  "str",
+  "stringify",
+  "tan",
+  "test",
+  "time",
+  "title",
+  "trim",
+  "upper",
+  "uppercase",
+]);
+
+export function isBuiltinName(fn: string): boolean {
+  return BUILTIN_NAMES.has(fn);
+}

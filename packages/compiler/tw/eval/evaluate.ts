@@ -1,7 +1,7 @@
 /** Expression evaluation - binary, unary, comparison, arithmetic. */
 
 import { Sandbox } from "./sandbox";
-import { callBuiltin } from "./builtins";
+import { callBuiltin, isBuiltinName } from "./builtins";
 import { applyFilter } from "./builtins";
 import { interpolate } from "./interpolate";
 
@@ -187,7 +187,11 @@ export function evaluate(expr: string, vars: Record<string, string>, sandbox?: S
   // syntax like `{name | uppercase}`) render as empty and left the pipe
   // branches below unreachable dead code.
   const fnMatch = expr.match(/^(\w+)\((.*)\)$/);
-  if (fnMatch) {
+  // Only a known builtin. callBuiltin passes its argument through for an
+  // unknown name, so `{greet('X')}` -- a helper from another module -- emitted
+  // its argument ("X") instead of the call's result. An unknown callee now
+  // falls through so the expression stays visible rather than silently wrong.
+  if (fnMatch && isBuiltinName(fnMatch[1])) {
     const fn = fnMatch[1];
     const arg = resolve(fnMatch[2].trim(), vars, sb);
     return callBuiltin(fn, arg, sb);
