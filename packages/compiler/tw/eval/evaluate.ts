@@ -84,6 +84,16 @@ export function evaluate(expr: string, vars: Record<string, string>, sandbox?: S
     }
   }
 
+  // Real JS semantics for everything the branches below only approximate.
+  // `{n > 3 && name}` used to render "true" instead of the operand, `{items.map(x => x * 2)}`
+  // split on the `>` of the arrow and rendered "false", and a call in a larger
+  // expression printed its own source. Only a whitelisted shape is evaluated
+  // (identifiers, member/index access, literals, operators, calls to a fixed
+  // set of string/array members), so arbitrary code never runs; anything else
+  // still falls through to the branches below.
+  const dyn = evalWithVars(expr, vars);
+  if (dyn !== null) return dyn;
+
   // Logical OR
   const orParts = splitLogical(expr, "||");
   if (orParts.length > 1) {
@@ -131,15 +141,6 @@ export function evaluate(expr: string, vars: Record<string, string>, sandbox?: S
       return arith(left, op, right);
     }
   }
-
-  // An expression this hand-written evaluator does not model: string
-  // concatenation (`user.first + ' ' + user.last` -- the arithmetic branch
-  // above gave up on it, parseFloat -> NaN), a method call
-  // (`name.toUpperCase()`) or `.length` on a string (the member branch below
-  // answers ""). Evaluated against the page's own state, but only when the
-  // expression is a whitelisted shape, so arbitrary code is never run.
-  const dyn = evalWithVars(expr, vars);
-  if (dyn !== null) return dyn;
 
   // Member / index access: obj.prop, obj.a.b, obj["k"], obj[var], arr[1+1].
   // The old code only handled `obj.prop` and `obj[<digits>]` -- string
