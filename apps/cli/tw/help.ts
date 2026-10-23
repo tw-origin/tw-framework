@@ -5,7 +5,11 @@ import { join } from "node:path";
 function cliVersion(): string {
   try {
     const bd = (globalThis as any).__TW_BUNDLE_DIR as string | undefined;
-    const pj = bd ? join(bd, "..", "package.json") : new URL("../../package.json", import.meta.url).pathname;
+    // help.ts lives in apps/cli/tw/, so the CLI manifest is one level up.
+    // "../../package.json" resolved to apps/package.json, which does not exist,
+    // so the catch returned the literal "0.0.0" and --help disagreed with
+    // --version.
+    const pj = bd ? join(bd, "..", "package.json") : new URL("../package.json", import.meta.url).pathname;
     return (JSON.parse(readFileSync(pj, "utf-8")).version as string) ?? "0.0.0";
   } catch {
     return "0.0.0";

@@ -307,9 +307,18 @@ export async function hydrateElementById(
 }
 
 /** Mark an element as eligible for hydration (used by the compiler output). */
-export function markForHydration(element: Element, componentId: string, props: Record<string, unknown>): void {
+export function markForHydration(element: Element, componentId: string, props?: Record<string, unknown>): void {
+  if (!element || typeof componentId !== "string") return;
   element.setAttribute(HYDRATE_ATTR, componentId);
-  element.setAttribute('data-tw-props', JSON.stringify(props));
+  // A cycle in `props` used to throw out of this marker helper. The marker is
+  // what matters; when the props cannot be serialised, mark without them.
+  let serialised: string | null = null;
+  if (props && typeof props === "object") {
+    try { serialised = JSON.stringify(props); } catch { serialised = null; }
+  }
+  if (serialised !== null && serialised !== undefined) {
+    element.setAttribute('data-tw-props', serialised);
+  }
 }
 
 /** Remove the hydration marker (after manual mount, for instance). */
