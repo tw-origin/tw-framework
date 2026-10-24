@@ -97,12 +97,7 @@ export function evaluate(expr: string, vars: Record<string, string>, sandbox?: S
     }
   }
 
-  // Real JS semantics for everything the branches below only approximate.
-  // `{n > 3 && name}` used to render "true" instead of the operand,
-  // `{items.map(x => x * 2)}` split on the `>` of the arrow and rendered
-  // "false", and a call in a larger expression printed its own source. Only a
-  // whitelisted shape is evaluated, so arbitrary code never runs; anything else
-  // falls through to the branches below.
+
   const dyn = evalWithVars(expr, vars);
   if (dyn !== null) return dyn;
 

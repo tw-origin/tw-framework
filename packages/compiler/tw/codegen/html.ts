@@ -1251,6 +1251,17 @@ function generateFor(node: ForNode, ctx: CodegenContext): string {
       } catch { /* ignored */ }
     }
   }
+  // A computed iterable -- `for p in {posts.filter(p => p.published)}` -- arrives
+  // without its braces, so the interpolation above left it as its own source and
+  // the loop rendered an empty list. Evaluate it against the state before giving
+  // up.
+  if (items.length === 0 && !/^\s*\[/.test(iterableStr)) {
+    try {
+      const evaluated = evaluate(String(node.iterable ?? "").replace(/^\{/, "").replace(/\}$/, "").trim(), ctx.stateVars);
+      const parsed = JSON.parse(evaluated);
+      if (Array.isArray(parsed)) items = parsed;
+    } catch { /* not a computed collection -- keep the empty list */ }
+  }
 
   for (let i = 0; i < items.length; i++) {
     const childCtx = { ...ctx };
