@@ -7,6 +7,19 @@ import { interpolate } from "./interpolate";
 
 const defaultSandbox = new Sandbox();
 
+/**
+ * Extra bindings available to interpolations -- the page's own imported
+ * helpers, resolved by the caller (build/serve/dev) and handed to the compiler.
+ * Without this `{greet('Suraj')}` could not call `greet`; the evaluator only saw
+ * the page's state.
+ */
+let extraBindings: Record<string, unknown> = {};
+
+/** Set the bindings for the next compilation. Pass `{}` to clear. */
+export function setEvalBindings(bindings?: Record<string, unknown>): void {
+  extraBindings = bindings ?? {};
+}
+
 export function evaluate(expr: string, vars: Record<string, string>, sandbox?: Sandbox): string {
   if (!expr) return "";
   const sb = sandbox ?? defaultSandbox;
@@ -250,8 +263,15 @@ function evalWithVars(expr: string, vars: Record<string, string>): string | null
   const vals: any[] = [];
   for (const k of Object.keys(vars)) {
     if (!/^[A-Za-z_$][\w$]*$/.test(k)) continue;
+    if (k in extraBindings) continue; // the imported helper wins
     names.push(k);
     try { vals.push(JSON.parse(vars[k])); } catch { vals.push(vars[k]); }
+  }
+  // The page's imported helpers, so a call in an interpolation resolves.
+  for (const k of Object.keys(extraBindings)) {
+    if (!/^[A-Za-z_$][\w$]*$/.test(k)) continue;
+    names.push(k);
+    vals.push(extraBindings[k]);
   }
   try {
     const fn = new Function(...names, `"use strict"; return (${expr});`);

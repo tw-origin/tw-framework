@@ -10,6 +10,7 @@ import type { PageDirective } from "../ast/nodes/directives";
 import type { RenderDirective } from "../ast/nodes/directives";
 import type { TextNode } from "../ast/nodes/types";
 import type { CodegenMetadata } from "./types";
+import { setEvalBindings } from "../eval/evaluate";
 
 /**
  * Compile a page with a layout applied: the layout's `slot { }` receives the
@@ -363,10 +364,14 @@ function escapeAttr(str: string): string {
 }
 
 
-export function generate(program: Program, stateVars?: Record<string, string>, genOpts?: { scopedStyles?: boolean; scopeId?: string; cssPrefix?: string; cssImportPaths?: string[] }): CodegenResult {
+export function generate(program: Program, stateVars?: Record<string, string>, genOpts?: { scopedStyles?: boolean; scopeId?: string; cssPrefix?: string; cssImportPaths?: string[]; imports?: Record<string, unknown> }): CodegenResult {
   const startTime = performance.now();
   const ctx = createContext("ssr");
   if (stateVars) ctx.stateVars = stateVars;
+  // The page's imported helpers: an interpolation may call one
+  // (`{greet('Suraj')}`). They reach the evaluator through setEvalBindings.
+  if (genOpts?.imports) { ctx.imports = genOpts.imports; setEvalBindings(genOpts.imports); }
+  else setEvalBindings({});
   // compiler.scopedStyles: false keeps `.module.tss` classes global.
   if (genOpts && genOpts.scopedStyles === false) ctx.scopedStyles = false;
   if (genOpts?.scopeId) ctx.scopeId = genOpts.scopeId;

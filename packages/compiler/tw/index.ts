@@ -30,12 +30,13 @@ function sourceMapFor(result: any, filePath: string, source: string, opts?: Comp
 }
 
 /** Options the generator needs from compiler.* / css.* (scoping, prefix). */
-function genOpts(opts?: CompileOptions, scopeId?: string): { scopedStyles?: boolean; scopeId?: string; cssPrefix?: string; cssImportPaths?: string[] } {
+function genOpts(opts?: CompileOptions, scopeId?: string): { scopedStyles?: boolean; scopeId?: string; cssPrefix?: string; cssImportPaths?: string[]; imports?: Record<string, unknown> } {
   return {
     scopedStyles: opts?.compiler?.scopedStyles,
     scopeId,
     cssPrefix: opts?.cssPrefix,
     cssImportPaths: opts?.cssImportPaths,
+    imports: opts?.imports,
   };
 }
 
@@ -186,6 +187,8 @@ export interface CompileOptions {
   transforms?: boolean;
   incremental?: boolean;
   stateVars?: Record<string, string>;
+  /** The page's imported helpers, so an interpolation can call one. */
+  imports?: Record<string, unknown>;
   /**
    * Fine-grained compiler.* passes from tw.config.ts. Every field is optional;
    * an unset field keeps the pass at its current behaviour, so a config that

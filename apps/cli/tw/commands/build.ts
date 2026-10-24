@@ -1106,7 +1106,34 @@ export async function buildCommand(): Promise<void> {
         }
       }
       const scopeVars = { ...paramSet, params: paramSet, ...serverVars };
-      const result = _compileSync(source, { filePath: pageFile, stateVars: scopeVars, ...compilePassOpts() } as any);
+      // The page's own imports, so an interpolation can call an imported helper
+      // (`{greet('Suraj')}`). Only relative/@./ specifiers, and only names the
+      // module actually exports -- nothing else is loaded.
+      let pageImports: Record<string, unknown> = {};
+      try {
+        const { twImportTs } = await import("@tw/shared/tw/node-import");
+        const { dirname, resolve: resolvePath } = await import("node:path");
+        const parseFn: any = (_compilerMod as any).parseWithDetails;
+        const parsed: any = parseFn(source, pageFile);
+        const prog = parsed?.program ?? parsed?.ast;
+        for (const d of (prog?.directives ?? [])) {
+          if (d?.type !== "ImportDirective" || !d.source || d.isTypeOnly) continue;
+          const spec = String(d.source);
+          if (!(spec.startsWith("./") || spec.startsWith("../") || spec.startsWith("@./"))) continue;
+          // `@./x` is project-root relative; `./x` is relative to the page.
+          const abs = spec.startsWith("@./")
+            ? resolvePath(rootDir, spec.slice(3))
+            : resolvePath(dirname(pageFile), spec);
+          const mod: any = await twImportTs(abs);
+          if (d.namespaceImport) pageImports[d.namespaceImport] = mod;
+          if (d.defaultImport) pageImports[d.defaultImport] = mod?.default ?? mod;
+          for (const it of d.items ?? []) {
+            const name = String(it).split(/\s+as\s+/).pop()?.trim();
+            if (name && mod && name in mod) pageImports[name] = mod[name];
+          }
+        }
+      } catch (e: any) { if (process.env.TW_DEBUG === "1") console.error("[tw] page imports failed:", e?.message ?? e); }
+      const result = _compileSync(source, { filePath: pageFile, stateVars: scopeVars, imports: pageImports, ...compilePassOpts() } as any);
       {
         const used = new Set<string>();
         collectComponentUsages(result.ast, used);

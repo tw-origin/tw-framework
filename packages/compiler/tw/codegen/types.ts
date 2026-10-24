@@ -12,6 +12,8 @@ export interface CodegenContext {
   inBody: boolean;
   componentStack: string[];
   stateVars: Record<string, string>;
+  /** The page's imported helpers, available to interpolations. */
+  imports?: Record<string, unknown>;
   hasVdom: boolean;
   hasInteractivity: boolean;
   /** Live hydration: wrap {expr} interpolations in data-tw-i spans */
