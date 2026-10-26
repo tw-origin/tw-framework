@@ -52,7 +52,7 @@ export type ErrorCode =
   // Cache (TW090-TW093, docs/cache-tags.md)
   // Silent-garbage guards (TW094-TW096,)
   | "TW090" | "TW091" | "TW092" | "TW093"
-  | "TW094" | "TW095" | "TW096" | "TW097"
+  | "TW094" | "TW095" | "TW096" | "TW097" | "TW098"
   // Server blocks (TW099-TW101)
   | "TW099" | "TW100" | "TW101"
   | "TW102" | "TW103" | "TW104" | "TW105"

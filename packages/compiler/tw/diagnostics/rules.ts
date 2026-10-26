@@ -611,6 +611,16 @@ export function checkUnknownStateVars(program: Program, filePath: string, diags:
     "params", "props", "Math", "Date", "JSON", "String", "Number", "Boolean",
     "Array", "Object", "window", "true", "false", "null", "undefined",
   ]);
+  /** Methods the evaluator can run, so a call to one is not flagged. */
+  const EVALUABLE_METHODS = new Set([
+    "length", "toUpperCase", "toLowerCase", "trim", "trimStart", "trimEnd",
+    "slice", "substring", "substr", "charAt", "at", "includes", "indexOf",
+    "lastIndexOf", "startsWith", "endsWith", "replace", "replaceAll", "split",
+    "join", "concat", "repeat", "padStart", "padEnd", "toString", "toFixed",
+    "map", "filter", "find", "some", "every", "reduce", "sort", "reverse",
+    "stringify", "parse", "keys", "values", "entries", "from", "isArray",
+    "round", "floor", "ceil", "abs", "max", "min", "pow", "sqrt", "random", "now",
+  ]);
   for (const node of texts) {
     const text = String(node.value ?? "");
     if (!text.includes("{")) continue;
@@ -620,6 +630,19 @@ export function checkUnknownStateVars(program: Program, filePath: string, diags:
       diags.push(createDiagnostic("TW096", node.line, node.col, filePath,
         `{${name}}`,
         [`Declare it in the state block, or check the spelling`]));
+    }
+    // An expression that calls something the build cannot resolve renders as
+    // its own source text -- silently wrong output. Warn so it is actionable.
+    for (const m of text.matchAll(/\{([^{}]+)\}/g)) {
+      const expr = m[1].trim();
+      if (/^[A-Za-z_$][\w$]*$/.test(expr)) continue; // a plain identifier
+      for (const c of expr.matchAll(/([A-Za-z_$][\w$]*)\s*\(/g)) {
+        const fn = c[1];
+        if (known.has(fn) || BUILTINS.has(fn) || EVALUABLE_METHODS.has(fn)) continue;
+        diags.push(createDiagnostic("TW098", node.line, node.col, filePath,
+          `{${expr}}`,
+          [`Cannot evaluate this at build time -- it renders as its source. Check the name, or simplify the expression`]));
+      }
     }
   }
 }
