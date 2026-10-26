@@ -14,7 +14,7 @@
 
 <p align="center">
   <a href="https://github.com/tw-origin/tw-framework/actions/workflows/ci.yml"><img src="https://github.com/tw-origin/tw-framework/actions/workflows/ci.yml/badge.svg" alt="CI" /></a>
-  <img src="https://img.shields.io/badge/version-2.0.0-22c55e" alt="version 2.0.0" />
+  <img src="https://img.shields.io/badge/version-2.0.1-22c55e" alt="version 2.0.1" />
   <img src="https://img.shields.io/badge/runtime-Bun%20%7C%20Node-22c55e" alt="Bun and Node runtimes" />
   <img src="https://img.shields.io/badge/language-TypeScript-3178c6" alt="TypeScript" />
   <img src="https://img.shields.io/badge/tests-3889%20passing-22c55e" alt="tests" />
@@ -297,7 +297,7 @@ The first official plugins ship in this repo — **[@tw/plugin-sitemap](packages
 Developers: Aslam Alam · Rohit Kumar · Badal Kumar · TW Mlkraj
 
 TW Framework has been in development for 8–12 months, from the first line of the parser to the
-current 2.0.0 release — compiler, VDOM, styling engine, server and toolchain all built in-house.
+current 2.0.1 release — compiler, VDOM, styling engine, server and toolchain all built in-house.
 
 
 ## Security

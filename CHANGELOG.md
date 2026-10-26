@@ -4,6 +4,47 @@ Notable changes to TW Framework. The format follows
 [Keep a Changelog](https://keepachangelog.com/), and the project uses
 [Semantic Versioning](https://semver.org/).
 
+## [2.0.1]
+
+A patch release: bug fixes only. No new features, no breaking changes, and no
+public API changes -- 2.0.1 is a drop-in replacement for 2.0.0.
+
+### Fixed
+
+- **Compiler -- expressions.** Grouped and nested expressions, string
+  concatenation, method calls, unary operators, `&&` (now yields its operand),
+  and `.length` on a string all evaluate the way the docs describe. A call to a
+  helper the page imports now works; an unknown callee no longer renders its own
+  argument; a `}` inside an expression no longer ends it early.
+- **Compiler -- conditions and loops.** A parenthesised `if` condition takes the
+  right branch, and a loop over a computed collection (`.filter`, `.map`,
+  `.slice`, `.concat`, `.reverse`) renders its items instead of an empty list.
+- **Compiler -- components and props.** A dynamic prop (`prop={expr}`) binds its
+  value; a prop written in the block form reaches the component; two or more
+  classes with an `on:` binding no longer merge into one class name; a nested
+  component no longer trips the circular check; `{page.description}` resolves and
+  the description meta is emitted once.
+- **Compiler -- diagnostics.** An interpolation the build cannot evaluate raises
+  a warning (`TW098`) instead of silently rendering its source text.
+- **Server.** Request-time render modes (`ssr`, `stream`) no longer 404 without a
+  `cache` block; an unmatched path is answered with the nearest `not-found.tw`
+  and the right status code; `error.tw` is rendered when a render fails; a named
+  slot is filled after the layout chain is applied; a static resource answers
+  only the methods that apply to it; `tw dev` runs a page's server blocks and
+  shows the dev error page when one fails.
+- **Runtime.** Store getters and actions follow the documented forms, `subscribe`
+  receives the new value, catch-all routes match multiple segments, derived
+  values propagate in a consistent order, and two helpers no longer throw on
+  edge-case input.
+- **Plugins.** A hook returns the first interception result rather than the last,
+  so one plugin no longer disables another's `onRequest`; a command registered by
+  a plugin is dispatched.
+- **Tooling and docs.** `tw --help` reports the real version; the image, link and
+  head helpers produce the documented output; several documentation corrections.
+- **Security hardening** across token lifetime, upload validation, content-type
+  checks, the crypto helpers and the link helpers. The details are intentionally
+  not enumerated here -- upgrade if you are on 2.0.0.
+
 ## [2.0.0]
 
 ### Added

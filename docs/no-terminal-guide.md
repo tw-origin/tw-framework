@@ -68,7 +68,7 @@ my-app/
     "ship": "tw ship"
   },
   "dependencies": {
-    "tw-framework": "^2.0.0"
+    "tw-framework": "^2.0.1"
   },
   "devDependencies": {
     "typescript": "^5.4.0",

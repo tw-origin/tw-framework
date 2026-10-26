@@ -1,6 +1,6 @@
 {
   "name": "@tw/plugin-sitemap",
-  "version": "2.0.0",
+  "version": "2.0.1",
   "description": "Official TW plugin — serves /sitemap.xml and /robots.txt built from your pages",
   "type": "module",
   "main": "./src/index.ts",

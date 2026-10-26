@@ -1,7 +1,7 @@
 {
   "name": "@tw/compiler",
   "private": true,
-  "version": "2.0.0",
+  "version": "2.0.1",
   "description": "TW Framework compiler \u2014 lexer, parser, AST, codegen, optimizer, transforms, eval, diagnostics, semantic, cache, grammar",
   "type": "module",
   "main": "./tw/index.ts",
