@@ -21,7 +21,7 @@ console.log("\n  TW Framework — npm publish check\n");
 // 1. package.json sanity
 const pkg = JSON.parse(readFileSync(join(cliDir, "package.json"), "utf-8"));
 const problems: string[] = [];
-if (pkg.version !== "2.0.1") problems.push("version should be 2.0.1");
+if (pkg.version !== "2.0.2") problems.push("version should be 2.0.1");
 if (pkg.main !== "./dist/tw.mjs") problems.push("main must point at ./dist/tw.mjs");
 if (pkg.bin?.tw !== "./dist/tw.mjs") problems.push("bin.tw must point at ./dist/tw.mjs");
 if (!pkg.files?.includes("dist")) problems.push("files must include dist");
@@ -49,7 +49,7 @@ console.log("  ✓ CHANGELOG.md present");
 
 // 3. smoke: --version must work with plain node
 const v = spawnSync("node", [join(cliDir, "dist", "tw.mjs"), "--version"], { encoding: "utf-8" });
-if (v.status !== 0 || !String(v.stdout).includes("2.0.1")) {
+if (v.status !== 0 || !String(v.stdout).includes("2.0.2")) {
   console.error("  ✗ node dist/tw.mjs --version failed");
   process.exit(1);
 }

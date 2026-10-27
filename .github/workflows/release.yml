@@ -1,7 +1,7 @@
 name: Release
 
 # Tag push par chalta hai. workflow_dispatch se kisi bhi maujooda tag (jaise
-# v2.0.1) ke liye dobara chalaya ja sakta hai.
+# v2.0.2) ke liye dobara chalaya ja sakta hai.
 
 on:
   push:
@@ -9,9 +9,9 @@ on:
   workflow_dispatch:
     inputs:
       tag:
-        description: "Tag to release (e.g. v2.0.1)"
+        description: "Tag to release (e.g. v2.0.2)"
         required: true
-        default: "v2.0.1"
+        default: "v2.0.2"
 
 permissions:
   contents: write

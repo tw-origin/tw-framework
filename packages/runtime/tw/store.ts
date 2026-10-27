@@ -46,6 +46,15 @@ export class ReactiveValue<T> {
     this.set(updater(this._value));
   }
 
+  /**
+   * Re-notify subscribers without replacing the value. An array or object that
+   * was mutated in place (`this.items.push(x)`) has the same identity, so
+   * `set()` short-circuits and nothing downstream hears about it.
+   */
+  touch(): void {
+    this._notify();
+  }
+
   subscribe(listener: Listener): Unsubscribe {
     this._listeners.add(listener);
     return () => {
@@ -221,9 +230,46 @@ export function defineStore<
     // Mutable state proxy: lets actions mutate state directly via
     // `(state) => { state.count++ }`-style handlers while still routing
     // reads/writes through the reactive values (so subscribers fire).
+    // A deep-ish view that reports in-place mutation back to its reactive
+    // value. Without this, `this.items.push(x)` changed the array but not its
+    // reactive value, so a getter over it (`count: (s) => s.items.length`)
+    // stayed stale -- the documented cart pattern.
+    const MUTATORS = new Set(["push", "pop", "shift", "unshift", "splice", "sort", "reverse", "fill", "copyWithin"]);
+    const tracking = new WeakMap<object, object>();
+    const track = (value: unknown, prop: string): unknown => {
+      if (value === null || typeof value !== "object") return value;
+      const existing = tracking.get(value as object);
+      if (existing) return existing;
+      const wrapped = new Proxy(value as any, {
+        get(t, key, recv) {
+          const v = Reflect.get(t, key, recv);
+          if (typeof v === "function" && MUTATORS.has(String(key))) {
+            return (...args: unknown[]) => {
+              const out = (v as any).apply(t, args);
+              reactiveState[prop]?.touch();
+              return out;
+            };
+          }
+          return v;
+        },
+        set(t, key, v) {
+          const ok = Reflect.set(t, key, v);
+          reactiveState[prop]?.touch();
+          return ok;
+        },
+        deleteProperty(t, key) {
+          const ok = Reflect.deleteProperty(t, key);
+          reactiveState[prop]?.touch();
+          return ok;
+        },
+      });
+      tracking.set(value as object, wrapped);
+      return wrapped;
+    };
+
     const stateProxy = new Proxy({} as S, {
       get(_target, prop: string) {
-        return reactiveState[prop]?.value;
+        return track(reactiveState[prop]?.value, prop);
       },
       set(_target, prop: string, value: unknown) {
         if (reactiveState[prop]) {

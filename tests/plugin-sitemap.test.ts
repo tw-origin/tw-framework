@@ -177,11 +177,13 @@ describe("sitemap plugin: the plugin itself", () => {
     rmSync(dir, { recursive: true, force: true });
   });
 
-  test("no siteUrl means a clear 500, not a broken sitemap", async () => {
+  test("no siteUrl means a clear 503, not a broken sitemap", async () => {
     const dir = site();
     const handler = mount(dir, {});
     const res = await handler({ url: new URL("https://x.com/sitemap.xml") });
-    expect(res.status).toBe(500);
+    // 503: the server is fine, this route is simply not configured. A 500 read
+    // as a server fault.
+    expect(res.status).toBe(503);
     expect(await res.text()).toContain("siteUrl");
     rmSync(dir, { recursive: true, force: true });
   });

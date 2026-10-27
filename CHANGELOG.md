@@ -4,6 +4,42 @@ Notable changes to TW Framework. The format follows
 [Keep a Changelog](https://keepachangelog.com/), and the project uses
 [Semantic Versioning](https://semver.org/).
 
+## [2.0.2]
+
+A patch release: bug fixes only. No new features, no breaking changes, and no
+public API changes -- 2.0.2 is a drop-in replacement for 2.0.1.
+
+### Fixed
+
+- **Runtime -- store getters over array state.** The documented cart pattern
+  (`getters: { count: (state) => state.items.length }` with
+  `add(item) { this.items.push(item) }`) returned a stale count: mutating an
+  array in place keeps the same identity, so nothing downstream was notified.
+  The state proxy now reports in-place mutation (`push`, `pop`, `splice`, `sort`,
+  and so on) back to its reactive value, so a getter over it recomputes.
+- **Runtime -- `VirtualList.getFirstVisibleIndex()`.** It was clamped to the item
+  count rather than the last index, so a `scrollTop` past the content returned
+  `100` for a 100-item list instead of `99`.
+- **Compiler -- the live-list template.** A loop rendered on an interactive page
+  carries its template in an attribute, which is decoded once when the page is
+  parsed and parsed again by the runtime. Only the quotes were escaped, so an
+  expression inside the template (`data-tw-if="it == &quot;b&quot;"`) lost its
+  value at the first quote and evaluated to `it == `. The template now survives
+  that first decode intact.
+- **Compiler -- `TW098`.** The warning fired on a call to an imported helper,
+  which the build does resolve and render correctly. Names from the page's own
+  imports are now treated as evaluable, so only a genuinely unknown callee is
+  flagged.
+- **Plugins -- `@tw/plugin-sitemap`.** An unconfigured `siteUrl` answered
+  `/sitemap.xml` with `500`, which reads as a server fault. It answers `503`
+  ("not configured") now; the message is unchanged.
+
+### Known
+
+- A conditional inside a live list (`for` + `if` on a page that ships a runtime)
+  still shows the wrong branch per item. The template now reaches the runtime
+  intact, but the per-item toggle is not applying; this needs its own pass.
+
 ## [2.0.1]
 
 A patch release: bug fixes only. No new features, no breaking changes, and no

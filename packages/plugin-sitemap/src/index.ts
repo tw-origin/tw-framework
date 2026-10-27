@@ -236,7 +236,8 @@ const plugin: SitemapPlugin = {
 
       if (pathname === "/sitemap.xml") {
         if (!siteUrl) {
-          return new Response("sitemap unavailable: set siteUrl in the plugin options", { status: 500 });
+          // 503: the server is fine, this route is not configured. 500 read as a fault.
+          return new Response("sitemap unavailable: set siteUrl in the plugin options", { status: 503 });
         }
         const pages = collectStaticRoutes(rootDir);
         const apis = opts.includeApi ? collectApiRoutes(rootDir) : [];

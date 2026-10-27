@@ -27,7 +27,7 @@ function ensureTestingShim(rootDir: string): void {
     if (existsSync(marker)) return; // real workspace package or existing shim
     const { mkdirSync, writeFileSync } = _require("node:fs");
     mkdirSync(join(shimPkgDir, "tw"), { recursive: true });
-    writeFileSync(marker, JSON.stringify({ name: "@tw/server", version: "2.0.1", private: true }, null, 2));
+    writeFileSync(marker, JSON.stringify({ name: "@tw/server", version: "2.0.2", private: true }, null, 2));
     // Resolve the testing bundle RELATIVE TO THE RUNNING CLI FILE: bundled
     // installs ship it next to tw.mjs (dist/), source runs reach it two
     // levels up (apps/cli/dist). Works for published AND monorepo setups.

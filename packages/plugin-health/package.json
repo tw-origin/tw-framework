@@ -1,6 +1,6 @@
 {
   "name": "@tw/plugin-health",
-  "version": "2.0.1",
+  "version": "2.0.2",
   "description": "Official TW plugin — health and readiness endpoints for load balancers and orchestrators",
   "type": "module",
   "main": "./src/index.ts",

@@ -144,7 +144,7 @@ async function createPackageJson(dir: string, name: string): Promise<void> {
       ship: "tw ship",
     },
     dependencies: {
-      "tw-framework": "^2.0.1",
+      "tw-framework": "^2.0.2",
     },
     devDependencies: {
       typescript: "^5.4.0",
@@ -237,7 +237,7 @@ dist/
 async function createReadme(dir: string, name: string): Promise<void> {
   const content = `# ${name}
 
-Built with TW Framework 2.0.1.
+Built with TW Framework 2.0.2.
 
 ## Getting Started
 

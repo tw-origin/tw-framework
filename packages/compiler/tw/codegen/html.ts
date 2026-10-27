@@ -1292,7 +1292,14 @@ function generateFor(node: ForNode, ctx: CodegenContext): string {
       tplSource = node.body.map(c => generateNode(c, childCtx)).join("");
     }
     const listExpr = String(node.iterable ?? "").replace(/^\{/, "").replace(/\}$/, "");
-    const tpl = tplSource.replace(/"/g, "&#34;");
+    // The template is carried inside an attribute, so it is decoded once when
+    // the page is parsed and then parsed AGAIN by the runtime
+    // (`holder.innerHTML = tpl`). Escaping only the quotes left the inner
+    // attribute quotes raw after the first decode, so `data-tw-if="it == "b""`
+    // broke at the first quote and the condition became `it == ` -- the
+    // conditional inside a live loop never matched. Escaping `&` first keeps
+    // the existing entities alive through that first decode.
+    const tpl = tplSource.replace(/&/g, "&amp;").replace(/"/g, "&#34;");
     return `<tw-for data-tw-var="${node.varName}"${node.indexName ? ` data-tw-index="${node.indexName}"` : ""} data-tw-list="${listExpr}" data-tw-tpl="${tpl}">${html}</tw-for>`;
   }
 

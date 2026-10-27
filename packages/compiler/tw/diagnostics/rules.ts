@@ -596,6 +596,16 @@ export function checkUnknownStateVars(program: Program, filePath: string, diags:
     if (d && d.type === "ServerBlock" && Array.isArray(d.declaredNames)) {
       for (const n of d.declaredNames) known.add(n);
     }
+    // An imported helper is resolved at build time and its call renders, so
+    // flagging it as "cannot be evaluated" was a false positive.
+    if (d && d.type === "ImportDirective" && !d.isTypeOnly) {
+      if (d.defaultImport) known.add(String(d.defaultImport));
+      if (d.namespaceImport) known.add(String(d.namespaceImport));
+      for (const it of (d.items ?? [])) {
+        const nm = String(it).split(/\s+as\s+/).pop()?.trim();
+        if (nm) known.add(nm);
+      }
+    }
   }
   // One walk collects both the `for` bindings and the text nodes. The old code
   // walked the whole tree twice (once for bindings, once for text).

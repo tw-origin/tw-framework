@@ -115,7 +115,9 @@ export class VirtualList {
   getFirstVisibleIndex(): number {
     // Clamp like getLastVisibleIndex(): a scrollTop past the content returned an
     // index larger than the item count (an inverted range).
-    const last = Math.max(0, (this as any).options?.itemCount ?? 0 - 1);
+    // Parenthesised: `?? 0 - 1` parses as `?? (0 - 1)` = -1, which made this
+    // clamp to the item count instead of the last index.
+    const last = Math.max(0, ((this as any).options?.itemCount ?? 0) - 1);
     return Math.min(Math.max(this.visibleRange.start, 0), last);
   }
   getLastVisibleIndex(): number { return this.visibleRange.end; }
