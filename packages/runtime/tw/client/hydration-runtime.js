@@ -56,9 +56,15 @@
   // --- Conditional blocks -----------------------------------------------------
 
   function refreshIfs(scope) {
+    // A conditional inside a live list belongs to that list: its expression uses
+    // the loop variable, which is bound only while the list renders. Evaluating
+    // it here (variable out of scope) hid the correct branch for every item, so
+    // the whole list showed the else branch.
+    var ownedByLoop = function (el) { return !!(el.closest && el.closest("tw-for")); };
     var ifs = (scope || document).querySelectorAll("[data-tw-if]");
     for (var i = 0; i < ifs.length; i++) {
       var el = ifs[i];
+      if (ownedByLoop(el)) continue;
       var val = evalExpr(el.getAttribute("data-tw-if"));
       var show = !!val && val !== "false" && val !== "0" && val !== "";
       el.style.display = show ? "" : "none";
@@ -66,6 +72,7 @@
     var nots = (scope || document).querySelectorAll("[data-tw-not]");
     for (var j = 0; j < nots.length; j++) {
       var el2 = nots[j];
+      if (ownedByLoop(el2)) continue;
       var val2 = evalExpr(el2.getAttribute("data-tw-not"));
       var hide = !!val2 && val2 !== "false" && val2 !== "0" && val2 !== "";
       el2.style.display = hide ? "none" : "";
@@ -90,12 +97,16 @@
       var ifAttr = el.getAttribute && el.getAttribute("data-tw-if");
       if (ifAttr !== null && ifAttr !== undefined && el.hasAttribute("data-tw-if")) {
         var v1 = evalExpr(ifAttr);
-        el.style.display = (v1 && v1 !== "false" && v1 !== "0" && v1 !== "") ? "" : "none";
+        // `undefined` means the expression could not be evaluated here (a name
+        // out of scope). Forcing "none" then hid a branch the build had already
+        // resolved correctly, so the whole list showed the wrong branch. Leave
+        // the markup alone when there is no answer.
+        if (v1 !== undefined) el.style.display = (v1 && v1 !== "false" && v1 !== "0" && v1 !== "") ? "" : "none";
       }
       var notAttr = el.getAttribute("data-tw-not");
       if (notAttr !== null && notAttr !== undefined && el.hasAttribute("data-tw-not")) {
         var v2 = evalExpr(notAttr);
-        el.style.display = (v2 && v2 !== "false" && v2 !== "0" && v2 !== "") ? "none" : "";
+        if (v2 !== undefined) el.style.display = (v2 && v2 !== "false" && v2 !== "0" && v2 !== "") ? "none" : "";
       }
     }
 
@@ -165,7 +176,14 @@
     try { applyActiveClass(); } catch (e) { /* non-DOM context */ }
     try { scanPrefetch(); } catch (e) { /* non-DOM context */ }
     var spans = document.querySelectorAll("[data-tw-i]");
-    for (var i = 0; i < spans.length; i++) setSpanText(spans[i], spans[i].getAttribute("data-tw-i"));
+    for (var i = 0; i < spans.length; i++) {
+      // A span inside a live list belongs to that list: its expression uses the
+      // loop variable, which is only bound while the list renders. Evaluating it
+      // here (with the variable out of scope) blanked the text the build had
+      // already produced correctly.
+      if (spans[i].closest && spans[i].closest("tw-for")) continue;
+      setSpanText(spans[i], spans[i].getAttribute("data-tw-i"));
+    }
     var inputs = document.querySelectorAll("[data-tw-model]");
     for (var j = 0; j < inputs.length; j++) {
       var key = inputs[j].getAttribute("data-tw-model");

@@ -30,6 +30,11 @@ public API changes -- 2.0.2 is a drop-in replacement for 2.0.1.
   which the build does resolve and render correctly. Names from the page's own
   imports are now treated as evaluable, so only a genuinely unknown callee is
   flagged.
+- **Runtime -- a conditional inside a live list.** The page-wide conditional
+  pass re-evaluated `data-tw-if` / `data-tw-not` inside a live list with the loop
+  variable out of scope, overwriting the per-item result and hiding the right
+  branch for every item. Elements owned by a list are skipped now; the list
+  itself still evaluates them with the variable bound.
 - **Plugins -- `@tw/plugin-sitemap`.** An unconfigured `siteUrl` answered
   `/sitemap.xml` with `500`, which reads as a server fault. It answers `503`
   ("not configured") now; the message is unchanged.
@@ -46,12 +51,6 @@ public API changes -- 2.0.2 is a drop-in replacement for 2.0.1.
   name written directly inside `fetch(...)`, so the ordinary shape
   (`const url = query.u; await fetch(url)`) passed silently. Assignments are now
   followed, so a request-derived value stays request-derived through them.
-
-### Known
-
-- A conditional inside a live list (`for` + `if` on a page that ships a runtime)
-  still shows the wrong branch per item. The template now reaches the runtime
-  intact, but the per-item toggle is not applying; this needs its own pass.
 
 ## [2.0.1]
 
