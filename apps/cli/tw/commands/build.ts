@@ -1426,12 +1426,6 @@ export async function buildCommand(): Promise<void> {
     }
   }
 
-  // -- 3. Copy lib/ directory -----------------------------------------------
-  if (existsSync(libDir)) {
-    copyDir(libDir, join(outDir, "lib"));
-    console.log("  \x1b[32mOK\x1b[0m lib/");
-  }
-
   // -- 4. Copy public/ directory --------------------------------------------
   if (existsSync(publicDir)) {
     copyDir(publicDir, outDir);
@@ -1453,6 +1447,15 @@ export async function buildCommand(): Promise<void> {
       console.log("      Server-only modules (lib/, .twm, @tw/*) cannot be imported from page.tw / layout.tw.");
     }
     process.exit(1);
+  }
+
+  // -- 5bb. Copy lib/ directory ---------------------------------------------
+  // Deliberately after the TW1007 gate: a build rejected for a server-only
+  // import must not leave the server source (and its secrets) in the output
+  // directory for a static host to serve.
+  if (existsSync(libDir)) {
+    copyDir(libDir, join(outDir, "lib"));
+    console.log("  \x1b[32mOK\x1b[0m lib/");
   }
 
   // -- 5c. Client-side npm module chunks ---------------------------------------

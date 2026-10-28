@@ -26,7 +26,7 @@
  */
 
 import { readFileSync, existsSync } from "node:fs";
-import { dirname, resolve, extname, relative } from "node:path";
+import { dirname, resolve, extname, relative, sep } from "node:path";
 import * as ts from "typescript";
 
 export const SERVER_ONLY_MARKER = "@tw/server-only";
@@ -104,7 +104,9 @@ function matchesOnlyPackages(spec: string, only: string[]): boolean {
 }
 
 function isServerOnlyByName(spec: string): boolean {
-  return /\.server\.(ts|js)$/.test(spec);
+  // `lib/secret.server` (no extension, as written in an import) is the same
+  // server-only module as `lib/secret.server.ts`.
+  return /\.server(\.(ts|js|mjs|cjs))?$/.test(spec);
 }
 
 function packageName(spec: string): string {
@@ -152,7 +154,16 @@ export function walkClientGraph(entryFiles: string[], opts: WalkOptions = {}): B
       let layer: string | null = null;
 
       if (isServerOnlyByName(spec)) layer = "name";
-      else if (isLocal(spec)) layer = null; // walk it
+      else if (isLocal(spec)) {
+        // `../../lib/db` is the documented way to reach a server module, so a
+        // relative path into lib/ must be rejected too -- checking only the
+        // `lib/`-prefixed form let the documented import through.
+        const resolvedLocal = resolveLocal(spec, dirname(file));
+        const libRoot = opts.rootDir ? resolve(opts.rootDir, "lib") : null;
+        if (resolvedLocal && libRoot && (resolvedLocal === libRoot || resolvedLocal.startsWith(libRoot + sep))) {
+          layer = "lib";
+        }
+      }
       else if (spec === SERVER_ONLY_MARKER) layer = "L4";
       else if (spec.startsWith("node:") || DENY_NODE_BUILTINS.has(spec)) layer = "L1";
       else if (matchesOnlyPackages(spec, only)) layer = "L3";

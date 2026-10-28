@@ -178,5 +178,29 @@ export function lintSsrf(body: string): string[] {
   while ((m = re.exec(body))) out.push("fetch(<dynamic url>)");
   const concat = /fetch\s*\(\s*[^,)]*\b(params|query|headers|cookies)\b[^,)]*\+/g;
   while ((m = concat.exec(body))) out.push("fetch(<concatenated url>)");
+
+  // `const url = query.u; await fetch(url)` is how the value is usually
+  // written (used twice, or the line is long), and the two patterns above only
+  // see the name inside the fetch call. Track simple assignments to a fixpoint
+  // so a request-derived name stays request-derived through them.
+  const TAINTED_ROOT = /\b(params|query|headers|cookies)\b/;
+  const tainted = new Set<string>();
+  for (let pass = 0; pass < 5; pass++) {
+    let grew = false;
+    const assign = /(?:const|let|var)\s+([A-Za-z_$][\w$]*)\s*=\s*([^;\n]+)/g;
+    let a;
+    while ((a = assign.exec(body))) {
+      const [, name, rhs] = a;
+      if (tainted.has(name)) continue;
+      const fromRoot = TAINTED_ROOT.test(rhs);
+      const fromTainted = [...tainted].some((t) => new RegExp("\\b" + t + "\\b").test(rhs));
+      if (fromRoot || fromTainted) { tainted.add(name); grew = true; }
+    }
+    if (!grew) break;
+  }
+  for (const name of tainted) {
+    const use = new RegExp("fetch\\s*\\(\\s*[^,)]*\\b" + name + "\\b[^,)]*[,)]", "g");
+    if (use.test(body)) out.push("fetch(<request-derived url>)");
+  }
   return out;
 }

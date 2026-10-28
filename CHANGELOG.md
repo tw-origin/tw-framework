@@ -34,6 +34,19 @@ public API changes -- 2.0.2 is a drop-in replacement for 2.0.1.
   `/sitemap.xml` with `500`, which reads as a server fault. It answers `503`
   ("not configured") now; the message is unchanged.
 
+- **Build — the server-only boundary.** Importing a server module into a page the
+  documented way (`import { query } from "../../lib/db"`) was never rejected: the
+  walker only recognised the `lib/`-prefixed and `.server.ts` forms, so a
+  relative path into `lib/` was treated as an ordinary local module. Such an
+  import now fails the build with `TW1007`, and a `.server` module is recognised
+  with or without its extension. `lib/` is also copied into the output directory
+  only after that check passes, so a rejected build no longer leaves the server
+  source there.
+- **Diagnostics — the SSRF lint (`TW117`).** It only matched a request-derived
+  name written directly inside `fetch(...)`, so the ordinary shape
+  (`const url = query.u; await fetch(url)`) passed silently. Assignments are now
+  followed, so a request-derived value stays request-derived through them.
+
 ### Known
 
 - A conditional inside a live list (`for` + `if` on a page that ships a runtime)

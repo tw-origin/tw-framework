@@ -43,6 +43,20 @@ treated as evaluable, so only a genuinely unknown callee is flagged.
 **`@tw/plugin-sitemap`.** An unconfigured `siteUrl` answered `/sitemap.xml` with
 `500`, which reads as a server fault. It answers `503` now.
 
+**The server-only boundary.** Importing a server module into a page the
+documented way — `import { query } from "../../lib/db"` — was not rejected. The
+check only recognised the `lib/`-prefixed and `.server.ts` spellings, so a
+relative path into `lib/` was treated as an ordinary local module: the build
+succeeded and the value rendered into the page. Such an import now fails the
+build with `TW1007`, and a `.server` module is recognised with or without its
+extension. `lib/` is also copied into the output directory only after that check
+passes, so a rejected build leaves no server source behind.
+
+**The SSRF lint (`TW117`).** It only matched a request-derived name written
+directly inside `fetch(...)`, so the ordinary shape — `const url = query.u;
+await fetch(url)` — passed silently. Assignments are now followed, so a
+request-derived value stays request-derived through them.
+
 ## Known issue
 
 A conditional inside a live list (`for` + `if` on a page that ships a runtime)
