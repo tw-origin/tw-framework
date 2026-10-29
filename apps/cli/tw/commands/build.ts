@@ -845,6 +845,34 @@ export async function buildCommand(): Promise<void> {
       console.log("      index.tw wins this route -- delete one of them");
     }
   }
+  // Two route files claiming the same URL are a genuine conflict, not a
+  // preference: one of them is dead and the build used to say nothing.
+  //   - page.tw and page.twm in one folder (the .twm handler never runs)
+  //   - [id] and [slug] beside each other (identical URL shape, one wins)
+  {
+    const shapes = new Map<string, string>();
+    for (const pf of pageFiles) {
+      const dir = dirname(pf);
+      if (existsSync(join(dir, "page.twm"))) {
+        console.log("  \x1b[33m!\x1b[0m " + dir.replace(homeDir, "").replace(/^\//, "") + "/ has BOTH page.tw and page.twm");
+        console.log("      the .twm handler never runs -- delete one of them");
+      }
+      const rel = pf.replace(homeDir, "").replace(/^\//, "");
+      const segs = rel.split("/").slice(0, -1).filter((seg) => !/^\(.*\)$/.test(seg));
+      const parent = segs.slice(0, -1).join("/");
+      const shape = segs.map((seg) => (seg.startsWith("[") ? "[*]" : seg)).join("/");
+      if (!segs.length) continue;
+      const key = parent + "\u0000" + shape;
+      const prev = shapes.get(key);
+      if (prev && prev !== dir) {
+        console.log("  \x1b[31m\u2717\x1b[0m two dynamic routes match the same URL: " + prev.replace(homeDir, "") + " and " + dir.replace(homeDir, ""));
+        console.log("      rename one of the params -- only one of these pages can ever render");
+        errorCount++;
+      } else if (!prev) {
+        shapes.set(key, dir);
+      }
+    }
+  }
   begin("compile", pageFiles.length);
   // Plugins see the discovered routes before any compilation happens.
   await runBuildHook("pages:discover", { pages: pageFiles, rootDir });
@@ -941,6 +969,23 @@ export async function buildCommand(): Promise<void> {
     //   ppr                -> prebuilt shell + data-tw-ppr holes the client
     //                         refetches per request through /_tw/ppr
     const renderMode = extractRenderMode(readFileSync(pageFile, "utf8"));
+    // Conflicts the author should hear about, for every render mode: a state name
+    // that is also a route param (the param silently wins and the state value is
+    // lost), and the same key declared by two state { } blocks (the first wins).
+    try {
+      const { parseWithDetails: _pd, checkDeclarationConflicts } = _compilerMod as any;
+      const _prog = _pd(readFileSync(pageFile, "utf-8"), { filePath: pageFile, cache: false }).program;
+      // Route param names come from the path segments, not from paramSets: a
+      // dynamic route without params.twm has no enumerated sets.
+      const _paramNames = routePath
+        .split("/")
+        .filter((seg) => seg.startsWith("["))
+        .map((seg) => seg.replace(/^\[+/, "").replace(/\]+$/, "").replace(/^\.\.\./, ""));
+      for (const c of checkDeclarationConflicts(_prog, _paramNames)) {
+        console.error("  \x1b[33m!\x1b[0m " + pageFile.replace(rootDir + "/", "") + ":" + c.line + "  " + c.code + "  " + c.message);
+        errorCount++;
+      }
+    } catch { /* declaration checks are best-effort */ }
     // ISR manifest: record `revalidate N` windows (docs/isr.md) so serve can
     // route these through the render pipeline instead of frozen static HTML.
     {

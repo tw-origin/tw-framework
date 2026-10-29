@@ -79,6 +79,47 @@ export function serverStateCollisions(program: Program): { name: string; line: n
   return out;
 }
 
+/**
+ * Conflicts the author should hear about, in a page's own declarations:
+ *  - a `state { }` name that is also a route param (the param silently wins,
+ *    so the state initialiser is dead);
+ *  - the same key declared by two `state { }` blocks (the first wins).
+ * Both were silent: the build succeeded and one of the two values was lost.
+ */
+export function checkDeclarationConflicts(
+  program: Program,
+  paramNames: Iterable<string> = [],
+): { code: string; message: string; line: number; col: number }[] {
+  const out: { code: string; message: string; line: number; col: number }[] = [];
+  const params = new Set(paramNames);
+  const seen = new Set<string>();
+  for (const d of (program.directives as any[]) ?? []) {
+    if (d.type !== "StateDirective") continue;
+    for (const decl of d.declarations ?? []) {
+      const name = String(decl.name ?? "");
+      if (!name) continue;
+      if (params.has(name)) {
+        out.push({
+          code: "TW102",
+          message: `state declares '${name}', which collides with the route param '${name}' -- the param overwrites the state value`,
+          line: (decl as any).line ?? (d as any).line ?? 1,
+          col: (decl as any).col ?? (d as any).col ?? 1,
+        });
+      }
+      if (seen.has(name)) {
+        out.push({
+          code: "TW121",
+          message: `'${name}' is declared by more than one state { } block -- the earlier declaration wins and this one is dead`,
+          line: (decl as any).line ?? (d as any).line ?? 1,
+          col: (decl as any).col ?? (d as any).col ?? 1,
+        });
+      }
+      seen.add(name);
+    }
+  }
+  return out;
+}
+
 /** Server-declared names that clash with a route param name. */
 export function serverRouteParamCollisions(blocks: ServerBlock[], paramNames: Iterable<string>): { name: string; line: number; col: number }[] {
   const params = new Set(paramNames);
