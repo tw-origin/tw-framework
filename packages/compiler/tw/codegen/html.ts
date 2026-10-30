@@ -880,6 +880,14 @@ function generateElement(el: ElementNode, ctx: CodegenContext): string {
 
 function renderAttrs(el: ElementNode, ctx: CodegenContext): string {
   const parts: string[] = [];
+  // Dot-syntax classes and a `class` attribute can both be present
+  // (`div.a.b class "c"`); they used to be emitted as two class attributes,
+  // which is invalid HTML and loses one of them. Merge into one, in order.
+  const classAttrs = el.attrs.filter((a) => a.name === "class" && !a.isInterpolated && typeof a.value === "string");
+  if (classAttrs.length > 1) {
+    const merged = classAttrs.map((a) => String(a.value).trim()).filter(Boolean).join(" ");
+    el = { ...el, attrs: el.attrs.filter((a) => a.name !== "class").concat([{ ...classAttrs[0], value: merged }]) };
+  }
   for (let attr of el.attrs) {
     // Scoped styles (docs/scoped-styles.md): a `class` written in markup is
     // rewritten to the hashed module class when a `.module.tss` import

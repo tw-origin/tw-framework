@@ -718,3 +718,21 @@ export function checkDeprecatedImports(program: Program, filePath: string, diags
     }
   }
 }
+
+/** Two default `slot { }` in one component: a caller's default content has no
+ *  defined destination, so both are emitted empty. */
+export function checkDuplicateDefaultSlots(program: Program, filePath: string, diags: Diagnostic[]): void {
+  let count = 0;
+  let first: any = null;
+  forEachNode(program, (node: any) => {
+    if (!node || node.type !== "Slot") return;
+    const name = String(node.name ?? "default");
+    if (name !== "default") return;
+    count++;
+    if (!first) first = node;
+  });
+  if (count > 1 && first) {
+    diags.push(createDiagnostic("TW122", first.line ?? 1, first.col ?? 1, filePath, `${count} default slots`,
+      ["Keep one default slot -- a caller's default content has no defined destination with two"]));
+  }
+}

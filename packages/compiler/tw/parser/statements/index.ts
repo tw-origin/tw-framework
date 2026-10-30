@@ -411,7 +411,7 @@ function parseTWSelector(
           if (after && after.type === "COLON") break;
         }
         if (
-          ct.type === "IDENT" && !prevWasMinus && classVal.length > 0 &&
+          (ct.type === "IDENT" || ct.type === "KEYWORD") && !prevWasMinus && classVal.length > 0 &&
           (CLASS_BOUNDARY_BOOLEAN_ATTRS.has(ct.value) || inlineAttrStartsAt(cursor))
         ) {
           break;
@@ -453,7 +453,7 @@ function parseTWSelector(
             if (after && after.type === "COLON") break;
           }
           if (
-            ct.type === "IDENT" && !nextPrevMinus && nextClass.length > 0 &&
+            (ct.type === "IDENT" || ct.type === "KEYWORD") && !nextPrevMinus && nextClass.length > 0 &&
             (CLASS_BOUNDARY_BOOLEAN_ATTRS.has(ct.value) || inlineAttrStartsAt(cursor))
           ) {
             break;

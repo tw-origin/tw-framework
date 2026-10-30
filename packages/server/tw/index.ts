@@ -238,6 +238,19 @@ export class TWServer {
           cfgIn.redirects = normalizedRedirects.filter(Boolean);
         }
       }
+      // Two redirects with the same `from`: the first wins and the second is
+      // dead code. Nothing said so.
+      if (Array.isArray(cfgIn.redirects)) {
+        const seenFrom = new Set<string>();
+        for (const r of cfgIn.redirects as any[]) {
+          const from = r && typeof r.from === "string" ? r.from : null;
+          if (!from) continue;
+          if (seenFrom.has(from)) {
+            console.warn("[tw] redirects: '" + from + "' is listed more than once -- the first entry wins, the later one never runs");
+          }
+          seenFrom.add(from);
+        }
+      }
       if (cfgIn.headers && !Array.isArray(cfgIn.headers)) {
         const entries = Object.entries(cfgIn.headers) as [string, any][];
         cfgIn.headers = entries.map(([source, headers]) => ({ source, headers }));
