@@ -61,6 +61,7 @@ export type ErrorCode =
   | "TW110"
   | "TW111" | "TW112"
   | "TW113" | "TW114" | "TW115" | "TW116" | "TW117" | "TW118" | "TW119"
+  | "TW121" | "TW122"
   // Declared for codes emitted outside the rule engine (see codes.ts)
   | "TW303" | "TW000";
 

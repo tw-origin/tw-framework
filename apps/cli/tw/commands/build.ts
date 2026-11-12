@@ -1054,8 +1054,11 @@ export async function buildCommand(): Promise<void> {
                 mode: renderMode, paramNames: Object.keys(paramSets[0] ?? {}), hasEnumeratedParams: hasExplicitParams,
                 cachedPage: /cache\s*\{/.test(src), hasVary: extractVary(src).length > 0, referenced: collectReferencedNames(src),
               });
-              for (const p of problems) console.error("  \x1b[31m\u2717\x1b[0m " + pageFile.replace(rootDir + "/", "") + ":" + p.line + "  " + p.code + "  " + p.message);
-              if (problems.length) errorCount++;
+              for (const p of problems) {
+                const warn = (p as any).severity === "warning";
+                console.error("  " + (warn ? "\x1b[33m!\x1b[0m" : "\x1b[31m\u2717\x1b[0m") + " " + pageFile.replace(rootDir + "/", "") + ":" + p.line + "  " + p.code + "  " + p.message);
+                if (!warn) errorCount++;
+              }
             }
           } catch { /* server-block checks are best-effort here */ }
         }

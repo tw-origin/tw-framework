@@ -1,3 +1,4 @@
+import { ERROR_CODES } from "../diagnostics/codes";
 /**
  * Server-block toolkit  — pure helpers the build and serve paths use:
  * value encoding, source stripping, name-collision checks, static-page rules
@@ -468,7 +469,8 @@ export interface ServerBlockCheckOptions {
 }
 
 export interface ServerBlockProblem {
-  severity: "error";
+  /** `warning` for the lints (TW116/TW117); everything else is `error`. */
+  severity: "error" | "warning";
   code: string;
   message: string;
   line: number;
@@ -481,8 +483,14 @@ export function checkServerBlocks(program: Program, opts: ServerBlockCheckOption
   const blocks = collectServerBlocks(program);
   if (!blocks.length) return [];
   const out: ServerBlockProblem[] = [];
+  // Severity comes from the code table: TW116 (SQL lint) and TW117 (SSRF lint)
+  // are warnings, and counting them as errors failed the build on code that is
+  // only worth a look.
   const push = (code: string, message: string, line: number, col: number) =>
-    out.push({ severity: "error", code, message, line, col, category: "semantic" });
+    out.push({
+      severity: (ERROR_CODES as any)[code]?.severity === "warning" ? "warning" : "error",
+      code, message, line, col, category: "semantic",
+    });
 
   if (opts.isLayout) {
     for (const b of blocks) push("TW105", "server blocks in layouts are not supported yet", b.line, b.col);
