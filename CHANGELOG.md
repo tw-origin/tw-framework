@@ -4,6 +4,27 @@ Notable changes to TW Framework. The format follows
 [Keep a Changelog](https://keepachangelog.com/), and the project uses
 [Semantic Versioning](https://semver.org/).
 
+## [2.0.3]
+
+A patch release: bug fixes only, no breaking changes, no public API changes.
+
+### Fixed
+
+- **Runtime -- hydration no longer discards server-rendered values.** A value
+  that comes from a page's `server { }` block is never serialised into
+  `__tw_state`, so the client runtime saw it as missing: a `for` loop over such a
+  value was emptied, an interpolation reading one was blanked, and an `if`
+  testing one was hidden -- after the server had already rendered them correctly.
+  An expression that evaluates to `undefined` is now treated as "not client
+  state" and the server's markup is left alone. Real client state stays reactive.
+- **`tw dev` -- `strategies.hydration.mode: "none"` is honoured.** The dev server
+  injected the hydration runtime unconditionally, so there was no way to look at
+  a page without hydration while building it.
+- **CLI -- the `tw-framework` bin alias.** The package declared only a `tw` bin,
+  so `bunx tw-framework dev` and a `"build": "tw-framework build"` script both
+  failed with "not found" even though the README documents that form. Both names
+  resolve to the same entry point now.
+
 ## [2.0.2]
 
 A patch release: bug fixes only. No new features, no breaking changes, and no

@@ -66,6 +66,8 @@
       var el = ifs[i];
       if (ownedByLoop(el)) continue;
       var val = evalExpr(el.getAttribute("data-tw-if"));
+      // Not client state (a server { } value): keep the branch the server chose.
+      if (val === undefined) continue;
       var show = !!val && val !== "false" && val !== "0" && val !== "";
       el.style.display = show ? "" : "none";
     }
@@ -74,6 +76,7 @@
       var el2 = nots[j];
       if (ownedByLoop(el2)) continue;
       var val2 = evalExpr(el2.getAttribute("data-tw-not"));
+      if (val2 === undefined) continue;
       var hide = !!val2 && val2 !== "false" && val2 !== "0" && val2 !== "";
       el2.style.display = hide ? "none" : "";
     }
@@ -88,7 +91,10 @@
     var holder = document.createElement("tw-render");
     holder.innerHTML = tpl;
     var spans = holder.querySelectorAll("[data-tw-i]");
-    for (var i = 0; i < spans.length; i++) setSpanText(spans[i], spans[i].getAttribute("data-tw-i"));
+    for (var i = 0; i < spans.length; i++) {
+      if (evalExpr(spans[i].getAttribute("data-tw-i")) === undefined) continue;
+      setSpanText(spans[i], spans[i].getAttribute("data-tw-i"));
+    }
 
     // Nested if/not inside the loop body (evaluated while loopVar is bound)
     var all = holder.querySelectorAll("*");
@@ -139,6 +145,10 @@
     for (var i = 0; i < loops.length; i++) {
       var el = loops[i];
       var arr = evalExpr(el.getAttribute("data-tw-list"));
+      // `undefined` means the name is not client state -- a value a server { }
+      // block produced, which is never serialised into __tw_state. Treating it
+      // as [] wiped the items the server had already rendered.
+      if (arr === undefined) continue;
       var v = el.getAttribute("data-tw-var");
       var tpl = el.getAttribute("data-tw-tpl") || "";
       if (!Array.isArray(arr)) arr = [];
@@ -182,6 +192,9 @@
       // here (with the variable out of scope) blanked the text the build had
       // already produced correctly.
       if (spans[i].closest && spans[i].closest("tw-for")) continue;
+      // Same rule: an expression that is not client state leaves the
+      // server-rendered text alone instead of blanking it.
+      if (evalExpr(spans[i].getAttribute("data-tw-i")) === undefined) continue;
       setSpanText(spans[i], spans[i].getAttribute("data-tw-i"));
     }
     var inputs = document.querySelectorAll("[data-tw-model]");

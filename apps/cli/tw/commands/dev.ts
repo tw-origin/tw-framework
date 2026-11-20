@@ -611,6 +611,7 @@ async function ensureDevClientBundle(rootDir: string, pageSource: string, layout
   // config `source` / `router.apiDir` / `strategies.signals.transport`, read so
   // dev behaves like `tw build` and `tw serve`.
   let devApiDir = "api";
+  let devHydrationOff = false;
   let devSignalTransport: "sse" | "ws" | "long-poll" = "sse";
   try {
     const cfgFile = join(rootDir, "tw.config.ts");
@@ -644,6 +645,10 @@ async function ensureDevClientBundle(rootDir: string, pageSource: string, layout
           ? cfg.headers
           : Object.entries(cfg.headers).map(([source, headers]: any) => ({ source, headers }));
       }
+      // `strategies.hydration.mode: "none"` was ignored in dev: the runtime was
+      // injected unconditionally, so there was no way to see a page without
+      // hydration while building it.
+      if (cfg?.strategies?.hydration?.mode === "none") devHydrationOff = true;
       const st = cfg?.strategies?.signals?.transport;
       if (st === "sse" || st === "ws" || st === "long-poll") devSignalTransport = st;
       if (cfg?.signalStream) devSigCfg = cfg.signalStream;
@@ -1026,7 +1031,8 @@ async function ensureDevClientBundle(rootDir: string, pageSource: string, layout
             devClientTag += `<script>(function(){try{var es=new EventSource("//${hHost}:${hPort}/__tw_hmr");es.onmessage=function(){${soft}};}catch(e){}})();</script>\n`;
           }
           if (/<\/body>/.test(html)) {
-            html = html.replace("</body>", devClientTag + (devOpts?.overlay === false ? "" : CLIENT_OVERLAY_SCRIPT) + "  <script src=\"/__tw_runtime.js\"></script>\n</body>");
+            const runtimeTag = devHydrationOff ? "" : "  <script src=\"/__tw_runtime.js\"></script>\n";
+            html = html.replace("</body>", devClientTag + (devOpts?.overlay === false ? "" : CLIENT_OVERLAY_SCRIPT) + runtimeTag + "</body>");
           }
 
           // Head.tw: home/head.tw is GLOBAL head content for every page;
