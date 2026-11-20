@@ -93,6 +93,19 @@ export function generateWithLayoutChain(
 ): string {
   const seedCtx = (ctx: any) => {
     if (stateVars) ctx.stateVars = { ...stateVars };
+    // A layout is a normal .tw file, so its own `state { }` has to be in scope
+    // when its markup is generated. Only the page's was seeded, so a layout
+    // holding state for its chrome (drawer open, active tab) rendered empty.
+    // Layouts are the outer scope: seeded first, so the page wins a clash.
+    for (const lp of layoutPrograms ?? []) {
+      for (const dir of lp.directives || []) {
+        if (dir.type === "StateDirective") {
+          for (const decl of (dir as any).declarations || []) {
+            ctx.stateVars[decl.name] = stateLiteralForRender(decl.value);
+          }
+        }
+      }
+    }
     for (const dir of pageProgram.directives || []) {
       if (dir.type === "StateDirective") {
         for (const decl of (dir as any).declarations || []) {

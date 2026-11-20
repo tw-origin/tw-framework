@@ -22,6 +22,14 @@ const HTML_ELEMENTS = new Set([
   "canvas", "svg", "math", "pre", "code", "kbd", "samp", "var", "blockquote", "q",
   "cite", "abbr", "dfn", "time", "mark", "ruby", "rt", "rp", "bdi", "bdo", "wbr",
   "datalist", "keygen", "frame", "frameset", "noframes", "area", "map", "marquee",
+  // Inline text tags. `b` and `i` were missing, so breadcrumbs and emphasis
+  // collected a TW003 per tag on markup that renders perfectly well.
+  "b", "i", "em", "strong", "small", "u", "s", "ins", "del", "sub", "sup",
+  "nobr", "big", "tt",
+  // SVG children -- the same warning fired on inline icons.
+  "circle", "path", "rect", "line", "polyline", "polygon", "g", "defs", "use",
+  "text", "ellipse", "tspan", "clippath", "lineargradient", "radialgradient",
+  "stop", "mask", "pattern", "symbol", "marker", "filter", "foreignobject",
 ]);
 
 const HTML_ATTRIBUTES = new Set([
