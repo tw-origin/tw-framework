@@ -760,7 +760,14 @@ async function ensureDevClientBundle(rootDir: string, pageSource: string, layout
       if (existsSync(publicDir)) {
         const publicFile = join(publicDir, path);
         const pubFile = Bun.file(publicFile);
-        if (await pubFile.exists()) return new Response(pubFile);
+        if (await pubFile.exists()) {
+          // `new Response(Bun.file(...))` does not copy the file's type, so every
+          // .svg/.css arrived with no Content-Type and the browser showed a
+          // broken image.
+          return new Response(pubFile, {
+            headers: { "Content-Type": pubFile.type || "application/octet-stream" },
+          });
+        }
       }
 
       if (path === "/placeholder.png" || path.endsWith(".png")) {
@@ -941,7 +948,10 @@ async function ensureDevClientBundle(rootDir: string, pageSource: string, layout
           const source = readFileSync(twFile, "utf-8");
           // capture this route's stylesheet chunks (tss/css imports + scoped <style>)
           if (typeof beginCssRouteCapture === "function") beginCssRouteCapture(path);
-          let result = compileSync(source, { filePath: twFile, stateVars: resolved.params });
+          // `experimental.serverBlocks` is what makes the parser emit ServerBlock
+          // directives at all -- without it collectServerBlocks() below always
+          // came back empty and the block never ran in dev.
+          let result = compileSync(source, { filePath: twFile, stateVars: resolved.params, experimental: { serverBlocks: true } } as any);
           // Dev parity: `tw serve` runs the page's `server { }` blocks before
           // rendering. Dev skipped them, so a throwing block was invisible here
           // and the page rendered without its server data. Run them, and on
@@ -952,7 +962,16 @@ async function ensureDevClientBundle(rootDir: string, pageSource: string, layout
             if (blocks.length) {
               const values = await _c.executeServerBlocks(blocks.filter((b: any) => !b.deferred), { label: twFile });
               if (values && Object.keys(values).length) {
-                result = compileSync(source, { filePath: twFile, stateVars: { ...resolved.params, ...values } });
+                // Same merge as the serve path (render-pipeline.ts): params is
+                // also passed as a key, and the values go through
+                // encodeServerValues -- codegen expects the encoded form, so raw
+                // objects produced an empty loop even once the block had run.
+                const merged = {
+                  ...(resolved.params ?? {}),
+                  params: resolved.params ?? {},
+                  ..._c.encodeServerValues(values),
+                };
+                result = compileSync(source, { filePath: twFile, stateVars: merged, experimental: { serverBlocks: true } } as any);
               }
             }
           } catch (e: any) {
