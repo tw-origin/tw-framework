@@ -872,6 +872,22 @@ function parseElement(
 
   const tag = tagToken.value;
   
+  // Raw HTML is not part of the .tw language. It used to parse silently and
+  // then have its text mangled by the class shorthand -- `one two.` became
+  // `<two>`, `mid. sentence` became `<mid class="sentence">` -- losing prose
+  // with no diagnostic. `<if>`/`<for>`/`<while>`/`<switch>` are handled below
+  // and components arrive as COMPONENT_NAME, so anything left here was written
+  // as HTML.
+  if (tag && /^[A-Za-z][A-Za-z0-9-]*$/.test(tag)) {
+    errors.add(new CompilerError(
+      "raw HTML is not supported in .tw -- write it in TW syntax: " + tag + " { ... }",
+      tagToken.pos.line,
+      tagToken.pos.col,
+      "TW123",
+      "error",
+    ));
+  }
+
   // Control flow tags: <if>, <for>, <while>, <switch> → control flow nodes
   const controlFlowTags: Record<string, string> = {
     "if": "if", "for": "for", "while": "while", "switch": "switch",

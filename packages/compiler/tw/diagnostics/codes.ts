@@ -165,6 +165,7 @@ export const ERROR_CODES: Record<ErrorCode, { message: string; severity: Diagnos
   TW119: { message: "A deferred server block cannot be used on a cached page -- cache { } serves one HTML to every request", severity: "error", category: "semantic" },
   TW121: { message: "The same name is declared by more than one state { } block (the earlier one wins)", severity: "warning", category: "semantic" },
   TW122: { message: "More than one default slot in the same component -- a caller's default content has no defined destination", severity: "warning", category: "semantic" },
+  TW123: { message: "Raw HTML is not supported in .tw -- write the element in TW syntax", severity: "error", category: "syntax" },
   // Codes thrown outside the rule engine. TW303 comes from the stylesheet
   // parser (codegen/tss.ts); TW000 is the generic fallback used when an error
   // carries no code of its own.
