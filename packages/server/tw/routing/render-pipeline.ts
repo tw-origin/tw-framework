@@ -72,6 +72,34 @@ function getCacheProfiles(rootDir: string): Record<string, any> {
 }
 
 export class RenderPipeline {
+  /**
+   * A dynamic route with a sibling `params.twm` is an enumerated route: the
+   * static build only writes the generated slugs, so a static host 404s an
+   * unknown one. The server matched `[slug]` for anything and rendered the
+   * page's fallback branch with status 200, so search engines indexed those as
+   * real pages. Return true when the requested params are not in `generate()`.
+   */
+  private async isUnenumeratedParam(pageFile: string, params: Record<string, string>): Promise<boolean> {
+    if (!/\[[^\]]+\]/.test(pageFile)) return false;
+    const paramsTwm = dirname(pageFile) + "/params.twm";
+    if (!existsSync(paramsTwm)) return false;
+    try {
+      const { loadTWMModule } = await import("./twm-loader");
+      const pmod: any = await loadTWMModule(paramsTwm, this.rootDir);
+      if (typeof pmod?.generate !== "function") return false;
+      const arr = await pmod.generate();
+      if (!Array.isArray(arr) || arr.length === 0) return false;
+      const keys = Object.keys(params);
+      if (keys.length === 0) return false;
+      const sets = arr.map((x: any) => (x && typeof x === "object" ? x : { [keys[0]]: String(x) }));
+      const found = sets.some((set: any) => keys.every((k) => String(set[k] ?? "") === String(params[k] ?? "")));
+      return !found;
+    } catch {
+      // A broken params.twm must not turn every request into a 404.
+      return false;
+    }
+  }
+
   private rootDir: string;
   private homeDir: string;
   private enableCache: boolean;
@@ -189,6 +217,15 @@ export class RenderPipeline {
     const ctx: any = match ? resolveLayoutChain(match) : null;
     const pageFile: string | undefined = ctx?.page?.absolutePath;
     if (!pageFile) return this.render(pathname);
+
+    // Enumerated dynamic route: a slug that `params.twm` never generated is a
+    // 404, not a 200 rendering the page's fallback branch.
+    try {
+      if (await this.isUnenumeratedParam(pageFile, (match as any)?.params ?? {})) {
+        (this as any).__forceNotFound = true;
+        try { return this.render(pathname); } finally { (this as any).__forceNotFound = false; }
+      }
+    } catch { /* fall through and render as before */ }
 
     let blocks: any[] = [];
     let src = "";
@@ -476,8 +513,9 @@ export class RenderPipeline {
       return this.renderError("home/ directory not found", 500, startTime);
     }
 
-    // Match the route
-    const match = matchRoute(tree, pathname);
+    // Match the route. `render()` is synchronous, so the enumerated-param check
+    // happens in the async caller (renderWithServerBlocks) and sets this flag.
+    const match = (this as any).__forceNotFound ? null : matchRoute(tree, pathname);
     if (!match) {
       // Try root not-found.twm
       const rootNotFound = findNearestNotFound(tree, pathname.split("/").filter(Boolean));
