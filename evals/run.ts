@@ -72,7 +72,8 @@ const usable = Array.from(HTML_ELEMENTS).filter((t) => !DSL_SPECIAL.has(t));
 
 track("scale", `all ${usable.length} elements in ONE page`, () => {
   const src = `page { title "s" render ssr }\ndiv.root {\n` +
-    usable.map((t) => VOID_TAGS.has(t) ? `  <${t}>` : `  <${t}>x</${t}>`).join("\n") + "\n}\n";
+    // TW syntax, not raw HTML: raw HTML in a .tw file is TW123 (a build error).
+    usable.map((t) => VOID_TAGS.has(t) ? `  ${t}` : `  ${t} { "x" }`).join("\n") + "\n}\n";
   const out = compileSync(src, { filePath: tmp() });
   const errs = (out.diagnostics ?? []).filter((d: any) => d.severity === "error");
   assert(errs.length === 0, `${errs.length} errors, first: ${errs[0]?.code} ${errs[0]?.message}`);
@@ -87,14 +88,14 @@ track("scale", `all ${CSS_PROPERTIES.length} CSS properties in ONE stylesheet`, 
 
 track("scale", `all ${ARIA_ROLES.length} ARIA roles on one page`, () => {
   const src = `page { title "s" }\ndiv {\n` +
-    Array.from(ARIA_ROLES).slice(0, 40).map((r) => `  <div role="${r}">x</div>`).join("\n") + "\n}\n";
+    Array.from(ARIA_ROLES).slice(0, 40).map((r) => `  div role "${r}" { "x" }`).join("\n") + "\n}\n";
   const out = compileSync(src, { filePath: tmp() });
   assert((out.diagnostics ?? []).filter((d: any) => d.severity === "error").length === 0, "errors");
 });
 
 track("scale", `all ${EVENT_TYPES.length} event types on one page`, () => {
   const src = `page { title "s" }\ndiv {\n` +
-    Array.from(EVENT_TYPES).slice(0, 40).map((e) => `  <button on:${e}="x++">go</button>`).join("\n") + "\n}\n";
+    Array.from(EVENT_TYPES).slice(0, 40).map((e) => `  button on:${e} "x++" { "go" }`).join("\n") + "\n}\n";
   const out = compileSync(src, { filePath: tmp() });
   assert((out.diagnostics ?? []).filter((d: any) => d.severity === "error").length === 0, "errors");
 });
