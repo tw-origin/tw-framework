@@ -1,7 +1,7 @@
 /** tw adapter <name> — generate deployment adapter files into the app. */
 
 import { join, resolve } from "node:path";
-import { existsSync, readdirSync } from "node:fs";
+import { existsSync, readdirSync, readFileSync } from "node:fs";
 
 export async function adapterCommand(): Promise<void> {
   const args = process.argv.slice(3);
@@ -75,10 +75,28 @@ export async function adapterCommand(): Promise<void> {
       }
     };
     for (const r of apiRoots) countTwm(r);
-    if (apiCount > 0) {
-      console.log("\n  ! " + apiCount + " API route" + (apiCount === 1 ? "" : "s") + " will not be served by the " + name + " adapter.");
-      console.log("    It packages the static build only, so every .twm route answers 404.");
-      console.log("    Use `tw adapter bun` (or the Dockerfile) if the APIs must run.\n");
+    // Pages that render per request are not prebuilt either, so a static
+    // adapter 404s them as well.
+    let ssrCount = 0;
+    const countSsr = (dir: string) => {
+      if (!existsSync(dir)) return;
+      for (const entry of readdirSync(dir, { withFileTypes: true })) {
+        const full = join(dir, entry.name);
+        if (entry.isDirectory()) { countSsr(full); continue; }
+        if (entry.name !== "page.tw") continue;
+        const src = readFileSync(full, "utf-8");
+        const m = src.match(/render\s+(ssr|stream|csr|ppr)\b/);
+        if (m) ssrCount++;
+      }
+    };
+    countSsr(join(rootDir, "home"));
+    if (apiCount > 0 || ssrCount > 0) {
+      const parts: string[] = [];
+      if (ssrCount > 0) parts.push(ssrCount + " page" + (ssrCount === 1 ? "" : "s") + " rendered per request");
+      if (apiCount > 0) parts.push(apiCount + " API route" + (apiCount === 1 ? "" : "s"));
+      console.log("\n  ! " + parts.join(" and ") + " will not be served by the " + name + " adapter.");
+      console.log("    It packages the static build only, so those routes answer 404.");
+      console.log("    Use `tw adapter bun` (or the Dockerfile) if they must run.\n");
     }
   }
 

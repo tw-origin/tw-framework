@@ -262,6 +262,24 @@ export class TWServer {
         cfgIn.rewrites = entries.map(([from, to]) =>
           typeof to === "string" ? { from, to } : { from, ...to });
       }
+      // `{ path, headers }` is the natural guess and was accepted silently while
+      // doing nothing -- for a CSP or X-Frame-Options set here, the site then
+      // shipped without the header. Name the unknown key.
+      if (Array.isArray(cfgIn.headers)) {
+        const HEADER_ENTRY_KEYS = new Set(["source", "headers"]);
+        for (const h of cfgIn.headers as any[]) {
+          if (!h || typeof h !== "object") continue;
+          const unknown = Object.keys(h).filter((k) => !HEADER_ENTRY_KEYS.has(k));
+          if (unknown.length > 0) {
+            console.warn("[tw] headers: unrecognized key" + (unknown.length > 1 ? "s" : "") + " " + unknown.join(", ") +
+              " in entry -- accepted keys are source and headers" +
+              (unknown.includes("path") ? " (did you mean 'source'?)" : ""));
+          }
+          if (h.source === undefined && h.path !== undefined) {
+            console.warn("[tw] headers: entry uses 'path' instead of 'source' -- it will not be applied");
+          }
+        }
+      }
       // Header values must be single-line: strip CR/LF so an invalid value
       // can never smuggle extra headers (Node would 500, Bun would drop it).
       for (const h of cfgIn.headers ?? []) {

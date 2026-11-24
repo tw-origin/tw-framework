@@ -140,6 +140,26 @@ All interpolated output is HTML-escaped before it reaches the page. A value cont
 p "{intro}"               // prints the tags as text: <b>Hi</b> — safe
 ```
 
+### Printing a literal brace
+
+Text containing `{` is read as an interpolation, so a JSON snippet, a code sample
+or `{name}` used as a placeholder would lose that part. Escape the brace with a
+backslash and it is printed as-is, with no interpolation:
+
+```tw
+p "Use \{braces\} carefully"    // Use {braces} carefully
+p "\{\"a\": 1\}"                // {"a": 1}
+p "\{\{ doubled \}\}"          // {{ doubled }}
+```
+
+`\{` and `\}` both work, and they work anywhere in the string. You only need
+them where a `{` would otherwise start an interpolation.
+
+If an interpolation names something that does not exist, the build warns
+(`TW096`) and the expression is printed as its own source rather than being
+silently dropped — so a missing escape shows up as literal `{name}` text plus a
+warning, not as a blank.
+
 ---
 
 ## Common Mistakes
