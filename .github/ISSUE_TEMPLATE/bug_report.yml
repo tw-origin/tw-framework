@@ -41,7 +41,7 @@ body:
     id: version
     attributes:
       label: TW Framework version
-      placeholder: "2.0.3"
+      placeholder: "2.0.4"
     validations:
       required: true
   - type: dropdown

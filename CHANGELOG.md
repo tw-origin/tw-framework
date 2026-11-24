@@ -4,6 +4,58 @@ Notable changes to TW Framework. The format follows
 [Keep a Changelog](https://keepachangelog.com/), and the project uses
 [Semantic Versioning](https://semver.org/).
 
+## [2.0.4]
+
+A patch release on top of 2.0.3. Bug fixes plus one deliberate behaviour change
+(raw HTML in a `.tw` file is now an error, see below).
+
+### Fixed
+
+- **`tw dev` runs `server { }` blocks.** It called the compiler without
+  `experimental.serverBlocks`, so `collectServerBlocks()` always came back empty
+  and the block never executed: a page whose content came from `server { }`
+  rendered with empty lists. The values are also merged the way the serve path
+  does (`params` as a key, through `encodeServerValues`), which is what actually
+  gets them into the markup.
+- **`tw dev` sets `Content-Type` for `public/` files.** `new Response(Bun.file())`
+  does not carry the file's type, so every `.svg`, `.css` and `.json` arrived
+  without one and images showed as broken icons.
+- **`state { }` in `layout.tw`.** Only the page's state was seeded into the vars
+  the layout's markup is generated from, so a layout holding state for its own
+  chrome rendered empty. Layouts are seeded first, so the page still wins a name
+  clash.
+- **`TW003` on valid inline tags.** `HTML_ELEMENTS` was missing `b`, `i`, `em`,
+  `strong`, `small`, `u`, `s`, `ins`, `del`, `sub`, `sup`, `nobr`, `big`, `tt`
+  and the SVG children (`circle`, `path`, `rect`, `g`, `defs`, `use`, …), which
+  produced a warning per tag on markup that renders fine and buried the real
+  findings.
+- **`tw serve` answered 200 for an unknown dynamic param.** A route with a
+  `params.twm` enumerates its slugs, and the static build only writes those — but
+  the server matched `[slug]` for anything and rendered the fallback branch with
+  200, so search engines indexed those as real pages. An unenumerated param is a
+  404 now, through the normal not-found path.
+- **`headers` config ignored an unknown key.** `{ path, headers }` — the natural
+  guess, docs say `{ source, headers }` — was accepted silently and did nothing,
+  so a CSP or X-Frame-Options set there never reached the response. The server
+  names the unknown key at startup.
+- **`tw adapter` notice counts SSR pages too.** It reported only `.twm` API
+  routes; pages with `render ssr`, `stream`, `csr` or `ppr` cannot be served by a
+  static adapter either and are counted now.
+
+### Changed
+
+- **Raw HTML in a `.tw` file is a build error (`TW123`).** It was never a
+  supported form, but it parsed and then had its text rewritten by the class
+  shorthand — `one two.` became `<two>`, `mid. sentence` became
+  `<mid class="sentence">` — with no diagnostic. Write the element in TW syntax
+  (`p { ... }`) instead. `<if>`, `<for>`, `<while>`, `<switch>` and components are
+  unaffected.
+
+### Docs
+
+- `docs/syntax-interpolation.md` documents printing a literal brace (`\{` and
+  `\}`), which already worked but was not written down.
+
 ## [2.0.3]
 
 A patch release: bug fixes only, no breaking changes, no public API changes.

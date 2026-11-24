@@ -93,7 +93,7 @@ If you did not use the CLI, create `package.json`:
     "ship": "tw ship"
   },
   "dependencies": {
-    "tw-framework": "^2.0.3"
+    "tw-framework": "^2.0.4"
   },
   "devDependencies": {
     "typescript": "^5.4.0",
