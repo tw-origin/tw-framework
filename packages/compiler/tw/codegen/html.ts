@@ -874,7 +874,12 @@ function generateElement(el: ElementNode, ctx: CodegenContext): string {
     return `<${tag}${attrPrefix}></${tag}>`;
   }
 
-  const childrenHTML = el.children.map(c => generateNode(c, ctx)).join("");
+  // `<script>` and `<style>` hold raw text: their content must not be
+  // HTML-escaped, or a JSON-LD body arrives as {&quot;a&quot;:1} and the
+  // structured data is useless to a crawler.
+  const isRawText = tag === "script" || tag === "style";
+  const childCtx = isRawText ? ({ ...ctx, rawText: true } as CodegenContext) : ctx;
+  const childrenHTML = el.children.map(c => generateNode(c, childCtx)).join("");
   return `<${tag}${attrPrefix}>${childrenHTML}</${tag}>`;
 }
 
@@ -1053,6 +1058,13 @@ function generateText(text: TextNode, ctx: CodegenContext): string {
   ctx_global_interactive = ctx.interactive === true;
   ctx_global_inhead = ctx.inHead === true;
   lastStateVars = ctx.stateVars;
+  // Inside script/style: interpolate, but never escape -- the content is raw
+  // text by the HTML spec.
+  if ((ctx as any).rawText) {
+    if (text.isInterpolated) return String(interpolate(`{${text.value}}`, ctx.stateVars));
+    if (text.value && /\{[^}]+\}/.test(text.value)) return String(interpolate(text.value, ctx.stateVars));
+    return text.value ?? "";
+  }
   if (text.isInterpolated) {
     // The parser already strips the surrounding `{ }` for a pure-interpolated
     // Text node (text.value is the bare expression, e.g. "count"), but
