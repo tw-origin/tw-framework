@@ -6,6 +6,7 @@
  */
 
 import { join, resolve, dirname } from "node:path";
+import { MIME_TYPES } from "@tw/shared";
 import { devErrorPage, CLIENT_OVERLAY_SCRIPT } from "../dev-overlay";
 import { existsSync, readFileSync, readdirSync, statSync } from "node:fs";
 import { scanComponents as scanComponentsShared, collectPrivateComponentDirs } from "../components";
@@ -764,9 +765,13 @@ async function ensureDevClientBundle(rootDir: string, pageSource: string, layout
           // `new Response(Bun.file(...))` does not copy the file's type, so every
           // .svg/.css arrived with no Content-Type and the browser showed a
           // broken image.
-          return new Response(pubFile, {
-            headers: { "Content-Type": pubFile.type || "application/octet-stream" },
-          });
+          // `Bun.file().type` is empty under the Node shim that `tw dev` runs on,
+          // so every file came back as application/octet-stream and `nosniff`
+          // then stopped the browser from running .js at all. Derive the type
+          // from the extension, exactly like the production static handler.
+          const _ext = (publicFile.split(".").pop() ?? "").toLowerCase();
+          const _type = (MIME_TYPES as Record<string, string>)[_ext] ?? pubFile.type ?? "application/octet-stream";
+          return new Response(pubFile, { headers: { "Content-Type": _type } });
         }
       }
 
@@ -960,7 +965,19 @@ async function ensureDevClientBundle(rootDir: string, pageSource: string, layout
             const _c: any = await import("@tw/compiler");
             const blocks = _c.collectServerBlocks((result as any).ast);
             if (blocks.length) {
-              const values = await _c.executeServerBlocks(blocks.filter((b: any) => !b.deferred), { label: twFile });
+              // A block that reads params/env or calls an imported helper needs
+              // the same context the serve path gives it. Passing only `label`
+              // left those names unbound, so the block produced nothing and the
+              // failure was silent (the page just rendered empty).
+              const _blocks = blocks.filter((b: any) => !b.deferred);
+              const _imports: Record<string, unknown> = {};
+              for (const b of _blocks) Object.assign(_imports, await _c.resolveServerImports(b, twFile, { dev: true }));
+              const values = await _c.executeServerBlocks(_blocks, {
+                context: { params: resolved.params ?? {}, env: process.env as Record<string, string>, loginPath: devOpts?.loginPath },
+                imports: _imports,
+                label: twFile,
+                referenced: _c.collectReferencedNames(source),
+              });
               if (values && Object.keys(values).length) {
                 // Same merge as the serve path (render-pipeline.ts): params is
                 // also passed as a key, and the values go through
