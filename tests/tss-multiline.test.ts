@@ -245,3 +245,26 @@ describe("TSS: layers, property descriptors and $vars in strings", () => {
     expect(compileTSS('$n: 3\n.x {\n  content "count: $n"\n}')).toBe('.x { content: "count: 3" }');
   });
 });
+
+describe("TSS: every documented shorthand exists", () => {
+  // docs/tss-syntax.md lists these; nine of them were never in the shorthand
+  // table, so `br-tl 4px` emitted the literal property `br-tl` and the corner
+  // stayed square. This test is the contract between the doc and the compiler.
+  const documented: [string, string][] = [
+    ["br-tl", "border-top-left-radius"],
+    ["br-tr", "border-top-right-radius"],
+    ["br-bl", "border-bottom-left-radius"],
+    ["br-br", "border-bottom-right-radius"],
+    ["fl", "float"],
+    ["cl", "clear"],
+    ["dir", "direction"],
+    ["ww", "word-wrap"],
+    ["va", "vertical-align"],
+  ];
+
+  for (const [shorthand, property] of documented) {
+    test(`${shorthand} expands to ${property}`, () => {
+      expect(compileTSS(`.x {\n  ${shorthand} 4px\n}`)).toBe(`.x { ${property}: 4px }`);
+    });
+  }
+});

@@ -62,6 +62,10 @@ export const TSS_SHORTHANDS: Record<string, string> = {
   // borders
   bd: "border", "bd-t": "border-top", "bd-b": "border-bottom", "bd-l": "border-left", "bd-r": "border-right",
   br: "border-radius", "br-t": "border-top-left-radius", bxsh: "box-shadow", bxz: "box-sizing",
+  // Documented in docs/tss-syntax.md but never implemented, so `br-tl 4px`
+  // emitted the literal property name `br-tl` and the corner stayed square.
+  "br-tl": "border-top-left-radius", "br-tr": "border-top-right-radius",
+  "br-bl": "border-bottom-left-radius", "br-br": "border-bottom-right-radius",
   // `box` is the documented box-sizing shorthand (docs/tss-syntax.md).
   box: "box-sizing",
   // typography
@@ -75,6 +79,8 @@ export const TSS_SHORTHANDS: Record<string, string> = {
   gtc: "grid-template-columns", gtr: "grid-template-rows",
   // misc
   cur: "cursor", op: "opacity", tr: "transition", tf: "transform", us: "user-select", pe: "pointer-events",
+  // Also documented, also missing.
+  fl: "float", cl: "clear", dir: "direction", ww: "word-wrap", va: "vertical-align",
 };
 
 /**
