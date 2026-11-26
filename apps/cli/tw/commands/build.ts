@@ -1519,6 +1519,8 @@ export async function buildCommand(): Promise<void> {
       const rel = v.file.startsWith(rootDir) ? v.file.slice(rootDir.length + 1) : v.file;
       console.log("    TW1007: " + rel + " \u2192 " + v.spec);
       console.log("      Server-only modules (lib/, .twm, @tw/*) cannot be imported from page.tw / layout.tw.");
+      console.log("      A shared helper that lives in lib/ can opt out with: import \"@tw/client-safe\";");
+      console.log("      A server module outside lib/ can be marked with:      import \"@tw/server-only\";");
     }
     process.exit(1);
   }

@@ -341,3 +341,43 @@ Full text: [Error Reference](./error-reference.md).
 - [Client Modules](./client-modules.md) — the server-only boundary
 - [Authentication](./guide-auth.md)
 - [Error Reference](./error-reference.md)
+
+---
+
+## Module boundaries: `lib/`, `@tw/server-only` and `@tw/client-safe`
+
+`lib/` is server-only by default: importing anything from it into `page.tw` or
+`layout.tw` is a `TW1007` build error. Two markers let you say what a module
+actually is, wherever it lives.
+
+**Server code outside `lib/`** — mark the module:
+
+```js
+// services/payment.js
+import "@tw/server-only";
+export async function charge(id) { /* uses an API key */ }
+```
+
+Importing that module from a page is now `TW1007`, exactly like `lib/`.
+
+**A shared helper inside `lib/`** — opt that one module out:
+
+```js
+// lib/dates.js
+import "@tw/client-safe";
+export function formatDate(d) { return new Date(d).toLocaleDateString("en-IN"); }
+```
+
+That module can be imported from a page and reaches the browser. Everything
+else in `lib/` stays server-only.
+
+The marker speaks only for the file it is in. The build still walks that file's
+imports, so a client-safe module that pulls in a server-only dependency fails
+with the whole chain:
+
+```
+TW1007: home/leak/page.tw -> lib/leaky.js -> ./db
+```
+
+Put `@tw/client-safe` only on a module you are certain carries no secret — an
+API key, a token, a database URL. It is a promise the build cannot verify.
