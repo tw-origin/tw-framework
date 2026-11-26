@@ -170,9 +170,9 @@ export function walkClientGraph(entryFiles: string[], opts: WalkOptions = {}): B
     const scannable = opts.stripServerRegions ? opts.stripServerRegions(src) : src;
 
     // L4 marker: a module importing @tw/server-only is server-only.
-    if (hasMarker(scannable, SERVER_ONLY_MARKER)) {
-      violations.push({ file, specifier: SERVER_ONLY_MARKER, layer: "L4", chain: [...chain, SERVER_ONLY_MARKER] });
-    }
+    // NOTE: the `@tw/server-only` marker is reported by the import loop below,
+    // which carries the chain. Reporting it here as well produced the same
+    // violation twice for one module.
 
     for (const imp of collectModuleImports(scannable)) {
       const spec = imp.specifier;
