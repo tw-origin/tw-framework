@@ -140,6 +140,22 @@ All interpolated output is HTML-escaped before it reaches the page. A value cont
 p "{intro}"               // prints the tags as text: <b>Hi</b> — safe
 ```
 
+### Trusted HTML — `{@html expr}`
+
+Interpolation escapes everything, which is the right default. When a value is
+markup you control — a changelog, a legal note, a description with a link — say
+so explicitly:
+
+```tw
+p { "{@html desc}" }              // desc = "<b>bold</b>" -> <b>bold</b>
+p { "Hi {@html desc} and {name}" } // mixed: only the marked part is raw
+p { "{desc}" }                     // unchanged: &lt;b&gt;bold&lt;/b&gt;
+```
+
+`@html` is deliberately greppable: it marks the places where escaping is
+bypassed, so `rg '@html'` lists every one of them for review. Never pass
+untrusted input (query strings, user profiles, anything from a form) to it.
+
 ### Printing a literal brace
 
 Text containing `{` is read as an interpolation, so a JSON snippet, a code sample

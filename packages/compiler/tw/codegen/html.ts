@@ -1054,10 +1054,33 @@ let ctx_global_interactive = false;
 let ctx_global_inhead = false;
 let lastStateVars: Record<string, string> = {};
 
+/**
+ * `{@html expr}` -- the explicit trusted-HTML opt-in. Everything outside those
+ * markers is escaped exactly as before; only the marked expression is inserted
+ * as markup. It is greppable on purpose: `@html` in a diff is a decision
+ * someone made, not something that happened by accident.
+ */
+function generateTrustedHtml(text: TextNode, ctx: CodegenContext): string {
+  const src = text.isInterpolated ? `{${text.value}}` : String(text.value ?? "");
+  let out = "";
+  let i = 0;
+  const re = /\{@html\s+([^}]*)\}/g;
+  let m: RegExpExecArray | null;
+  while ((m = re.exec(src))) {
+    out += escapeHTML(interpolate(src.slice(i, m.index), ctx.stateVars));
+    out += String(interpolate(`{${m[1]}}`, ctx.stateVars));
+    i = m.index + m[0].length;
+  }
+  out += escapeHTML(interpolate(src.slice(i), ctx.stateVars));
+  return out;
+}
+
 function generateText(text: TextNode, ctx: CodegenContext): string {
   ctx_global_interactive = ctx.interactive === true;
   ctx_global_inhead = ctx.inHead === true;
   lastStateVars = ctx.stateVars;
+  // Explicit trusted HTML wins over everything else.
+  if (text.value && String(text.value).includes("@html")) return generateTrustedHtml(text, ctx);
   // Inside script/style: interpolate, but never escape -- the content is raw
   // text by the HTML spec.
   if ((ctx as any).rawText) {

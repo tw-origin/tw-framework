@@ -33,6 +33,16 @@ const HTML_ELEMENTS = new Set([
 ]);
 
 const HTML_ATTRIBUTES = new Set([
+  // SVG attributes. This rule keeps its own copy of the list, and it was missing
+  // every SVG name, so an inline icon raised a TW006 per attribute.
+  "d", "cx", "cy", "r", "rx", "ry", "x", "y", "x1", "y1", "x2", "y2", "points",
+  "viewBox", "fill", "stroke", "stroke-width", "stroke-linecap", "stroke-linejoin",
+  "stroke-dasharray", "stroke-dashoffset", "stroke-opacity", "fill-opacity",
+  "fill-rule", "clip-rule", "clip-path", "opacity", "transform",
+  "preserveAspectRatio", "xmlns", "gradientUnits", "gradientTransform",
+  "offset", "stop-color", "stop-opacity", "text-anchor", "dominant-baseline",
+  "font-family", "font-size", "font-weight", "font-style", "letter-spacing",
+  "marker-start", "marker-mid", "marker-end", "mask", "pathLength",
   "accept", "accept-charset", "accesskey", "action", "align", "alt", "async",
   "autocomplete", "autofocus", "autoplay", "bgcolor", "border", "charset", "checked",
   "cite", "class", "cols", "colspan", "content", "contenteditable", "controls",

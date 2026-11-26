@@ -173,6 +173,17 @@ export function parseStatements(
           "charset", "content", "width", "height", "loading", "for",
           "role", "min", "max", "step", "pattern", "accept", "list",
           "download", "tabindex", "cols", "rows", "wrap", "datetime",
+          // SVG attributes. `path d "M4 7h16"` was read as text "path" plus a
+          // <d> element, because `d` was not a known attribute name -- so an
+          // inline icon could not be written at all.
+          "d", "cx", "cy", "r", "rx", "ry", "x", "y", "x1", "y1", "x2", "y2", "points",
+          "viewBox", "fill", "stroke", "stroke-width", "stroke-linecap",
+          "stroke-linejoin", "stroke-dasharray", "stroke-dashoffset",
+          "fill-rule", "clip-rule", "clip-path", "transform", "opacity",
+          "fill-opacity", "stroke-opacity", "stop-color", "offset",
+          "gradientUnits", "gradientTransform", "preserveAspectRatio",
+          "text-anchor", "dominant-baseline", "font-size", "font-family",
+          "marker-end", "marker-start", "mask", "xmlns",
         ]);
         const isSelector = nextTok && (
           nextTok.type === "DOT" || nextTok.type === "HASH" ||
@@ -880,7 +891,8 @@ function parseElement(
   // as HTML.
   if (tag && /^[A-Za-z][A-Za-z0-9-]*$/.test(tag)) {
     errors.add(new CompilerError(
-      "raw HTML is not supported in .tw -- write it in TW syntax: " + tag + " { ... }",
+      "raw HTML is not supported in .tw -- write it in TW syntax: " + tag +
+        " { ... }. For an inline icon use svg/path/circle with attributes on the tag line; for a script body use script type \"...\" { ... }; for markup that comes from data use {@html expr}",
       tagToken.pos.line,
       tagToken.pos.col,
       "TW123",
