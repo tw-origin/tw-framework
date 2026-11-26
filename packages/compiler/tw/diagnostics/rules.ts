@@ -396,8 +396,22 @@ export function checkPerformance(program: Program, filePath: string, diags: Diag
     }
 
     if (isElement(node) && node.tag.toLowerCase() === "img") {
+      const attr = (n: string) => node.attrs.find((a) => a.name === n)?.value;
       const hasLazy = node.attrs.some(a => a.name === "loading" && a.value === "lazy");
-      if (!hasLazy) {
+      // `loading="eager"` and `fetchpriority="high"` are the author saying "this
+      // one is above the fold" -- that is an answer, not a miss.
+      const isEager = String(attr("loading") ?? "") === "eager" || String(attr("fetchpriority") ?? "") === "high";
+      // A small icon is not a lazy-loading candidate: it is a UI glyph, it is
+      // usually above the fold, and deferring it makes the first paint worse.
+      // 19-20px icons produced one warning each, which buried the real findings.
+      const px = (v: unknown) => {
+        const n = parseFloat(String(v ?? ""));
+        return Number.isFinite(n) ? n : null;
+      };
+      const w = px(attr("width"));
+      const h = px(attr("height"));
+      const isSmallIcon = w !== null && h !== null && w <= 32 && h <= 32;
+      if (!hasLazy && !isEager && !isSmallIcon) {
         diags.push(createDiagnostic("TW054", node.line, node.col, filePath, undefined, [
           "Add loading=\"lazy\" for below-fold images",
         ]));

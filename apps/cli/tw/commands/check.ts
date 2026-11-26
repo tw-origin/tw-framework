@@ -8,6 +8,22 @@ import { scanComponents, registerImportedComponents } from "../components";
 export async function checkCommand(): Promise<void> {
   const args = process.argv.slice(3);
   const rootDir = process.cwd();
+  // `--ignore TW054,TW046` (repeatable, space or comma separated) lets a project
+  // accept a rule it has decided is not a defect, so CI can gate on the rest
+  // instead of drowning in noise it has already triaged.
+  const ignored = new Set<string>();
+  for (let i = 0; i < args.length; i++) {
+    if (args[i] === "--ignore" && args[i + 1]) {
+      for (const code of String(args[i + 1]).split(/[,\s]+/)) {
+        if (code) ignored.add(code.trim().toUpperCase());
+      }
+      i++;
+    } else if (args[i].startsWith("--ignore=")) {
+      for (const code of args[i].slice("--ignore=".length).split(/[,\s]+/)) {
+        if (code) ignored.add(code.trim().toUpperCase());
+      }
+    }
+  }
   const srcDir = join(rootDir, "home");
 
   console.debug("\n  tw check -- running type check and diagnostics\n");
@@ -103,16 +119,20 @@ export async function checkCommand(): Promise<void> {
           totalWarnings += unknownComponents.length;
         }
 
-        totalErrors += errors.length;
-        totalWarnings += warnings.length;
-        totalInfo += info.length;
+        const kept = ignored.size === 0 ? diagnostics : diagnostics.filter((d: any) => !ignored.has(String(d.code).toUpperCase()));
+        const keptErrors = kept.filter((d: any) => d.severity === "error");
+        const keptWarnings = kept.filter((d: any) => d.severity === "warning");
+        const keptInfo = kept.filter((d: any) => d.severity !== "error" && d.severity !== "warning");
+        totalErrors += keptErrors.length;
+        totalWarnings += keptWarnings.length;
+        totalInfo += keptInfo.length;
 
-        if (diagnostics.length === 0) {
+        if (kept.length === 0) {
           console.debug(`  OK ${relativePath} -- no issues`);
         } else {
-          console.debug(`  ? ${relativePath} -- ${errors.length} errors, ${warnings.length} warnings, ${info.length} info`);
+          console.debug(`  ? ${relativePath} -- ${keptErrors.length} errors, ${keptWarnings.length} warnings, ${keptInfo.length} info`);
 
-          for (const d of diagnostics) {
+          for (const d of kept) {
             const sev = d.severity === "error" ? "?" : d.severity === "warning" ? "?" : "?";
             const loc = `line ${d.line}, col ${d.col}`;
             console.debug(`    ${sev} ${d.code} ${loc}: ${d.message}`);
