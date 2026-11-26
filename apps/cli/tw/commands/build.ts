@@ -536,6 +536,32 @@ export async function buildCommand(): Promise<void> {
       const cfgMod: any = await twImportTs(cfgPath);
       const cfg = cfgMod.default ?? cfgMod;
       resolvedCfg = cfg;
+      // Config typos: `tw serve` names an unknown headers key at start-up, but
+      // `tw build` said nothing, so a typo shipped silently -- and a dropped CSP
+      // or X-Frame-Options is worse than a failed build. Fail here too.
+      try {
+        const HEADER_KEYS = new Set(["source", "headers"]);
+        const REDIRECT_KEYS = new Set(["from", "to", "status", "source", "destination", "permanent"]);
+        const cfgErrs: string[] = [];
+        if (Array.isArray((cfg as any)?.headers)) {
+          for (const h of (cfg as any).headers) {
+            if (!h || typeof h !== "object") continue;
+            const unknown = Object.keys(h).filter((k) => !HEADER_KEYS.has(k));
+            if (unknown.length) cfgErrs.push("headers: unrecognized key " + unknown.join(", ") + " (accepted: source, headers)");
+          }
+        }
+        if (Array.isArray((cfg as any)?.redirects)) {
+          for (const r of (cfg as any).redirects) {
+            if (!r || typeof r !== "object") continue;
+            const unknown = Object.keys(r).filter((k) => !REDIRECT_KEYS.has(k));
+            if (unknown.length) cfgErrs.push("redirects: unrecognized key " + unknown.join(", ") + " (accepted: from, to, status)");
+          }
+        }
+        for (const m of cfgErrs) {
+          console.error("  \x1b[31m\u2717\x1b[0m tw.config.ts  " + m);
+          errorCount++;
+        }
+      } catch { /* a config we cannot inspect is reported by its own loader */ }
       serverBlocksOn = cfg?.server?.blocks ?? cfg?.experimental?.serverBlocks ?? true;
       serverOnlyPackages = Array.isArray(cfg?.server?.onlyPackages) ? cfg.server.onlyPackages : [];
       fetchTimeoutMs = cfg?.server?.fetchTimeoutMs;
