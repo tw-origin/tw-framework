@@ -253,6 +253,23 @@ Error TW123: Invalid route file "about.tw"
 
 ---
 
+### TW125 — Import Name Collides With a Server-Block Built-in
+
+```
+Error TW125: import 'query' from "lib/db" is also a server-block built-in
+```
+
+**Cause:** every `server { }` block is given `params`, `query`, `headers`,
+`cookies`, `env`, `fetch`, `getSession`, `requireUser`, `redirect` and
+`notFound` for free. An import whose local name matches one of them would be
+silently replaced by the built-in, so the block would run against the wrong
+value.
+
+**Fix:** rename the local binding -- `import { query as dbQuery } from "lib/db"`.
+The built-in `query` keeps working.
+
+---
+
 ### TW124 — Private Folder Contains page.tw
 
 ```
@@ -831,12 +848,15 @@ Error TW107: getSession()/requireUser() are not available in a static page's ser
 
 ---
 
-### TW108 — `redirect()`/`notFound()` in a Static Block
+### TW108 — `redirect()` in a Static Block
 
 ```
-Error TW108: redirect()/notFound() are not available in a static page's server block
+Error TW108: redirect() is not available in a static page's server block
 ```
+**Cause:** a static page is built before the request, so there is no response to redirect.
 **Fix:** make the page `render ssr`.
+
+`notFound()` is allowed in a static block: the build skips that page, so the host serves a real 404 instead of a 200 with a "not found" body.
 
 ---
 

@@ -32,7 +32,7 @@ function project(files: Record<string, string>): string {
 
 const PAGE = (body: string) => `page { title "T" render static }\n${body}\n`;
 
-describe("built-in binding collisions (TW124)", () => {
+describe("built-in binding collisions (TW125)", () => {
   test("every reserved built-in is covered", () => {
     expect([...RESERVED_BLOCK_BINDINGS].sort()).toEqual([
       "cookies", "env", "fetch", "getSession", "headers",

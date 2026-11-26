@@ -306,7 +306,9 @@ first response.
 - There is no type-checker layer; the serialization guard is syntactic plus
   runtime.
 - Server blocks in **layouts** are not supported yet (`TW105`).
-- `redirect()`/`notFound()`/`requireUser()` are not allowed in a static page.
+- `redirect()` and `requireUser()` are not allowed in a static page.
+  `notFound()` is: the build skips that page, so the host serves a real 404
+  instead of a 200 with "not found" in the body.
 
 ## Security checklist
 

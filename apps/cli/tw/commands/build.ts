@@ -1155,7 +1155,7 @@ export async function buildCommand(): Promise<void> {
             const { serverImportCollisions } = _compilerMod as any;
             for (const c of serverImportCollisions(source)) {
               console.error("  \x1b[31m\u2717\x1b[0m " + pageFile.replace(rootDir + "/", "") + ":" + c.line +
-                "  TW124  import '" + c.name + "' from \"" + c.specifier +
+                "  TW125  import '" + c.name + "' from \"" + c.specifier +
                 "\" is also a server-block built-in, so the block would see the built-in instead of your import. Rename it: import { " +
                 c.name + " as my" + c.name.charAt(0).toUpperCase() + c.name.slice(1) + " } from \"" + c.specifier + "\"");
               errorCount++;

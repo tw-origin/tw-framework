@@ -4,6 +4,33 @@ This document explains how npm packages, local modules and framework modules flo
 
 ---
 
+## Server code in a page
+
+`lib/` is server-only, but a page may import from it as long as only a
+`server { }` block uses the binding:
+
+```tw
+import { getApps } from "lib/data"
+
+page { title "Apps" render static }
+
+server {
+  const apps = await getApps()
+}
+
+div { for app in {apps} { a href "/app/{app.slug}" { "{app.name}" } } }
+```
+
+Use the same name in markup or an event handler and the build fails with
+`TW1007` — the import would have to reach the browser.
+
+A module outside `lib/` can be marked `import "@tw/server-only"` to get the same
+treatment. A helper inside `lib/` that is genuinely safe for the browser opts out
+with `import "@tw/client-safe"`.
+
+Do not name an import after a block built-in (`query`, `params`, `fetch`, ...):
+that is `TW125`. Rename it — `import { query as dbQuery }`.
+
 ## 1. The Mental Model
 
 Every import answers three questions, in this order:
@@ -25,7 +52,7 @@ The specifier (the string inside the quotes) decides the source:
 | `import dayjs from "dayjs"` | npm package (`node_modules`) | Yes, when imported in a `.tw` file |
 | `import Chart from "chart.js"` | npm package | Yes, when imported in a `.tw` file |
 | `import { x } from "@scope/pkg"` | npm package (scoped) | Yes, when imported in a `.tw` file |
-| `import { db } from "lib/db"` | your project's `lib/` folder (server code) | No — server only |
+| `import { db } from "lib/db"` | your project's `lib/` folder (server code) | Only when a `server { }` block is the only thing that uses it |
 | `import Header from "@./components/Header.tw"` | local TW component | No — compiled to HTML at build time |
 | `import "@./style/global.tss"` | local TW stylesheet | No — compiled to CSS at build time |
 | `import { z } from "zod"` inside `lib/*.ts` or a `.twm` route | npm package, server side | No — server only |
