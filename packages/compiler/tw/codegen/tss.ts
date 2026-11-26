@@ -77,6 +77,33 @@ export const TSS_SHORTHANDS: Record<string, string> = {
   cur: "cursor", op: "opacity", tr: "transition", tf: "transform", us: "user-select", pe: "pointer-events",
 };
 
+/**
+ * Collapse runs of whitespace (including newlines) to one space, leaving the
+ * inside of a quoted string alone. A multi-line value such as
+ * `bg linear-gradient(\n to right,\n #fff\n )` used to be emitted with its
+ * newlines, so one rule printed across five lines.
+ */
+function collapseWhitespace(text: string): string {
+  let out = "";
+  let quote: string | null = null;
+  let pendingSpace = false;
+  for (let i = 0; i < text.length; i++) {
+    const ch = text[i];
+    if (quote) {
+      out += ch;
+      if (ch === "\\" && i + 1 < text.length) { out += text[i + 1]; i++; continue; }
+      if (ch === quote) quote = null;
+      continue;
+    }
+    if (ch === '"' || ch === "'") { if (pendingSpace && out) out += " "; pendingSpace = false; quote = ch; out += ch; continue; }
+    if (/\s/.test(ch)) { pendingSpace = true; continue; }
+    if (pendingSpace && out) out += " ";
+    pendingSpace = false;
+    out += ch;
+  }
+  return out;
+}
+
 /** Expand a single declaration `bg #fff` -> `background: #fff`. */
 function compileDecl(decl: string): string {
   const trimmed = decl.trim();
@@ -88,11 +115,13 @@ function compileDecl(decl: string): string {
   if (cssForm) return trimmed.replace(/^([-\w]+)\s*:\s*/, "$1: ");
   const spaceIdx = trimmed.search(/[\s]/);
   if (spaceIdx === -1) {
-    // bare property (e.g. `hidden` for overflow?) -- expand if known, else keep
-    return TSS_SHORTHANDS[trimmed] ?? trimmed;
+    // A bare token is a property with no value. Emitting `color` alone is
+    // invalid CSS, and when it sat on its own line it used to swallow the next
+    // declaration as its value (`c` + `p 4px` -> `color: p 4px`). Drop it.
+    return "";
   }
   const prop = trimmed.slice(0, spaceIdx);
-  const value = trimmed.slice(spaceIdx).trim();
+  const value = collapseWhitespace(trimmed.slice(spaceIdx).trim());
   const full = TSS_SHORTHANDS[prop] ?? prop;
   return `${full}: ${value}`;
 }
@@ -228,97 +257,114 @@ function __twCompileTSSInner(source: string): string {
     }
   }
 
-  const rules: string[] = [];
-  const stack: string[] = [];       // selector / at-rule stack
-  const declsByLevel: string[][] = [];
+  // A rule tree, not a flat list of strings. The flat emitter wrapped every
+  // rule in its own copy of an enclosing at-rule, so `@media { .a {...} .b {...} }`
+  // became two @media blocks and `@keyframes` emitted one block per frame --
+  // the later copy silently overrode the earlier one and the animation lost
+  // frames. Building the tree first also lets declarations written directly
+  // inside a nested at-rule find their selector.
+  type TssNode =
+    | { kind: "rule"; selector: string; decls: string[]; children: TssNode[] }
+    | { kind: "at"; head: string; decls: string[]; children: TssNode[] };
+
+  const root: TssNode[] = [];
+  const stack: TssNode[] = [];
   let buf = "";
 
-  const emit = (selector: string, decls: string[], wrapStack: string[]) => {
-    if (decls.length === 0) return;
-    let rule = `${selector} { ${decls.join("; ")} }`;
-    for (let i = wrapStack.length - 1; i >= 0; i--) {
-      if (wrapStack[i].startsWith("@")) rule = `${wrapStack[i]} { ${rule} }`;
-    }
-    rules.push(rule);
-  };
+  const current = (): TssNode | null => (stack.length ? stack[stack.length - 1] : null);
+
+  // Statement at-rules (`@import url(...)`, `@charset "utf-8"`,
+  // `@namespace svg url(...)`) have no block. They used to fall through to
+  // compileDecl and come out as `* { @import: url(...) }`.
+  const statements: string[] = [];
+  const isStatementAtRule = (t: string): boolean => /^@(import|charset|namespace|layer)\b/.test(t);
 
   const pushDecl = (text: string): void => {
-    const d = compileDecl(text);
-    if (d) (declsByLevel[declsByLevel.length - 1] ??= []).push(d);
+    const raw = text.trim();
+    if (!raw) return;
+    if (isStatementAtRule(raw)) { statements.push(raw.endsWith(";") ? raw : raw + ";"); return; }
+    const d = compileDecl(raw);
+    if (!d) return;
+    const node = current();
+    if (node) node.decls.push(d);
+    else root.push({ kind: "rule", selector: "*", decls: [d], children: [] });
   };
 
   // A line is a declaration when it starts with a property name (TSS
-  // shorthand or full CSS) followed by whitespace or a colon. Selector
-  // lines (.card, &:hover, h2) do not match.
+  // shorthand, full CSS property, custom property or vendor prefix) followed by
+  // whitespace or a colon. `--main #fff` and `-webkit-transform none` used to
+  // fail this and were pasted into the previous declaration's value.
   const isDeclLine = (l: string): boolean =>
-    /^[a-zA-Z][\w-]*(\s|:)/.test(l) && !/^[>+~]/.test(l);
+    /^(--[A-Za-z][\w-]*|-?[A-Za-z][\w-]*)(\s|:)/.test(l) && !/^[>+~]/.test(l);
 
   let i = 0;
+  let quote: string | null = null;
   while (i < src.length) {
     const ch = src[i];
+    // A `;` or `}` inside a string is content, not syntax: `content "a;b"` and
+    // `content "a}b"` used to split the declaration and break the block.
+    if (quote) {
+      buf += ch;
+      if (ch === "\\" && i + 1 < src.length) { buf += src[i + 1]; i += 2; continue; }
+      if (ch === quote) quote = null;
+      i++;
+      continue;
+    }
+    if (ch === '"' || ch === "'") { quote = ch; buf += ch; i++; continue; }
     if (ch === "{") {
       let sel = buf.trim();
       buf = "";
       if (!sel) { i++; continue; }
-      // The buffer may mix declarations (written without `;`) with the
-      // nested selector. Earlier lines that look like declarations belong
-      // to the CURRENT level; the last line is the selector. Multi-line
-      // values (trailing `(` or `,`) are left intact so gradients work.
+      // The buffer may mix declarations (written without `;`) with the nested
+      // selector or at-rule. Earlier lines that look like declarations belong
+      // to the CURRENT level; the last line is the selector. Multi-line values
+      // (trailing `(` or `,`) are left intact so gradients work.
       const lines = sel.split(/\n+/).map((l: string) => l.trim()).filter(Boolean);
       if (lines.length > 1) {
         const last = lines[lines.length - 1];
         const prior = lines.slice(0, -1);
         const priorComplete = !/[(,]\s*$/.test(prior[prior.length - 1] ?? "");
-        if (priorComplete && prior.every(isDeclLine) && !last.startsWith("@")) {
+        // An at-rule as the last line is a selector too -- `.card { @media ... }`
+        // used to be glued into one garbage selector.
+        if (priorComplete && prior.every(isDeclLine)) {
           for (const p of prior) pushDecl(p);
           sel = last;
         }
       }
-      const parent = stack.length ? stack[stack.length - 1] : "";
-      let full: string;
+      const parent = current();
       if (sel.startsWith("@")) {
-        full = sel; // at-rule: @media, @keyframes, @supports
-      } else if (parent && !parent.startsWith("@")) {
-        full = combineSelector(parent, sel);
+        const node: TssNode = { kind: "at", head: sel, decls: [], children: [] };
+        (parent ? parent.children : root).push(node);
+        stack.push(node);
       } else {
-        full = sel;
+        // Inside an at-rule a selector stands on its own; inside a rule it nests.
+        const full = parent && parent.kind === "rule" ? combineSelector(parent.selector, sel) : sel;
+        const node: TssNode = { kind: "rule", selector: full, decls: [], children: [] };
+        (parent ? parent.children : root).push(node);
+        stack.push(node);
       }
-      stack.push(full);
-      declsByLevel.push([]);
       i++;
     } else if (ch === "}") {
       // Flush trailing declarations (no `;` before `}`). Several may be
       // stacked on separate lines inside the block -- push each one.
       if (buf.trim()) {
         const blines = buf.split(/\n+/).map((l: string) => l.trim()).filter(Boolean);
-        if (blines.length > 1 && blines.every(isDeclLine)) {
+        // A value that continues onto the next line (an open `(` or a trailing
+        // comma) must stay whole, so split only when every line is complete.
+        const valueContinues = blines.some((l: string) => /[(,]\s*$/.test(l));
+        if (blines.length > 1 && !valueContinues) {
+          // One line at a time: a stray selector fragment or a bare property
+          // must not eat the declarations that follow it.
           for (const l of blines) pushDecl(l);
         } else {
           pushDecl(buf);
         }
       }
       buf = "";
-      const level = stack.pop();
-      const decls = declsByLevel.pop() ?? [];
-      if (level) {
-        if (level.startsWith("@") && decls.length > 0) {
-          // Declarations written directly inside an at-rule nested in a
-          // selector (`.card { @media ... { p 0 } }`) belong to the nearest
-          // enclosing real selector -- otherwise the rule loses its
-          // selector and the CSS applies to nothing.
-          let realSel: string | null = null;
-          for (let j = stack.length - 1; j >= 0; j--) {
-            if (!stack[j].startsWith("@")) { realSel = stack[j]; break; }
-          }
-          if (realSel) emit(realSel, decls, [...stack, level]);
-          else emit(level, decls, stack);
-        } else {
-          emit(level, decls, stack);
-        }
-      }
+      stack.pop();
       i++;
     } else if (ch === ";") {
-      pushDecl(buf);
+      if (buf.trim()) pushDecl(buf);
       buf = "";
       i++;
     } else {
@@ -326,10 +372,30 @@ function __twCompileTSSInner(source: string): string {
       i++;
     }
   }
-  // Trailing declaration without `;`
-  if (buf.trim()) {
-    const d = compileDecl(buf);
-    if (d && stack.length === 0) rules.push(`* { ${d} }`);
-  }
-  return rules.join("\n");
+  if (buf.trim()) pushDecl(buf);
+
+  const ser = (node: TssNode, parentSel: string): string[] => {
+    if (node.kind === "rule") {
+      const lines: string[] = [];
+      if (node.decls.length) lines.push(node.selector + " { " + node.decls.join("; ") + " }");
+      for (const c of node.children) lines.push(...ser(c, node.selector));
+      return lines;
+    }
+    // An at-rule: its own declarations, if any, belong to the enclosing
+    // selector -- `.card { @media ... { p 0 } }` must become
+    // `@media { .card { padding: 0 } }`, never a selector-less rule.
+    const inner: string[] = [];
+    // `@font-face`, `@page`, `@property` hold declarations directly, so at the
+    // top level they are emitted bare. Nested inside a selector the same
+    // declarations belong to that selector instead.
+    if (node.decls.length) {
+      inner.push(parentSel ? parentSel + " { " + node.decls.join("; ") + " }" : node.decls.join("; "));
+    }
+    for (const c of node.children) inner.push(...ser(c, parentSel));
+    return [node.head + " { " + inner.join(" ") + " }"];
+  };
+
+  const out: string[] = [...statements];
+  for (const node of root) out.push(...ser(node, ""));
+  return out.join("\n");
 }
