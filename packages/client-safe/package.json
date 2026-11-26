@@ -1,7 +1,7 @@
 {
   "name": "@tw/client-safe",
   "private": true,
-  "version": "2.0.4",
+  "version": "2.0.5",
   "description": "TW Framework client-safe marker — importing this module marks the importer as safe for both server and client",
   "type": "module",
   "main": "./tw/index.ts",

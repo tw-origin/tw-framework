@@ -4,6 +4,62 @@ Notable changes to TW Framework. The format follows
 [Keep a Changelog](https://keepachangelog.com/), and the project uses
 [Semantic Versioning](https://semver.org/).
 
+## [2.0.5]
+
+A patch release on top of 2.0.4. Two features that were blocked by bugs, and a
+run of stylesheet fixes.
+
+### Added
+
+- **Page-level imports reach `server { }` blocks.** A page may now import from
+  `lib/` and use the binding inside a server block:
+
+  ```tw
+  import { getApps } from "lib/data"
+  server { const apps = await getApps() }
+  ```
+
+  The import is resolved only when a block actually references it, and
+  block-local imports keep precedence. Use the same name in markup and it is
+  still `TW1007`, because that would have to reach the browser.
+- **`@tw/client-safe`.** A module inside `lib/` opts out of the server-only
+  default with `import "@tw/client-safe"`. `@tw/server-only` marks a module
+  anywhere. A client-safe module that pulls in a server-only dependency still
+  fails, with the whole import chain in the message.
+- **`TW125`** reports an import whose local name is also a server-block
+  built-in (`query`, `params`, `fetch`, …). Those bindings were silently
+  replaced by the built-in, so the block ran against the wrong value.
+- **`notFound()` in a static block.** The build skips that page and the host
+  serves a real 404, instead of a 200 with a "not found" body that crawlers
+  index.
+
+### Fixed
+
+- **TSS multi-line blocks.** A nested `@media`, `@container`, `@keyframes` or
+  `@layer` produced invalid CSS — a selector-less rule, or one copy of the
+  at-rule per inner rule so `@keyframes` lost frames. Custom properties
+  (`--main`) and vendor prefixes (`-webkit-transform`) written on their own
+  line were pasted into the previous declaration's value.
+- **TSS strings.** A `;` or `}` inside a quoted string split the declaration and
+  broke the block.
+- **TSS statement at-rules.** `@import`, `@charset` and `@layer a, b;` came out
+  as `* { @import: url(...) }` — the stylesheet imported nothing.
+- **TSS shorthands.** Nine documented shorthands (`br-tl`, `br-tr`, `br-bl`,
+  `br-br`, `fl`, `cl`, `dir`, `ww`, `va`) were never implemented, so
+  `br-tl 4px` emitted the literal property `br-tl` and the corner stayed square.
+- **TSS output shape.** A multi-line value printed across several lines; a
+  property with no value swallowed the next declaration; empty blocks emitted
+  empty rules.
+- **Documentation.** `TW108` and `docs/client-modules.md` still described the
+  old rules for `notFound()` and for importing `lib/` into a page.
+
+### Notes
+
+- `TW124` was already documented for a private-folder check, so the new
+  collision diagnostic is `TW125`.
+- Applying this needs `bun install`: `packages/client-safe` is a new workspace
+  package.
+
 ## [2.0.4]
 
 A patch release on top of 2.0.3. Bug fixes plus one deliberate behaviour change
