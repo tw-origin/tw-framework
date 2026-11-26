@@ -73,8 +73,8 @@ export interface BoundaryViolation {
 }
 
 /** Imports/exports/dynamic-imports with a literal specifier, via the TS parser. */
-export function collectModuleImports(src: string): { specifier: string; kind: string; names: string[] }[] {
-  const out: { specifier: string; kind: string; names: string[] }[] = [];
+export function collectModuleImports(src: string): { specifier: string; kind: string; names: string[]; source: string }[] {
+  const out: { specifier: string; kind: string; names: string[]; source: string }[] = [];
   if (!src.trim()) return out;
   const sf = ts.createSourceFile("m.ts", src, ts.ScriptTarget.Latest, true, ts.ScriptKind.TSX);
   const names = (node: ts.ImportDeclaration): string[] => {
@@ -89,12 +89,12 @@ export function collectModuleImports(src: string): { specifier: string; kind: st
   };
   const visit = (node: ts.Node) => {
     if (ts.isImportDeclaration(node) && ts.isStringLiteral(node.moduleSpecifier)) {
-      out.push({ specifier: node.moduleSpecifier.text, kind: "import", names: names(node) });
+      out.push({ specifier: node.moduleSpecifier.text, kind: "import", names: names(node), source: node.getText(sf) });
     } else if (ts.isExportDeclaration(node) && node.moduleSpecifier && ts.isStringLiteral(node.moduleSpecifier)) {
-      out.push({ specifier: node.moduleSpecifier.text, kind: "export-from", names: [] });
+      out.push({ specifier: node.moduleSpecifier.text, kind: "export-from", names: [], source: node.getText(sf) });
     } else if (ts.isCallExpression(node) && node.expression.kind === ts.SyntaxKind.ImportKeyword
       && node.arguments[0] && ts.isStringLiteral(node.arguments[0])) {
-      out.push({ specifier: node.arguments[0].text, kind: "dynamic", names: [] });
+      out.push({ specifier: node.arguments[0].text, kind: "dynamic", names: [], source: node.getText(sf) });
     }
     ts.forEachChild(node, visit);
   };
@@ -205,8 +205,20 @@ export function walkClientGraph(entryFiles: string[], opts: WalkOptions = {}): B
         // A4: on a page entry, if none of the names this import binds appears in
         // the client-visible source, the import is used only inside server
         // blocks -- allow it and do not descend (nothing of it ships).
-        if (entrySet.has(file) && imp.names.length > 0) {
-          const usedOnClient = imp.names.some((nm) => new RegExp("\\b" + nm.replace(/[$]/g, "\\$") + "\\b").test(scannable));
+        // Only the project's own server-only modules (lib/ and the marker) get
+        // the A4 allowance. Node built-ins and packages stay violations even
+        // when they appear only in a server block -- that is the existing
+        // contract, and widening it silently changed four tests' behaviour.
+        if (layer === "lib" && entrySet.has(file) && imp.names.length > 0) {
+          // The import statement itself contains the binding name, so testing
+          // `scannable` directly always said "used on the client" and A4 never
+          // allowed anything. Blank the import/export statements first, then look
+          // for a real use in the client-visible body.
+          const clientBody = scannable
+            .replace(/^\s*import\s[\s\S]*?from\s*["'][^"']+["'];?/gm, "")
+            .replace(/^\s*import\s*["'][^"']+["'];?/gm, "")
+            .replace(/^\s*export\s[\s\S]*?from\s*["'][^"']+["'];?/gm, "");
+          const usedOnClient = imp.names.some((nm) => new RegExp("\\b" + nm.replace(/[$]/g, "\\$") + "\\b").test(clientBody));
           if (!usedOnClient) continue;
         }
         violations.push({ file, specifier: spec, layer, chain: [...chain, spec] });

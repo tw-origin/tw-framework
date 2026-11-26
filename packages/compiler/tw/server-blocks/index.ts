@@ -10,6 +10,7 @@ import { ERROR_CODES } from "../diagnostics/codes";
 
 import { validateSerializable, containsSecret, toJsonSafe, ServerSerializationError, scanNonSerializableInitializers, scanEnvInMarkup, lintSql, lintSsrf, collectReferencedNames, secretEnvValues } from "./serialize";
 import * as ts from "typescript";
+import { readFileSync, existsSync } from "node:fs";
 import type { Program, ServerBlock } from "../ast/nodes";
 
 // --- Encoding (matches `state { }`) -----------------------------------------
@@ -395,6 +396,39 @@ function withTimeout<T>(p: Promise<T>, ms: number, label: string): Promise<T> {
 }
 
 /** Names an `import ... from "x"` statement introduces, best-effort. */
+/**
+ * Structured view of an import statement: which LOCAL name is bound to which
+ * IMPORTED name. `importBindingNames` only returns the local names, which is
+ * enough to strip the statement from the body but not enough to resolve it --
+ * `import { original as renamed }` looked up `mod.renamed`, and
+ * `import * as ns` looked up `mod.ns`, so both bound undefined.
+ */
+function importBindings(stmt: string): { local: string; imported: string; kind: "named" | "default" | "namespace" }[] {
+  const out: { local: string; imported: string; kind: "named" | "default" | "namespace" }[] = [];
+  const s = stmt.replace(/^import\s+(type\s+)?/, "").trim();
+  const fromIdx = s.lastIndexOf(" from ");
+  if (fromIdx < 0) return out; // side-effect import: nothing is bound
+  const clause = s.slice(0, fromIdx).trim();
+  if (!clause.startsWith("{") && !clause.startsWith("*")) {
+    const first = clause.split(",")[0].trim();
+    if (first && /^[A-Za-z_$]/.test(first)) out.push({ local: first, imported: "default", kind: "default" });
+  }
+  const ns = clause.match(/\*\s+as\s+([A-Za-z_$][\w$]*)/);
+  if (ns) out.push({ local: ns[1], imported: "*", kind: "namespace" });
+  const braces = clause.match(/\{([\s\S]*)\}/);
+  if (braces) {
+    for (const part of braces[1].split(",")) {
+      const t = part.trim();
+      if (!t) continue;
+      const parts = t.split(/\s+as\s+/);
+      const imported = parts[0].trim();
+      const local = (parts[1] ?? parts[0]).trim();
+      if (local) out.push({ local, imported, kind: "named" });
+    }
+  }
+  return out;
+}
+
 function importBindingNames(stmt: string): string[] {
   const names: string[] = [];
   const s = stmt.replace(/^import\s+(type\s+)?/, "");
@@ -420,6 +454,9 @@ function importBindingNames(stmt: string): string[] {
 
 /** Resolve a block's imports relative to the page file, using the .twm loader's
  * TS module path. In dev, a changed file is re-imported (cache-busted). */
+/** The two compile-time markers, matched as whole import statements only. */
+const MARKER_IMPORT_RE = /^[ \t]*import\s*["']@tw\/(?:server-only|client-safe)["'][ \t]*;?[ \t]*\r?\n?/gm;
+
 export async function resolveServerImports(
   block: ServerBlock,
   pageFile: string,
@@ -433,18 +470,45 @@ export async function resolveServerImports(
   for (const imp of block.imports) {
     if (!imp.specifier) continue;
     const spec = imp.specifier;
+    // Compile-time markers. They carry no runtime module, so trying to import
+    // them failed with "Cannot find package" for any project outside the repo.
+    if (spec === "@tw/server-only" || spec === "@tw/client-safe") continue;
     let mod: any;
     if (spec.startsWith("./") || spec.startsWith("../") || spec.startsWith("@./")) {
       const rel = spec.startsWith("@./") ? spec.slice(2) : spec;
       const abs = resolve(dirname(pageFile), rel);
       let bust: number | undefined;
       if (opts.dev) { try { bust = statSync(abs).mtimeMs; } catch { /* missing */ } }
-      mod = await twImportTs(abs, bust);
+      // Compile-time markers carry no runtime module, so a module that imports
+      // one could not be loaded from outside the framework repo. Strip exactly
+      // those two statements -- nothing else in the module is touched -- and
+      // load the rest with the original path as the resolution base.
+      let override: string | undefined;
+      try {
+        // `abs` may be extensionless ("../../lib/so"); the loader resolves the
+        // extension itself, so the strip has to look at the file that actually
+        // exists or it silently does nothing.
+        let realAbs = abs;
+        if (!existsSync(realAbs)) {
+          for (const ext of [".js", ".mjs", ".cjs", ".ts", ".mts", ".cts"]) {
+            if (existsSync(realAbs + ext)) { realAbs = realAbs + ext; break; }
+          }
+        }
+        const raw = readFileSync(realAbs, "utf-8");
+        if (MARKER_IMPORT_RE.test(raw)) {
+          MARKER_IMPORT_RE.lastIndex = 0;
+          override = raw.replace(MARKER_IMPORT_RE, "");
+        }
+      } catch { /* unreadable: let the loader report it */ }
+      mod = override === undefined ? await twImportTs(abs, bust) : await twImportTs(abs, bust, { source: override });
     } else {
       mod = await import(spec);
     }
-    const names = importBindingNames(imp.source);
-    for (const n of names) out[n] = mod?.[n] ?? mod?.default;
+    for (const bind of importBindings(imp.source)) {
+      if (bind.kind === "namespace") out[bind.local] = mod;
+      else if (bind.kind === "default") out[bind.local] = mod?.default ?? mod?.[bind.imported];
+      else out[bind.local] = mod?.[bind.imported] ?? mod?.default;
+    }
   }
   return out;
 }
@@ -479,6 +543,45 @@ export interface ServerBlockProblem {
 }
 
 /** Every compile-time problem a page's server blocks have, given its route context. */
+/**
+ * The names every server block is given for free. An import whose LOCAL name
+ * matches one of these used to be silently replaced by the built-in: the
+ * bindings object spread the imports first and then wrote these over the top,
+ * so `import { query } from "../lib/db"` produced "query is not a function"
+ * with no hint of why.
+ *
+ * Detecting it at build time is the fix; changing the spread order would alter
+ * what existing blocks see.
+ */
+export const RESERVED_BLOCK_BINDINGS = [
+  "params", "query", "headers", "cookies", "env",
+  "fetch", "getSession", "requireUser", "redirect", "notFound",
+] as const;
+
+/**
+ * Imports in `source` whose local binding collides with a block built-in.
+ * Named, default, namespace and aliased imports are all covered because the
+ * statement is parsed, not pattern-matched; `import { query as dbQuery }` is
+ * fine because its local name is `dbQuery`. Side-effect imports bind nothing
+ * and are ignored.
+ */
+export function serverImportCollisions(source: string): { name: string; specifier: string; line: number; col: number }[] {
+  const out: { name: string; specifier: string; line: number; col: number }[] = [];
+  const re = /^[ \t]*import\s+([\s\S]*?)\s+from\s+["']([^"']+)["'][ \t]*;?/gm;
+  let m: RegExpExecArray | null;
+  while ((m = re.exec(source))) {
+    const stmt = m[0];
+    const specifier = m[2];
+    const line = source.slice(0, m.index).split("\n").length;
+    for (const b of importBindings(stmt)) {
+      if ((RESERVED_BLOCK_BINDINGS as readonly string[]).includes(b.local)) {
+        out.push({ name: b.local, specifier, line, col: 1 });
+      }
+    }
+  }
+  return out;
+}
+
 export function checkServerBlocks(program: Program, opts: ServerBlockCheckOptions = {}): ServerBlockProblem[] {
   const blocks = collectServerBlocks(program);
   if (!blocks.length) return [];
@@ -517,7 +620,11 @@ export function checkServerBlocks(program: Program, opts: ServerBlockCheckOption
       }
       const calls = scanRuntimeCalls(b.source);
       if (calls.getSession || calls.requireUser) push("TW107", "getSession()/requireUser() are not available in a static page's server block", b.line, b.col);
-      if (calls.redirect || calls.notFound) push("TW108", "redirect()/notFound() are not available in a static page's server block", b.line, b.col);
+      // notFound() is allowed: at build time it means "this record does not
+      // exist", so the page is simply not emitted and the static host 404s it.
+      // redirect() still has nothing to act on -- a static page is built ahead
+      // of the request, so there is no response to redirect.
+      if (calls.redirect) push("TW108", "redirect() is not available in a static page's server block -- a static page is built before the request, so there is nothing to redirect", b.line, b.col);
     }
   }
 

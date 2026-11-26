@@ -372,6 +372,7 @@ export async function buildCommand(): Promise<void> {
   // build.incremental -- a page-level build cache. A page whose own source and
   // layout chain are unchanged (and whose output exists) is not recompiled.
   let skippedPages = 0;
+  let skippedNotFound = 0;
   let incCache: Record<string, string> = {};
   const incNext: Record<string, string> = {};
   const incHash = (t: string): string => createHash("sha256").update(t).digest("hex").slice(0, 16);
@@ -1148,6 +1149,18 @@ export async function buildCommand(): Promise<void> {
         const prog = parseWithDetails(source, { filePath: pageFile, cache: false, experimental: { serverBlocks: true } }).program;
         const sb = collectServerBlocks(prog);
         if (sb.length) {
+          // An import whose local name is also a block built-in would be silently
+          // overwritten when the bindings are built. Report it instead.
+          try {
+            const { serverImportCollisions } = _compilerMod as any;
+            for (const c of serverImportCollisions(source)) {
+              console.error("  \x1b[31m\u2717\x1b[0m " + pageFile.replace(rootDir + "/", "") + ":" + c.line +
+                "  TW124  import '" + c.name + "' from \"" + c.specifier +
+                "\" is also a server-block built-in, so the block would see the built-in instead of your import. Rename it: import { " +
+                c.name + " as my" + c.name.charAt(0).toUpperCase() + c.name.slice(1) + " } from \"" + c.specifier + "\"");
+              errorCount++;
+            }
+          } catch { /* the collision check must not break a build */ }
           const referenced = collectReferencedNames(source);
           const problems = checkServerBlocks(prog, {
             mode: renderMode, paramNames: Object.keys(paramSet), hasEnumeratedParams: hasExplicitParams,
@@ -1164,15 +1177,48 @@ export async function buildCommand(): Promise<void> {
           if (!hasExplicitParams) omit.push("params");
           // Resolve the block's imports the same way the SSR path does; without
           // this a static block that imports a helper ran with the name unbound.
+          // A page-level import is not part of `block.imports`, so a block that
+          // used one ran with the name unbound (the executor's unknown-name
+          // stand-in is a Proxy, hence "query is an instance of ProxyObject").
+          // Resolve the page's own imports that a block actually references, and
+          // do it BEFORE the block-local ones so a block-local import keeps
+          // precedence.
           const imports: Record<string, unknown> = {};
+          try {
+            const { collectModuleImports } = await import("./server-boundary");
+            const blockText = sb.map((b: any) => String(b.source ?? "")).join("\n");
+            const pageLevel = collectModuleImports(source).filter((imp) =>
+              imp.kind === "import" &&
+              imp.names.length > 0 &&
+              imp.names.some((nm) => new RegExp("\\b" + nm.replace(/[$]/g, "\\$") + "\\b").test(blockText)),
+            );
+            if (pageLevel.length) {
+              Object.assign(imports, await resolveServerImports({ imports: pageLevel } as any, pageFile, { dev: false }));
+            }
+          } catch (e: any) {
+            console.error("  \x1b[31m\u2717\x1b[0m " + pageFile.replace(rootDir + "/", "") +
+              "  a page-level import used by a server block could not be resolved: " + (e?.message ?? e));
+            errorCount++;
+            continue;
+          }
           for (const b of sb) Object.assign(imports, await resolveServerImports(b, pageFile, { dev: false }));
           try {
             const { createServerFetch, wrapJsonErrors, SERVER_FETCH_BUILD_ID } = _compilerMod as any;
             const sfetch = createServerFetch({ buildId: SERVER_FETCH_BUILD_ID, timeoutMs: fetchTimeoutMs, maxBytes: fetchCacheMaxBytes });
             const fetchShim = (u: any, i?: any) => sfetch(u, i).then(wrapJsonErrors);
-            const vals = await executeServerBlocks(sb, { context: { params: paramSet, env: process.env as Record<string, string>, loginPath }, imports, omit, omitRuntime: ["getSession", "requireUser", "redirect", "notFound"], label: pageFile, fetch: fetchShim, referenced, maxPayloadBytes, secrets: secretEnvValues(process.env) });
+            const vals = await executeServerBlocks(sb, { context: { params: paramSet, env: process.env as Record<string, string>, loginPath }, imports, omit, omitRuntime: ["getSession", "requireUser", "redirect"], label: pageFile, fetch: fetchShim, referenced, maxPayloadBytes, secrets: secretEnvValues(process.env) });
             serverVars = encodeServerValues(vals);
           } catch (e: any) {
+            // notFound() in a static block: the record does not exist, so the
+            // page is not written at all and the host serves its own 404. Say so
+            // -- silently dropping a page is worse than the soft 404 it replaces.
+            const { isServerNotFound } = _compilerMod as any;
+            if (typeof isServerNotFound === "function" && isServerNotFound(e)) {
+              console.log("  \x1b[33m!\x1b[0m " + pageFile.replace(rootDir + "/", "") +
+                "  notFound() -- page skipped, the host will serve a 404");
+              skippedNotFound++;
+              continue;
+            }
             console.error("  \x1b[31m\u2717\x1b[0m " + pageFile.replace(rootDir + "/", "") + "  server block failed: " + (e?.message ?? e));
             errorCount++;
             continue;
@@ -1738,6 +1784,7 @@ const runtimeSrc = _bundleDir
   if (buildOpts?.incremental) {
     try { writeFileSync(join(outDir, ".build-cache.json"), JSON.stringify(incNext)); } catch { /* best effort */ }
     if (skippedPages > 0) console.log("  \x1b[36m~\x1b[0m incremental: " + skippedPages + " page(s) unchanged, reused");
+    if (skippedNotFound > 0) console.log("  \x1b[33m!\x1b[0m " + skippedNotFound + " page(s) skipped by notFound() -- the host will serve a 404 for them");
   }
 
   // build.entryPoints -- extra JS entries bundled alongside the pages.

@@ -151,7 +151,7 @@ export const ERROR_CODES: Record<ErrorCode, { message: string; severity: Diagnos
   TW105: { message: "Server blocks in layouts are not supported yet", severity: "error", category: "semantic" },
   TW106: { message: "Request context (headers/cookies/query/params) is not available in a static server block", severity: "error", category: "semantic" },
   TW107: { message: "getSession()/requireUser() are not available in a static page's server block", severity: "error", category: "semantic" },
-  TW108: { message: "redirect()/notFound() are not available in a static page's server block", severity: "error", category: "semantic" },
+  TW108: { message: "redirect() is not available in a static page's server block", severity: "error", category: "semantic" },
   TW109: { message: "redirect() target must be a same-origin internal path", severity: "error", category: "semantic" },
   TW110: { message: "A cached fetch must not set an Authorization, Proxy-Authorization or Cookie header", severity: "error", category: "semantic" },
   TW111: { message: "A cached page's server block cannot read headers, cookies, getSession() or requireUser()", severity: "error", category: "semantic" },
@@ -166,6 +166,7 @@ export const ERROR_CODES: Record<ErrorCode, { message: string; severity: Diagnos
   TW121: { message: "The same name is declared by more than one state { } block (the earlier one wins)", severity: "warning", category: "semantic" },
   TW122: { message: "More than one default slot in the same component -- a caller's default content has no defined destination", severity: "warning", category: "semantic" },
   TW123: { message: "Raw HTML is not supported in .tw -- write the element in TW syntax", severity: "error", category: "syntax" },
+  TW124: { message: "An import's local name is also a server-block built-in, so the import would be silently overwritten", severity: "error", category: "semantic" },
   // Codes thrown outside the rule engine. TW303 comes from the stylesheet
   // parser (codegen/tss.ts); TW000 is the generic fallback used when an error
   // carries no code of its own.
