@@ -146,9 +146,14 @@ describe("static pages", () => {
     expect(probs.some((p: any) => p.code === "TW107")).toBe(true);
   });
 
-  test("TW108: redirect/notFound in a static block", () => {
-    const prog = parseWithDetails('server {\n  notFound()\n}\np "x"\n', SB).program;
+  test("TW108: redirect in a static block is rejected", () => {
+    const prog = parseWithDetails('server {\n  redirect("/x")\n}\np "x"\n', SB).program;
     expect(checkServerBlocks(prog, { mode: "static" }).some((p: any) => p.code === "TW108")).toBe(true);
+  });
+
+  test("notFound() is allowed in a static block -- the page is simply not built", () => {
+    const prog = parseWithDetails('server {\n  notFound()\n}\np "x"\n', SB).program;
+    expect(checkServerBlocks(prog, { mode: "static" }).some((p: any) => p.code === "TW108")).toBe(false);
   });
 
   test("TW109: a literal invalid redirect target", () => {
