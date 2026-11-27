@@ -79,25 +79,10 @@ export class RenderPipeline {
    * page's fallback branch with status 200, so search engines indexed those as
    * real pages. Return true when the requested params are not in `generate()`.
    */
+  /** Delegates to the shared helper so dev and serve cannot disagree. */
   private async isUnenumeratedParam(pageFile: string, params: Record<string, string>): Promise<boolean> {
-    if (!/\[[^\]]+\]/.test(pageFile)) return false;
-    const paramsTwm = dirname(pageFile) + "/params.twm";
-    if (!existsSync(paramsTwm)) return false;
-    try {
-      const { loadTWMModule } = await import("./twm-loader");
-      const pmod: any = await loadTWMModule(paramsTwm, this.rootDir);
-      if (typeof pmod?.generate !== "function") return false;
-      const arr = await pmod.generate();
-      if (!Array.isArray(arr) || arr.length === 0) return false;
-      const keys = Object.keys(params);
-      if (keys.length === 0) return false;
-      const sets = arr.map((x: any) => (x && typeof x === "object" ? x : { [keys[0]]: String(x) }));
-      const found = sets.some((set: any) => keys.every((k) => String(set[k] ?? "") === String(params[k] ?? "")));
-      return !found;
-    } catch {
-      // A broken params.twm must not turn every request into a 404.
-      return false;
-    }
+    const { isUnenumeratedParam } = await import("./twm-loader");
+    return isUnenumeratedParam(pageFile, params, this.rootDir);
   }
 
   private rootDir: string;

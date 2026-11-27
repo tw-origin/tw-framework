@@ -263,3 +263,36 @@ export async function devServerOnlyBoundary(rootDir: string, entryFiles: string[
   const viols = walkClientGraph(entryFiles, { rootDir, onlyPackages, stripServerRegions: strip });
   return viols.map((v) => `${v.layer}:${v.specifier}  [${formatChain(v)}]`);
 }
+
+/**
+ * Resolve the imports a page's server blocks run with.
+ *
+ * A block's own `import` statements are only part of the story: a page-level
+ * import that a block references never reached it, so the block ran with the
+ * name unbound (the executor's unknown-name stand-in is a Proxy, which surfaced
+ * as "query is not an instance of ProxyObject"). Both `tw build` and `tw dev`
+ * must resolve the same way, so the logic lives here once and `resolveImports`
+ * is passed in rather than imported -- this module stays free of a compiler
+ * dependency.
+ *
+ * Page-level imports are merged first, so a block-local import keeps precedence.
+ */
+export async function resolveBlockImports(
+  resolveImports: (block: any, pageFile: string, opts?: any) => Promise<Record<string, unknown>>,
+  opts: { source: string; blocks: any[]; pageFile: string; dev?: boolean },
+): Promise<Record<string, unknown>> {
+  const imports: Record<string, unknown> = {};
+  const blockText = opts.blocks.map((b: any) => String(b.source ?? "")).join("\n");
+  const pageLevel = collectModuleImports(opts.source).filter((imp) =>
+    imp.kind === "import" &&
+    imp.names.length > 0 &&
+    imp.names.some((nm) => new RegExp("\\b" + nm.replace(/[$]/g, "\\$") + "\\b").test(blockText)),
+  );
+  if (pageLevel.length) {
+    Object.assign(imports, await resolveImports({ imports: pageLevel } as any, opts.pageFile, { dev: opts.dev }));
+  }
+  for (const b of opts.blocks) {
+    Object.assign(imports, await resolveImports(b, opts.pageFile, { dev: opts.dev }));
+  }
+  return imports;
+}

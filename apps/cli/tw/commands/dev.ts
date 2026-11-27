@@ -6,7 +6,7 @@
  */
 
 import { join, resolve, dirname } from "node:path";
-import { MIME_TYPES } from "@tw/shared";
+import { MIME_TYPES, withCharset } from "@tw/shared";
 import { devErrorPage, CLIENT_OVERLAY_SCRIPT } from "../dev-overlay";
 import { existsSync, readFileSync, readdirSync, statSync } from "node:fs";
 import { scanComponents as scanComponentsShared, collectPrivateComponentDirs } from "../components";
@@ -770,7 +770,7 @@ async function ensureDevClientBundle(rootDir: string, pageSource: string, layout
           // then stopped the browser from running .js at all. Derive the type
           // from the extension, exactly like the production static handler.
           const _ext = (publicFile.split(".").pop() ?? "").toLowerCase();
-          const _type = (MIME_TYPES as Record<string, string>)[_ext] ?? pubFile.type ?? "application/octet-stream";
+          const _type = withCharset((MIME_TYPES as Record<string, string>)[_ext] ?? pubFile.type ?? "application/octet-stream");
           return new Response(pubFile, { headers: { "Content-Type": _type } });
         }
       }
@@ -947,7 +947,17 @@ async function ensureDevClientBundle(rootDir: string, pageSource: string, layout
         }
       }      // -- 5b. Page route (.tw): /about -> home/about/page.tw (with [param] dirs)
       const resolved = resolveHomeFile(homeDir, path, ["page.tw", "index.tw"]);
-      if (resolved) {
+      // A dynamic route whose params.twm does not enumerate this value is not a
+      // page: `tw serve` answered 404, `tw dev` rendered it, so a URL that is
+      // dead in production worked in development.
+      if (resolved && (await (async () => {
+        try {
+          const { isUnenumeratedParam } = await import("@tw/server");
+          return await isUnenumeratedParam(resolved.file, resolved.params ?? {}, rootDir);
+        } catch { return false; }
+      })())) {
+        // fall through to the 404 handler below
+      } else if (resolved) {
         const twFile = resolved.file;
         try {
           const source = readFileSync(twFile, "utf-8");
@@ -970,8 +980,13 @@ async function ensureDevClientBundle(rootDir: string, pageSource: string, layout
               // left those names unbound, so the block produced nothing and the
               // failure was silent (the page just rendered empty).
               const _blocks = blocks.filter((b: any) => !b.deferred);
-              const _imports: Record<string, unknown> = {};
-              for (const b of _blocks) Object.assign(_imports, await _c.resolveServerImports(b, twFile, { dev: true }));
+              // Same resolver the build uses -- a page-level import used only by a
+              // block has to reach it here too, or dev renders 500 while the
+              // build succeeds.
+              const { resolveBlockImports } = await import("./server-boundary");
+              const _imports = await resolveBlockImports(_c.resolveServerImports, {
+                source, blocks: _blocks, pageFile: twFile, dev: true,
+              });
               const values = await _c.executeServerBlocks(_blocks, {
                 context: { params: resolved.params ?? {}, env: process.env as Record<string, string>, loginPath: devOpts?.loginPath },
                 imports: _imports,
@@ -992,6 +1007,15 @@ async function ensureDevClientBundle(rootDir: string, pageSource: string, layout
               }
             }
           } catch (e: any) {
+            // `notFound()` throws ServerNotFound. It is not a failure: the page
+            // does not exist, so answer 404 with the same page the 404 handler
+            // uses (custom home/not-found.tw if the project has one). The build
+            // already treats it this way by skipping the page.
+            const _isNotFound = (await import("@tw/compiler") as any).isServerNotFound;
+            if (typeof _isNotFound === "function" && _isNotFound(e)) {
+              console.log("    -> 404 Not Found (notFound() in server block)");
+              return buildNotFound();
+            }
             console.log("    -> 500 Error (server block): " + (e?.message ?? e));
             if (devOpts?.overlay === false) {
               return new Response("500 - Server Error\n\n" + (e?.message ?? String(e)),
@@ -1136,6 +1160,11 @@ async function ensureDevClientBundle(rootDir: string, pageSource: string, layout
 
       // -- 6. 404 (custom home/not-found.tw if present) ----------------------
       console.log("    -> 404 Not Found");
+      return buildNotFound();
+    }
+
+    /** The 404 response, so a block calling notFound() gets the same page. */
+    function buildNotFound(): Response {
       const nfFile = join(homeDir, "not-found.tw");
       if (existsSync(nfFile)) {
         try {
@@ -1156,7 +1185,7 @@ async function ensureDevClientBundle(rootDir: string, pageSource: string, layout
         status: 404,
         headers: { "Content-Type": "text/html" },
       });
-  }
+    }
 
   // `tw dev` was Bun-only -- under Node it died at
   // Bun.serve (or, through global-fetch paths, crashed with an undici

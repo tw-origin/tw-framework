@@ -24,7 +24,8 @@
     "evals": "bun evals/run.ts",
     "bench": "bun bench/run.ts",
     "bench:check": "bun bench/run.ts --check",
-    "bench:record": "bun bench/run.ts --record"
+    "bench:record": "bun bench/run.ts --record",
+    "parity": "bun scripts/check-parity.ts"
   },
   "devDependencies": {
     "@happy-dom/global-registrator": "^15.0.0",

@@ -1175,33 +1175,17 @@ export async function buildCommand(): Promise<void> {
           // without enumerated params) -- bind them to a throwing stand-in.
           const omit = ["headers", "cookies", "query"];
           if (!hasExplicitParams) omit.push("params");
-          // Resolve the block's imports the same way the SSR path does; without
-          // this a static block that imports a helper ran with the name unbound.
-          // A page-level import is not part of `block.imports`, so a block that
-          // used one ran with the name unbound (the executor's unknown-name
-          // stand-in is a Proxy, hence "query is an instance of ProxyObject").
-          // Resolve the page's own imports that a block actually references, and
-          // do it BEFORE the block-local ones so a block-local import keeps
-          // precedence.
-          const imports: Record<string, unknown> = {};
+          // One shared resolver, so build and dev cannot drift apart again.
+          let imports: Record<string, unknown> = {};
           try {
-            const { collectModuleImports } = await import("./server-boundary");
-            const blockText = sb.map((b: any) => String(b.source ?? "")).join("\n");
-            const pageLevel = collectModuleImports(source).filter((imp) =>
-              imp.kind === "import" &&
-              imp.names.length > 0 &&
-              imp.names.some((nm) => new RegExp("\\b" + nm.replace(/[$]/g, "\\$") + "\\b").test(blockText)),
-            );
-            if (pageLevel.length) {
-              Object.assign(imports, await resolveServerImports({ imports: pageLevel } as any, pageFile, { dev: false }));
-            }
+            const { resolveBlockImports } = await import("./server-boundary");
+            imports = await resolveBlockImports(resolveServerImports, { source, blocks: sb, pageFile, dev: false });
           } catch (e: any) {
             console.error("  \x1b[31m\u2717\x1b[0m " + pageFile.replace(rootDir + "/", "") +
               "  a page-level import used by a server block could not be resolved: " + (e?.message ?? e));
             errorCount++;
             continue;
           }
-          for (const b of sb) Object.assign(imports, await resolveServerImports(b, pageFile, { dev: false }));
           try {
             const { createServerFetch, wrapJsonErrors, SERVER_FETCH_BUILD_ID } = _compilerMod as any;
             const sfetch = createServerFetch({ buildId: SERVER_FETCH_BUILD_ID, timeoutMs: fetchTimeoutMs, maxBytes: fetchCacheMaxBytes });

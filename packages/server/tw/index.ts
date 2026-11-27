@@ -1535,3 +1535,5 @@ export {
 } from "@tw/shared";
 export { cache, cached, draftMode, getCache, resetCache, setDraftSecret, verifyDraftCookie } from "@tw/shared";
 export { CookieJar, TWRequest, TWResponse, twRequest } from "@tw/shared";
+
+export { isUnenumeratedParam } from "./routing/twm-loader";

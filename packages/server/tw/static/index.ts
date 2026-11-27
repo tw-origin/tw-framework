@@ -3,7 +3,7 @@
 import { existsSync, statSync } from "node:fs";
 import { readTextFile, readBytes, gzipBytes } from "../fs-compat";
 import { join, extname, normalize, resolve, sep } from "node:path";
-import { MIME_TYPES } from "@tw/shared";
+import { MIME_TYPES, withCharset } from "@tw/shared";
 import { sha256 } from "@tw/shared";
 
 export interface StaticOptions {
@@ -101,7 +101,9 @@ export class StaticHandler {
 
     const stat = statSync(filePath);
     const ext = extname(filePath).toLowerCase();
-    const contentType = MIME_TYPES[ext] ?? "application/octet-stream";
+    // Text types declare their charset; binary ones (png, svg+xml, woff2) must
+    // not. Same helper `tw dev` uses, so the two cannot disagree.
+    const contentType = withCharset(MIME_TYPES[ext] ?? "application/octet-stream");
 
     // Read file
     const bytes = await readBytes(filePath);

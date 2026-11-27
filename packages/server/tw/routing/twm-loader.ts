@@ -18,7 +18,7 @@ import {
   registerTwmTagInvalidator,
 } from "./revalidate";
 import { setSignal } from "./signal-stream";
-import { join } from "node:path";
+import { join, dirname } from "node:path";
 import { isRuleDsl, parseRules, evaluateRules, type MiddlewareRule } from "./twm-rules";
 import { sha256, parseCacheBody, resolveCache, canonicalizeQuery, readCacheProfilesSync, findBalancedBraceEnd, type ResolvedCache } from "@tw/shared";
 
@@ -982,4 +982,36 @@ export function shouldMatchMiddleware(matchers: string[], pathname: string): boo
   }
 
   return false;
+}
+
+/**
+ * True when a dynamic page's `params.twm` enumerates its params and the ones
+ * asked for are not in that list — the route does not exist.
+ *
+ * `tw serve` returned 404 for such a path; `tw dev` rendered the page anyway, so
+ * a URL that is dead in production worked in development. Both now call this.
+ * A missing or broken params.twm is not a 404: it means "no enumeration", not
+ * "no page".
+ */
+export async function isUnenumeratedParam(
+  pageFile: string,
+  params: Record<string, string>,
+  rootDir: string,
+): Promise<boolean> {
+  if (!/\[[^\]]+\]/.test(pageFile)) return false;
+  const paramsTwm = dirname(pageFile) + "/params.twm";
+  if (!existsSync(paramsTwm)) return false;
+  try {
+    const pmod: any = await loadTWMModule(paramsTwm, rootDir);
+    if (typeof pmod?.generate !== "function") return false;
+    const arr = await pmod.generate();
+    if (!Array.isArray(arr) || arr.length === 0) return false;
+    const keys = Object.keys(params);
+    if (keys.length === 0) return false;
+    const sets = arr.map((x: any) => (x && typeof x === "object" ? x : { [keys[0]]: String(x) }));
+    const found = sets.some((set: any) => keys.every((k) => String(set[k] ?? "") === String(params[k] ?? "")));
+    return !found;
+  } catch {
+    return false;
+  }
 }

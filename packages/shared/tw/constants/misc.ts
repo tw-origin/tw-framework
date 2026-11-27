@@ -55,3 +55,17 @@ export const PERF_MARKS = {
   DIAGNOSE_START: "tw:diagnose:start", DIAGNOSE_END: "tw:diagnose:end",
   COMPILE_START: "tw:compile:start", COMPILE_END: "tw:compile:end",
 } as const;
+
+/**
+ * Text types declare their charset; binary types must not. Appending
+ * `; charset=utf-8` to `image/png` is meaningless and can confuse strict
+ * clients, so the decision lives here instead of being repeated in `tw dev` and
+ * the production static handler (which disagreed: dev sent
+ * `text/css;charset=utf-8`, serve sent `text/css`).
+ */
+const TEXTUAL_MIME = /^(text\/|application\/(json|javascript|xml|xhtml\+xml|ld\+json|manifest\+json|rss\+xml|atom\+xml))/i;
+
+export function withCharset(mime: string): string {
+  const base = (mime || "application/octet-stream").split(";")[0].trim();
+  return TEXTUAL_MIME.test(base) ? base + "; charset=utf-8" : base;
+}
