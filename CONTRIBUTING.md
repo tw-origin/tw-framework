@@ -160,8 +160,9 @@ Full style guide: contributing/core-testing.md. The essentials:
 
 Short form (long form: skills/add-diagnostic):
 
-1. Next free code in `packages/compiler/tw/diagnostics/codes.ts` (currently
-   through TW093).
+1. Next free code in `packages/compiler/tw/diagnostics/codes.ts` -- the highest
+   in use is TW306, so the next free one is TW307. Check the file rather than
+   trusting this line; it goes stale.
 2. Message + severity + category in codes.ts; rule in diagnostics/rules.ts;
    parser/codegen emits it at the exact failure point.
 3. `bun scripts/generate-errors-json.ts` -- errors.json count must rise by
