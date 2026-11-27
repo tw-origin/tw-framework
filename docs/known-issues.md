@@ -58,33 +58,35 @@ latent here rather than shipping. See the separate entry below for what
 
 ---
 
-## `<style scoped>` blocks emit no CSS at all
+## The `style scoped { }` block form is dropped; `<style scoped>` works
 
-**Status:** open, separate from the selector rewriting above. Found while
-proving that the `scopeSelector()` extraction was behaviour-neutral.
+**Status:** open. Separate from the selector rewriting above, and found while
+trying to prove that the `scopeSelector()` extraction was behaviour-neutral.
 
-A page with
+Reproduced with `compileSync` on four pages that differ only in how the style
+block is written:
 
-```tw
-style scoped {
-  .card { color: red; }
-}
-```
+| written as | CSS emitted | scope applied |
+|---|---|---|
+| `style scoped { .card { color: red; } }` | **nothing** | no |
+| `style { .card { color: red; } }` | `.card{color:red}` | no |
+| `<style scoped>` … `</style>` | `.card[data-tw-scope="s1a…"]{color:red}` | **yes** |
+| `<style>` … `</style>` | `.card{color:red}` | no |
 
-compiles with **no style block in the AST and no CSS in the output** — the block
-is dropped, `data-tw-scope` never appears in the HTML, and the rule never
-reaches the page. A plain `style { ... }` block works and produces
-`.card{color:red}`.
+So the **tag** form works end to end. The TW **block** form with `scoped` on it
+parses without error, produces no `StyleBlock` in the AST, and emits no CSS at
+all — the rule silently disappears.
 
-Confirmed identical on `HEAD` before the `scopeSelector()` extraction, so it is
-pre-existing, not a result of that change.
+The parser does set the flag (`block.scoped = /\bscoped\b/i.test(openToken.value)`,
+`parser/statements/index.ts:1392`), so either the block never becomes a
+`StyleBlock`, or it is dropped before the extractor sees it. Not investigated
+further.
 
-**Not investigated further:** the parser sets `scoped` from
-`/\bscoped\b/i.test(openToken.value)` (`parser/statements/index.ts:1392`), so
-the flag is being read somewhere the extractor never sees, or the block is
-dropped before extraction. That needs its own investigation.
+Confirmed identical on `HEAD` before the `scopeSelector()` extraction, so the
+extraction did not cause it.
 
-**Consequence for the selector bug above:** it cannot currently be triggered
-through a `<style scoped>` block, because that block produces nothing. It is
-still reachable through whatever path does set `rule.scope`, which is why the
-characterisation tests matter.
+**Related:** the selector bug above **is** reachable in user projects through the
+`<style scoped>` tag form, which works. That makes it more urgent than an
+earlier version of this note implied — a project using `:is()`, `:not()`,
+`:has()` or `*` inside a `<style scoped>` block is shipping broken or invalid
+CSS today.

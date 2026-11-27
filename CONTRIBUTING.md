@@ -171,6 +171,31 @@ Short form (long form: skills/add-diagnostic):
 5. Tests: one case where it fires, one where the same construct compiles
    silently.
 
+### Pre-commit checklist
+
+Run these before every commit. They are the same commands CI runs, so a green
+local run means a green build.
+
+```bash
+bun run lint                              # typecheck (scripts/typecheck.sh)
+bun test                                  # unit + e2e
+bun scripts/generate-errors-json.ts       # only when you touched a code table
+node -e "const r=require('./errors.json'); if(r.count!==Object.keys(r.codes).length)process.exit(1)"
+bun install --frozen-lockfile             # only when you touched package.json
+```
+
+Two of these exist because a stale generated file has already broken a build:
+
+- **`errors.json`** — adding or renaming a diagnostic code without regenerating
+  it leaves the published list behind. `bun scripts/generate-errors-json.ts`
+  rewrites it; the `node -e` line is the same consistency check CI performs.
+  `bun run verify` runs the whole sequence (lint, test, evals, bench, this
+  check) if you want one command.
+- **`bun.lock`** — a dependency added to `package.json` but never written to the
+  lockfile makes `bun install --frozen-lockfile` fail for everyone else, with
+  `dependencies in package.json changed since bun.lock was saved`. Run
+  `bun install` and commit the lockfile in the same change.
+
 ## 9. Performance work
 
 - The gate is `bun bench/run.ts --check` -- 25% tolerance against
