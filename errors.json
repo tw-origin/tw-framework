@@ -1,7 +1,7 @@
 {
   "version": 1,
-  "generatedAt": "2026-10-13T10:03:23.799Z",
-  "count": 120,
+  "generatedAt": "2026-11-27T14:52:45.157Z",
+  "count": 128,
   "codes": {
     "TW001": {
       "message": "Unexpected token",
@@ -527,6 +527,11 @@
       "severity": "warning",
       "category": "semantic"
     },
+    "TW098": {
+      "message": "Interpolation cannot be evaluated at build time -- it renders as its source text",
+      "severity": "warning",
+      "category": "semantic"
+    },
     "TW099": {
       "message": "Unknown server modifier (only ':defer' is supported)",
       "severity": "error",
@@ -573,7 +578,7 @@
       "category": "semantic"
     },
     "TW108": {
-      "message": "redirect()/notFound() are not available in a static page's server block",
+      "message": "redirect() is not available in a static page's server block",
       "severity": "error",
       "category": "semantic"
     },
@@ -632,8 +637,43 @@
       "severity": "error",
       "category": "semantic"
     },
+    "TW121": {
+      "message": "The same name is declared by more than one state { } block (the earlier one wins)",
+      "severity": "warning",
+      "category": "semantic"
+    },
+    "TW122": {
+      "message": "More than one default slot in the same component -- a caller's default content has no defined destination",
+      "severity": "warning",
+      "category": "semantic"
+    },
+    "TW123": {
+      "message": "Raw HTML is not supported in .tw -- write the element in TW syntax",
+      "severity": "error",
+      "category": "syntax"
+    },
+    "TW125": {
+      "message": "An import's local name is also a server-block built-in, so the import would be silently overwritten",
+      "severity": "error",
+      "category": "semantic"
+    },
     "TW303": {
       "message": "Unbalanced braces in a stylesheet -- a rule block is never closed",
+      "severity": "error",
+      "category": "syntax"
+    },
+    "TW304": {
+      "message": "A declaration has an empty value",
+      "severity": "error",
+      "category": "syntax"
+    },
+    "TW305": {
+      "message": "Unrecognized at-rule in a stylesheet",
+      "severity": "warning",
+      "category": "syntax"
+    },
+    "TW306": {
+      "message": "A declaration in a .css file has no colon",
       "severity": "error",
       "category": "syntax"
     },
