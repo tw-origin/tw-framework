@@ -61,6 +61,23 @@ export interface CSSExtractionResult {
 
 // --- CSS Extractor ----------------------------------------------------
 
+/**
+ * Apply a scope id to a selector list.
+ *
+ * The expression below is the one that has always been here: it takes the FIRST
+ * token matching `[.#]?[\w-]+` in each comma-separated part and appends the
+ * scope attribute to it. It is deliberately unchanged -- several selector
+ * shapes come out wrong (`:is()`, `:not()`, `:has()`, `&:hover`, `*`), and
+ * `tests/scoped-selector.test.ts` locks the current output so that fixing it
+ * later is a visible, reviewable change rather than a silent one. See
+ * docs/known-issues.md.
+ */
+export function scopeSelector(selector: string, scopeId: string): string {
+  return selector.split(",").map(s => {
+    return s.trim().replace(/([.#]?[\w-]+)/, `$1[data-tw-scope="${scopeId}"]`);
+  }).join(",");
+}
+
 export class CSSExtractor {
   private rules: CSSRule[] = [];
   private removedSelectors: string[] = [];
@@ -428,11 +445,7 @@ export class CSSExtractor {
   private minifyRule(rule: CSSRule): string {
     // Apply scope
     let selector = rule.selector;
-    if (rule.scope) {
-      selector = selector.split(",").map(s => {
-        return s.trim().replace(/([.#]?[\w-]+)/, `$1[data-tw-scope="${rule.scope}"]`);
-      }).join(",");
-    }
+    if (rule.scope) selector = scopeSelector(selector, rule.scope);
 
     // Minify properties
     const props = Array.from(rule.properties.entries())

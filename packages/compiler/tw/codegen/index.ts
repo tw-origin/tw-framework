@@ -37,7 +37,7 @@ export { TemplateBuilder, generateArrowTemplate, generatePartials, generateStati
 export type { CodegenContext, CodegenMetadata, CodegenMode, CodegenResult, HydrationMarker } from "./types";
 export { VDOMCodeBuilder, generateNodeVDOM, generateStaticVDOM, generateVDOMCode } from "./vdom-gen";
 export { generate, generateVDOM, generateWithLayout, generateWithLayoutChain } from "./vdom";
-export { compileTSS, TSS_SHORTHANDS } from "./tss";
+export { compileTSS, TSS_SHORTHANDS, validateCssStructure, type CssFinding } from "./tss";
 
 export { computeCssAssets, routeToCssName } from "./css-assets";
 

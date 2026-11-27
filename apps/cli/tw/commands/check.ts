@@ -42,6 +42,36 @@ export async function checkCommand(): Promise<void> {
   let totalWarnings = 0;
   let totalInfo = 0;
 
+  // Stylesheets: structural checks only (unbalanced braces, empty values,
+  // unknown at-rules, colon-less declarations in .css). No value grammar, so a
+  // valid modern property can never be flagged.
+  const cssFiles: string[] = [];
+  for (const dir of [srcDir, join(rootDir, "style"), join(rootDir, "public")]) {
+    if (!existsSync(dir)) continue;
+    for (const ext of [".tss", ".css", ".scss"]) collectFiles(dir, ext, cssFiles);
+  }
+  if (cssFiles.length) {
+    try {
+      const mod: any = await import("@tw/compiler");
+      const validate = mod.validateCssStructure;
+      if (typeof validate === "function") {
+        for (const f of [...new Set(cssFiles)]) {
+          const src = readFileSync(f, "utf-8");
+          const rel = f.replace(rootDir + "/", "");
+          const found = validate(src, f);
+          for (const d of found) {
+            if (ignored.has(d.code)) continue;
+            // TW305 is advisory -- see the code table.
+            const isWarning = d.code === "TW305";
+            console.debug(`    ${isWarning ? "!" : "\u2717"} ${d.code} line ${d.line}, col ${d.col}: ${d.message}`);
+            console.debug(`      ${rel}`);
+            if (isWarning) totalWarnings++; else totalErrors++;
+          }
+        }
+      }
+    } catch { /* the compiler could not be loaded -- the .tw pass reports that */ }
+  }
+
   // Load the compiler ONCE, and fall back to the basic syntax check ONLY when
   // the module genuinely cannot be imported. The old outer `catch` wrapped the
   // whole run: a compiler that loaded and then threw mid-loop silently re-ran

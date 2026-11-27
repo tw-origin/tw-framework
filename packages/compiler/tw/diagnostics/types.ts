@@ -63,7 +63,7 @@ export type ErrorCode =
   | "TW113" | "TW114" | "TW115" | "TW116" | "TW117" | "TW118" | "TW119"
   | "TW121" | "TW122" | "TW123" | "TW125"
   // Declared for codes emitted outside the rule engine (see codes.ts)
-  | "TW303" | "TW000";
+  | "TW303" | "TW304" | "TW305" | "TW306" | "TW000";
 
 
 export interface AutofixSuggestion {

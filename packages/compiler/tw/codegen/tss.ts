@@ -405,3 +405,133 @@ function __twCompileTSSInner(source: string): string {
   for (const node of root) out.push(...ser(node, ""));
   return out.join("\n");
 }
+
+/**
+ * Structural CSS checks for `tw check` -- zero dependency, no value grammar.
+ *
+ * Only reports what is unambiguously invalid:
+ *   TW303  unbalanced braces (the code `compileTSS` already throws), now with a
+ *          column as well as a line
+ *   TW304  a declaration whose value is empty (`color: ;`)
+ *   TW305  an unknown at-rule (`@medias`)
+ *   TW306  a declaration without a colon in a `.css` file (`color red`)
+ *
+ * Deliberately NOT reported: unknown properties, invalid values, vendor
+ * prefixes, custom properties, nesting, `@layer`/`@container`/`@property` and
+ * anything else a value-level validator would need a spec grammar for. Those
+ * would produce false positives on valid modern CSS.
+ */
+const KNOWN_AT_RULES = new Set([
+  "media", "supports", "layer", "container", "scope", "property", "font-face",
+  "keyframes", "-webkit-keyframes", "page", "import", "charset", "namespace",
+  "font-feature-values", "counter-style", "starting-style", "view-transition",
+  "position-try", "custom-media", "custom-selector", "nest", "document",
+  "viewport", "-ms-viewport", "tailwind", "apply", "use", "forward", "mixin",
+  "include", "extend", "if", "else", "each", "for", "function", "return",
+  "debug", "warn", "error", "at-root", "content",
+]);
+
+export interface CssFinding {
+  code: "TW303" | "TW304" | "TW305" | "TW306";
+  message: string;
+  line: number;
+  col: number;
+}
+
+/** Strip comments and strings so a brace inside either cannot confuse the scan. */
+function blankCommentsAndStrings(src: string): string {
+  const out = src.split("");
+  let i = 0;
+  const n = src.length;
+  while (i < n) {
+    const c = src[i];
+    if (c === '"' || c === "'") {
+      const q = c;
+      out[i] = " ";
+      i++;
+      while (i < n && src[i] !== q) {
+        if (src[i] === "\\") { out[i] = " "; i++; if (i < n) { out[i] = " "; i++; } continue; }
+        if (src[i] !== "\n") out[i] = " ";
+        i++;
+      }
+      if (i < n) { out[i] = " "; i++; }
+      continue;
+    }
+    if (c === "/" && src[i + 1] === "*") {
+      const end = src.indexOf("*/", i + 2);
+      const stop = end === -1 ? n : end + 2;
+      for (let j = i; j < stop; j++) if (out[j] !== "\n") out[j] = " ";
+      i = stop;
+      continue;
+    }
+    i++;
+  }
+  return out.join("");
+}
+
+function lineColOf(src: string, index: number): { line: number; col: number } {
+  let line = 1, col = 1;
+  for (let i = 0; i < index && i < src.length; i++) {
+    if (src[i] === "\n") { line++; col = 1; } else col++;
+  }
+  return { line, col };
+}
+
+export function validateCssStructure(source: string, filePath: string): CssFinding[] {
+  const findings: CssFinding[] = [];
+  const scan = blankCommentsAndStrings(source);
+
+  // TW303 -- braces, with a column this time
+  const stack: number[] = [];
+  for (let i = 0; i < scan.length; i++) {
+    if (scan[i] === "{") stack.push(i);
+    else if (scan[i] === "}") {
+      if (!stack.length) {
+        const { line, col } = lineColOf(source, i);
+        findings.push({ code: "TW303", message: "unbalanced '}' -- nothing is open here", line, col });
+      } else stack.pop();
+    }
+  }
+  for (const open of stack) {
+    const { line, col } = lineColOf(source, open);
+    findings.push({ code: "TW303", message: "unclosed '{' -- this block never closes", line, col });
+  }
+
+  // TW305 -- at-rules
+  for (const m of scan.matchAll(/(^|[;{}]\s*)@([a-zA-Z-]+)/g)) {
+    const name = m[2].toLowerCase();
+    if (KNOWN_AT_RULES.has(name)) continue;
+    const at = (m.index ?? 0) + m[1].length;
+    const { line, col } = lineColOf(source, at);
+    findings.push({ code: "TW305", message: "unknown at-rule '@" + name + "'", line, col });
+  }
+
+  // TW304 -- empty value, TW306 -- no colon in a .css file
+  //
+  // Boundaries come from the blanked scan (so a `;` inside a string cannot end
+  // a declaration), but the TEXT is read from the original source: blanking a
+  // string would make `content: "a;b"` look like an empty value.
+  const isPlainCss = /\.css$/i.test(filePath);
+  for (const raw of scan.matchAll(/([^{};]+)[;}]/g)) {
+    const start = raw.index ?? 0;
+    const blanked = raw[1];
+    const real = source.slice(start, start + blanked.length);
+    const trimmed = real.trim();
+    if (!trimmed || trimmed.startsWith("@")) continue;
+    const at = start + (real.length - real.trimStart().length);
+    const { line, col } = lineColOf(source, at);
+    const colon = trimmed.indexOf(":");
+    if (colon === -1) {
+      // a selector ends at `{`, so anything here is a declaration
+      if (isPlainCss && /^[-\w]+\s+\S/.test(trimmed)) {
+        findings.push({ code: "TW306", message: "declaration has no colon: '" + trimmed.slice(0, 30) + "'", line, col });
+      }
+      continue;
+    }
+    const value = trimmed.slice(colon + 1).trim();
+    if (!value) {
+      findings.push({ code: "TW304", message: "declaration has an empty value", line, col });
+    }
+  }
+  return findings;
+}
