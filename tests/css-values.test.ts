@@ -126,7 +126,7 @@ describe("css-tree is resolved from the project root", () => {
     writeFileSync(join(root, "node_modules", "css-tree", "package.json"), '{"name":"css-tree","version":"9.9.9","main":"index.js"}');
     writeFileSync(join(root, "node_modules", "css-tree", "index.js"), "module.exports = { marker: 'from-project-root' };");
     const { projectCssTreeLoader } = await import("../apps/cli/tw/commands/check.ts");
-    const loader = projectCssTreeLoader(root);
+    const loader = await projectCssTreeLoader(root);
     expect(typeof loader).toBe("function");
     const mod = await loader!();
     expect(mod.marker).toBe("from-project-root");
@@ -140,7 +140,7 @@ describe("css-tree is resolved from the project root", () => {
     const root = mkdtempSync(join(tmpdir(), "tw-nocsstree-"));
     writeFileSync(join(root, "package.json"), '{"name":"p","private":true}');
     const { projectCssTreeLoader } = await import("../apps/cli/tw/commands/check.ts");
-    expect(projectCssTreeLoader(root)).toBeUndefined();
+    expect(await projectCssTreeLoader(root)).toBeUndefined();
     rmSync(root, { recursive: true, force: true });
   });
 });

@@ -2,8 +2,6 @@
 
 import { maskSourceStringsAndComments } from "@tw/shared";
 import { join, dirname } from "node:path";
-import { createRequire } from "node:module";
-import { pathToFileURL } from "node:url";
 import { existsSync, readFileSync, readdirSync, statSync } from "node:fs";
 import { scanComponents, registerImportedComponents } from "../components";
 
@@ -67,7 +65,7 @@ export async function checkCommand(): Promise<void> {
           try {
             const values = await mod.validateCssValues(
               /\.tss$/i.test(f) ? mod.compileTSS(src) : src,
-              projectCssTreeLoader(rootDir),
+              await projectCssTreeLoader(rootDir),
             );
             if (values?.skipped) valueChecksSkipped++;
             for (const d of values?.findings ?? []) {
@@ -268,8 +266,14 @@ function findComponentUp(dir: string, name: string): boolean {
  * project has it installed. Resolving from the project root makes the user's
  * install the one that counts, and still fails cleanly when they have none.
  */
-export function projectCssTreeLoader(rootDir: string): (() => Promise<any>) | undefined {
+export async function projectCssTreeLoader(rootDir: string): Promise<(() => Promise<any>) | undefined> {
   try {
+    // Imported here, not at the top of the file: the node bundle's banner
+    // already declares `createRequire`, and a second top-level binding is a
+    // SyntaxError in an ESM bundle ("Identifier 'createRequire' has already
+    // been declared"). A dynamic import keeps it out of module scope.
+    const { createRequire } = await import("node:module");
+    const { pathToFileURL } = await import("node:url");
     const req = createRequire(join(rootDir, "package.json"));
     const resolved = req.resolve("css-tree");
     return () => import(pathToFileURL(resolved).href);
