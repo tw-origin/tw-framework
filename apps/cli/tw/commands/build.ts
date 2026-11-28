@@ -1569,6 +1569,71 @@ export async function buildCommand(): Promise<void> {
     console.log("  \x1b[36m\u26A1\x1b[0m client modules: " + clientChunkUrls.size + " shared chunk" + (clientChunkUrls.size === 1 ? "" : "s") + " (content-hashed, tree-shaken)");
   }
 
+  // -- 5c. client-safe security analysis -------------------------------------
+  // Runs after the TW1007 gate so the emitted client bundles exist. Everything
+  // here is warning/info: `tw build` has no --ignore escape hatch yet, so a
+  // build-breaking check would be a behaviour change. See docs/security.md.
+  {
+    const { scanSourceForSecrets, scanBundleForSecrets } = await import("./secret-scan");
+    const { stripServerBlockRegions, collectServerBlocks } = await import("@tw/compiler");
+    const { secretEnvValues } = await import("@tw/compiler");
+
+    // Client-reachable set: page/layout files plus their relative imports.
+    const reachable = new Set<string>();
+    const queue = [...pageFiles];
+    while (queue.length) {
+      const f = queue.pop()!;
+      if (reachable.has(f)) continue;
+      reachable.add(f);
+      let src = "";
+      try { src = readFileSync(f, "utf-8"); } catch { continue; }
+      for (const m of src.matchAll(/(?:import|export)[^"']*from\s*["']([^"']+)["']|import\s*["']([^"']+)["']/g)) {
+        const spec = m[1] ?? m[2];
+        if (!spec.startsWith(".")) continue;
+        const base = resolve(dirname(f), spec);
+        for (const ext of ["", ".ts", ".js", ".tsx", ".jsx", ".tw"]) {
+          if (existsSync(base + ext) && statSync(base + ext).isFile()) { queue.push(base + ext); break; }
+        }
+      }
+    }
+
+    const secFindings: { file: string; line: number; col: number; code: string; message: string }[] = [];
+    for (const f of reachable) {
+      if (!/\.(tw|ts|js|tsx|jsx)$/.test(f)) continue;
+      if (f.includes("node_modules")) continue;
+      let src = "";
+      try { src = readFileSync(f, "utf-8"); } catch { continue; }
+      // .tw: blank the server blocks in place, so line/col still match the file
+      if (f.endsWith(".tw")) {
+        try {
+          const parsed: any = (_compileSync as any)(src, { filePath: f });
+          if (parsed?.ast) src = stripServerBlockRegions(src, collectServerBlocks(parsed.ast));
+        } catch { /* an unparsable page fails earlier */ }
+      }
+      for (const v of scanSourceForSecrets(src, f)) secFindings.push({ file: f, ...v });
+    }
+
+    // TW317: exact-match against the real env. Only the NAME is printed.
+    const secrets = secretEnvValues(process.env as Record<string, string>);
+    if (secrets.length) {
+      for (const f of [...reachable]) {
+        if (!f.endsWith(".js") && !f.endsWith(".mjs")) continue;
+        let text = "";
+        try { text = readFileSync(f, "utf-8"); } catch { continue; }
+        for (const v of scanBundleForSecrets(text, secrets)) secFindings.push({ file: f, ...v });
+      }
+    }
+
+    if (secFindings.length) {
+      const rel = (f: string) => (f.startsWith(rootDir) ? f.slice(rootDir.length + 1) : f);
+      console.log("\n  \x1b[33m!\x1b[0m client-safe security analysis (advisory — this scanner cannot see every secret)");
+      for (const v of secFindings) {
+        console.log(`    ${v.code} ${rel(v.file)}:${v.line}:${v.col}  ${v.message}`);
+      }
+      console.log("    docs/security.md explains what this does and does not detect.");
+    }
+  }
+
   // -- 6. Copy middleware.twm -----------------------------------------------
   const mwPath = join(rootDir, "middleware.twm");
   if (existsSync(mwPath)) {

@@ -257,3 +257,60 @@ createAuditLogger({ })
 - [Server Features](./server-features.md)
 - [API Routes](./api-routes.md)
 - [Client Modules](./client-modules.md) — the server boundary
+
+---
+
+## Client-safe security analysis — extra layer, not a guarantee
+
+`tw build` scans the modules that reach the browser and reports shapes that are
+usually a leak. **It is an extra layer. It is not a guarantee.**
+
+What it cannot see, and never will:
+
+- **Secrets assembled at run time.** `"sk_" + "live_" + x`, a value read from a
+  vault, or anything built by a loop is invisible to a static scanner.
+- **`import.meta.env`.** Not supported anywhere in the framework today, so the
+  scanner has no rule for it. If that changes, the scanner needs updating.
+- **Intent.** It matches shapes. A string that looks like a key may be a test
+  fixture; a real key may not look like one.
+
+### The codes
+
+| code | severity | what it catches |
+|---|---|---|
+| TW311 | warning | a private key block, or an AWS key id with its secret nearby |
+| TW312 | warning | a live-looking key: `sk_live_`, `ghp_`, `xoxb-`, a JWT |
+| TW313 | warning | a secret-named export holding a literal value |
+| TW314 | warning | a server-only environment variable read in client code |
+| TW315 | warning | a server-only package imported by client-reachable code |
+| TW316 | info | the `@tw/client-safe` marker on a file that carries a secret-shaped value |
+| TW317 | warning | a secret environment value found verbatim in the client bundle |
+
+**All of these are warnings or info, none is an error.** `tw build` has no
+`--ignore` escape hatch yet, so a build-breaking check would be a behaviour
+change. TW311 covers the only two shapes that are unambiguous, and it is still a
+warning until build can be told to skip a code.
+
+### TW317 is dormant today
+
+`client-bundle.ts` supports esbuild `--define:`, but no call site passes one, so
+no environment value is inlined into a client bundle. TW317 is an exact-match
+check against `secretEnvValues()` and will stay quiet until inlining exists. It
+is there so the check is in place before the feature that makes it matter.
+
+### The `@tw/client-safe` marker
+
+Unchanged, and still **a promise the build cannot verify**. Putting the marker on
+a module says "I checked this by hand"; the build trusts it and does not scan the
+module differently. TW316 points out the combination that deserves a second look —
+the marker on a file that also carries a secret-shaped value — and says so in
+those words. It does not enforce anything.
+
+### Silencing a finding
+
+```
+tw check --ignore TW311,TW312
+```
+
+`--ignore` exists in `tw check` only. `tw build` has no equivalent yet, which is
+the reason every code here is advisory.

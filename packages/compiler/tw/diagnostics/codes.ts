@@ -178,6 +178,16 @@ export const ERROR_CODES: Record<ErrorCode, { message: string; severity: Diagnos
   // Warning, never an error: value grammar comes from a scanner, and a scanner
   // that guesses will flag something valid eventually. Only emitted when the
   // optional css-tree is installed (see codegen/css-values.ts).
+  // Client-safe security analysis (apps/cli/tw/commands/secret-scan.ts).
+  // All warnings/info: `tw build` has no --ignore escape hatch yet, so a new
+  // build-breaking check would be a behaviour change. See docs/security.md.
+  TW311: { message: "A private key or AWS key pair is in a module that reaches the browser", severity: "warning", category: "security" },
+  TW312: { message: "A live-looking API key is in a module that reaches the browser", severity: "warning", category: "security" },
+  TW313: { message: "A secret-named export holds a literal value in client-reachable code", severity: "warning", category: "security" },
+  TW314: { message: "A server-only environment variable is read in client-reachable code", severity: "warning", category: "security" },
+  TW315: { message: "A server-only package is imported by client-reachable code", severity: "warning", category: "security" },
+  TW316: { message: "The @tw/client-safe marker is on a file that carries a secret-shaped value", severity: "info", category: "security" },
+  TW317: { message: "A secret environment value appears verbatim in the client bundle", severity: "warning", category: "security" },
   TW310: { message: "A declaration value does not match the property's grammar", severity: "warning", category: "semantic" },
   TW308: { message: "Unrecognized at-rule in a stylesheet", severity: "warning", category: "syntax" },
   TW306: { message: "A declaration in a .css file has no colon", severity: "error", category: "syntax" },

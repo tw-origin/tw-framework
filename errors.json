@@ -1,7 +1,7 @@
 {
   "version": 1,
-  "generatedAt": "2026-11-28T05:21:06.791Z",
-  "count": 129,
+  "generatedAt": "2026-11-28T09:55:54.902Z",
+  "count": 136,
   "codes": {
     "TW001": {
       "message": "Unexpected token",
@@ -666,6 +666,41 @@
       "message": "A declaration has an empty value",
       "severity": "error",
       "category": "syntax"
+    },
+    "TW311": {
+      "message": "A private key or AWS key pair is in a module that reaches the browser",
+      "severity": "warning",
+      "category": "security"
+    },
+    "TW312": {
+      "message": "A live-looking API key is in a module that reaches the browser",
+      "severity": "warning",
+      "category": "security"
+    },
+    "TW313": {
+      "message": "A secret-named export holds a literal value in client-reachable code",
+      "severity": "warning",
+      "category": "security"
+    },
+    "TW314": {
+      "message": "A server-only environment variable is read in client-reachable code",
+      "severity": "warning",
+      "category": "security"
+    },
+    "TW315": {
+      "message": "A server-only package is imported by client-reachable code",
+      "severity": "warning",
+      "category": "security"
+    },
+    "TW316": {
+      "message": "The @tw/client-safe marker is on a file that carries a secret-shaped value",
+      "severity": "info",
+      "category": "security"
+    },
+    "TW317": {
+      "message": "A secret environment value appears verbatim in the client bundle",
+      "severity": "warning",
+      "category": "security"
     },
     "TW310": {
       "message": "A declaration value does not match the property's grammar",
