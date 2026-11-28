@@ -35,6 +35,9 @@ const proc = spawnSync(esbuildBin, [
   "--outfile=" + out,
   "--banner:js=" + banner,
   "--external:esbuild",
+  // optional, resolved at run time from the user's project (see
+  // packages/compiler/tw/codegen/css-values.ts) -- never bundled
+  "--external:css-tree",
 ], { stdio: "inherit" });
 
 if (proc.status !== 0) process.exit(proc.status ?? 1);
@@ -49,6 +52,9 @@ chmodSync(out, 0o755);
     "--bundle", "--platform=node", "--target=node18", "--format=esm",
     "--outfile=" + serverOut,
     "--external:esbuild",
+  // optional, resolved at run time from the user's project (see
+  // packages/compiler/tw/codegen/css-values.ts) -- never bundled
+  "--external:css-tree",
   ], { stdio: "inherit" });
   if (proc3.status !== 0) process.exit(proc3.status ?? 1);
 }
@@ -66,6 +72,9 @@ chmodSync(out, 0o755);
     "--format=cjs",
     "--outfile=" + testingOut,
     "--external:esbuild",
+  // optional, resolved at run time from the user's project (see
+  // packages/compiler/tw/codegen/css-values.ts) -- never bundled
+  "--external:css-tree",
   ], { stdio: "inherit" });
   if (proc2.status !== 0) process.exit(proc2.status ?? 1);
   console.log("  \x1b[32mOK\x1b[0m " + testingOut);
