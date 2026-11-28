@@ -160,9 +160,18 @@ Full style guide: contributing/core-testing.md. The essentials:
 
 Short form (long form: skills/add-diagnostic):
 
-1. Next free code in `packages/compiler/tw/diagnostics/codes.ts` -- the highest
-   in use is TW306, so the next free one is TW307. Check the file rather than
-   trusting this line; it goes stale.
+1. **Before allocating a number, grep the repo for it.** A code that is
+   documented but missing from the table still owns its number:
+
+   ```bash
+   grep -rn "TW3XX" --exclude-dir=node_modules --exclude-dir=.git . | head
+   grep -nE "^### TW3XX " docs/error-reference.md
+   ```
+
+   Check `docs/error-reference.md`, `errors.json`, `tests/`, `evals/`,
+   `examples/`, `CONTRIBUTING.md` and `AGENTS.md`. The highest code in use is
+   TW308, so the next free one is TW309 -- but check the file rather than
+   trusting this line, it goes stale.
 2. Message + severity + category in codes.ts; rule in diagnostics/rules.ts;
    parser/codegen emits it at the exact failure point.
 3. `bun scripts/generate-errors-json.ts` -- errors.json count must rise by

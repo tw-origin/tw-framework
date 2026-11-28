@@ -412,8 +412,8 @@ function __twCompileTSSInner(source: string): string {
  * Only reports what is unambiguously invalid:
  *   TW303  unbalanced braces (the code `compileTSS` already throws), now with a
  *          column as well as a line
- *   TW304  a declaration whose value is empty (`color: ;`)
- *   TW305  an unknown at-rule (`@medias`)
+ *   TW307  a declaration whose value is empty (`color: ;`)
+ *   TW308  an unknown at-rule (`@medias`)
  *   TW306  a declaration without a colon in a `.css` file (`color red`)
  *
  * Deliberately NOT reported: unknown properties, invalid values, vendor
@@ -432,7 +432,7 @@ const KNOWN_AT_RULES = new Set([
 ]);
 
 export interface CssFinding {
-  code: "TW303" | "TW304" | "TW305" | "TW306";
+  code: "TW303" | "TW306" | "TW307" | "TW308";
   message: string;
   line: number;
   col: number;
@@ -497,16 +497,16 @@ export function validateCssStructure(source: string, filePath: string): CssFindi
     findings.push({ code: "TW303", message: "unclosed '{' -- this block never closes", line, col });
   }
 
-  // TW305 -- at-rules
+  // TW308 -- at-rules
   for (const m of scan.matchAll(/(^|[;{}]\s*)@([a-zA-Z-]+)/g)) {
     const name = m[2].toLowerCase();
     if (KNOWN_AT_RULES.has(name)) continue;
     const at = (m.index ?? 0) + m[1].length;
     const { line, col } = lineColOf(source, at);
-    findings.push({ code: "TW305", message: "unknown at-rule '@" + name + "'", line, col });
+    findings.push({ code: "TW308", message: "unknown at-rule '@" + name + "'", line, col });
   }
 
-  // TW304 -- empty value, TW306 -- no colon in a .css file
+  // TW307 -- empty value, TW306 -- no colon in a .css file
   //
   // Boundaries come from the blanked scan (so a `;` inside a string cannot end
   // a declaration), but the TEXT is read from the original source: blanking a
@@ -530,7 +530,7 @@ export function validateCssStructure(source: string, filePath: string): CssFindi
     }
     const value = trimmed.slice(colon + 1).trim();
     if (!value) {
-      findings.push({ code: "TW304", message: "declaration has an empty value", line, col });
+      findings.push({ code: "TW307", message: "declaration has an empty value", line, col });
     }
   }
   return findings;

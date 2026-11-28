@@ -423,6 +423,50 @@ Error TW303: Unbalanced braces in a stylesheet -- a rule block is never closed
 
 ---
 
+### TW306 — A Declaration in a .css File Has No Colon
+
+```
+Error TW306: A declaration in a .css file has no colon
+
+  → File: style/site.css:12:5
+  → Problem: a plain .css file uses standard CSS, where every declaration is
+    `property: value`. This line has no colon, so the browser drops it.
+
+  Fix: add the colon -- `color: red`, not `color red`. If the file is meant to
+  use TSS shorthand, rename it to .tss.
+```
+
+---
+
+### TW307 — A Declaration Has an Empty Value
+
+```
+Error TW307: A declaration has an empty value
+
+  → File: style/home.tss:8:3
+  → Problem: the property is written but nothing follows the colon, so the
+    declaration sets nothing.
+
+  Fix: give the property a value, or delete the declaration.
+```
+
+---
+
+### TW308 — Unrecognized At-Rule in a Stylesheet
+
+```
+Warning TW308: Unrecognized at-rule in a stylesheet
+
+  → File: style/home.tss:20:1
+  → Problem: `@` followed by a name this build does not recognize. Usually a
+    typo (`@medias`), sometimes an at-rule newer than this release.
+
+  Fix: check the spelling. If the at-rule is valid and simply unknown to this
+  version, ignore the warning -- it is advisory and never fails a build.
+```
+
+---
+
 ### TW305 — Markup in .twm File
 
 ```
@@ -1024,7 +1068,7 @@ Every error carries a code, a file position and a fix. The general workflow:
 | TW099–TW119 | Server blocks — see [Server Data](./server-data.md) |
 | TW120–TW199 | Routing *(reserved)* |
 | TW200–TW299 | Render modes *(reserved)* |
-| TW300–TW399 | Extensions (`.tw` / `.twm` / `.tss`) — real: TW303 |
+| TW300–TW399 | Extensions (`.tw` / `.twm` / `.tss`) — real: TW303, TW306, TW307, TW308 |
 | TW400–TW499 | Imports *(reserved)* |
 | TW500–TW599 | Build *(reserved)* |
 | TW600–TW699 | Runtime *(reserved)* |

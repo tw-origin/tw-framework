@@ -61,8 +61,8 @@ export async function checkCommand(): Promise<void> {
           const found = validate(src, f);
           for (const d of found) {
             if (ignored.has(d.code)) continue;
-            // TW305 is advisory -- see the code table.
-            const isWarning = d.code === "TW305";
+            // TW308 is advisory -- see the code table.
+            const isWarning = d.code === "TW308";
             console.debug(`    ${isWarning ? "!" : "\u2717"} ${d.code} line ${d.line}, col ${d.col}: ${d.message}`);
             console.debug(`      ${rel}`);
             if (isWarning) totalWarnings++; else totalErrors++;

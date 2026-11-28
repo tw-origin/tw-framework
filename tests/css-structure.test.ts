@@ -65,15 +65,15 @@ describe("definitely-invalid CSS is reported", () => {
     expect(f[0].line).toBe(2);
   });
 
-  test("an empty value is TW304", () => {
+  test("an empty value is TW307", () => {
     const f = css(".a { color: ; }");
     expect(f.length).toBe(1);
-    expect(f[0].code).toBe("TW304");
+    expect(f[0].code).toBe("TW307");
   });
 
-  test("an unknown at-rule is TW305", () => {
+  test("an unknown at-rule is TW308", () => {
     const f = css("@medias (max-width: 10px) { .a { color: red; } }");
-    expect(f.some((x) => x.code === "TW305")).toBe(true);
+    expect(f.some((x) => x.code === "TW308")).toBe(true);
   });
 
   test("a colon-less declaration in a .css file is TW306", () => {

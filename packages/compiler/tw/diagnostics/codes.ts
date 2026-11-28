@@ -171,11 +171,11 @@ export const ERROR_CODES: Record<ErrorCode, { message: string; severity: Diagnos
   // parser (codegen/tss.ts); TW000 is the generic fallback used when an error
   // carries no code of its own.
   TW303: { message: "Unbalanced braces in a stylesheet -- a rule block is never closed", severity: "error", category: "syntax" },
-  TW304: { message: "A declaration has an empty value", severity: "error", category: "syntax" },
+  TW307: { message: "A declaration has an empty value", severity: "error", category: "syntax" },
   // A warning, not an error: no at-rule list can be complete (Tailwind v4's
   // @theme/@utility/@variant, and whatever ships next), so this points at a
   // likely typo without failing a build on a valid stylesheet.
-  TW305: { message: "Unrecognized at-rule in a stylesheet", severity: "warning", category: "syntax" },
+  TW308: { message: "Unrecognized at-rule in a stylesheet", severity: "warning", category: "syntax" },
   TW306: { message: "A declaration in a .css file has no colon", severity: "error", category: "syntax" },
   TW000: { message: "Generic error with no specific code", severity: "error", category: "syntax" },
 };
