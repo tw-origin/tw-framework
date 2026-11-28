@@ -1,7 +1,7 @@
 {
   "version": 1,
-  "generatedAt": "2026-11-28T05:13:37.907Z",
-  "count": 128,
+  "generatedAt": "2026-11-28T05:21:06.791Z",
+  "count": 129,
   "codes": {
     "TW001": {
       "message": "Unexpected token",
@@ -666,6 +666,11 @@
       "message": "A declaration has an empty value",
       "severity": "error",
       "category": "syntax"
+    },
+    "TW310": {
+      "message": "A declaration value does not match the property's grammar",
+      "severity": "warning",
+      "category": "semantic"
     },
     "TW308": {
       "message": "Unrecognized at-rule in a stylesheet",

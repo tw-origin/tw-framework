@@ -38,6 +38,7 @@ export type { CodegenContext, CodegenMetadata, CodegenMode, CodegenResult, Hydra
 export { VDOMCodeBuilder, generateNodeVDOM, generateStaticVDOM, generateVDOMCode } from "./vdom-gen";
 export { generate, generateVDOM, generateWithLayout, generateWithLayoutChain } from "./vdom";
 export { compileTSS, TSS_SHORTHANDS, validateCssStructure, type CssFinding } from "./tss";
+export { validateCssValues, type CssValueFinding, type CssValueResult } from "./css-values";
 
 export { computeCssAssets, routeToCssName } from "./css-assets";
 

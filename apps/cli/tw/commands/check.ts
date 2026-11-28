@@ -2,6 +2,8 @@
 
 import { maskSourceStringsAndComments } from "@tw/shared";
 import { join, dirname } from "node:path";
+import { createRequire } from "node:module";
+import { pathToFileURL } from "node:url";
 import { existsSync, readFileSync, readdirSync, statSync } from "node:fs";
 import { scanComponents, registerImportedComponents } from "../components";
 
@@ -45,6 +47,7 @@ export async function checkCommand(): Promise<void> {
   // Stylesheets: structural checks only (unbalanced braces, empty values,
   // unknown at-rules, colon-less declarations in .css). No value grammar, so a
   // valid modern property can never be flagged.
+  let valueChecksSkipped = 0;
   const cssFiles: string[] = [];
   for (const dir of [srcDir, join(rootDir, "style"), join(rootDir, "public")]) {
     if (!existsSync(dir)) continue;
@@ -59,6 +62,22 @@ export async function checkCommand(): Promise<void> {
           const src = readFileSync(f, "utf-8");
           const rel = f.replace(rootDir + "/", "");
           const found = validate(src, f);
+          // Value-level pass: optional, warning-only, on the CSS as written --
+          // before any scoped-selector rewrite, so positions point at the file.
+          try {
+            const values = await mod.validateCssValues(
+              /\.tss$/i.test(f) ? mod.compileTSS(src) : src,
+              projectCssTreeLoader(rootDir),
+            );
+            if (values?.skipped) valueChecksSkipped++;
+            for (const d of values?.findings ?? []) {
+              if (ignored.has(d.code)) continue;
+              console.debug(`    ! ${d.code} line ${d.line}, col ${d.col}: ${d.message}`);
+              console.debug(`      ${rel}`);
+              totalWarnings++;
+            }
+          } catch { /* optional pass -- never fail the run */ }
+
           for (const d of found) {
             if (ignored.has(d.code)) continue;
             // TW308 is advisory -- see the code table.
@@ -70,6 +89,10 @@ export async function checkCommand(): Promise<void> {
         }
       }
     } catch { /* the compiler could not be loaded -- the .tw pass reports that */ }
+    if (valueChecksSkipped > 0) {
+      console.debug("  ! value-level CSS checks skipped (" + valueChecksSkipped + " file(s)): css-tree is not installed.");
+      console.debug("    structural checks still ran; install css-tree to enable them.");
+    }
   }
 
   // Load the compiler ONCE, and fall back to the basic syntax check ONLY when
@@ -234,6 +257,25 @@ function findComponentUp(dir: string, name: string): boolean {
     cur = parent;
   }
   return false;
+}
+
+/**
+ * Load css-tree from the project being checked, not from this package.
+ *
+ * The framework declares no dependency on css-tree (`dependencies` stays empty),
+ * so a bare `import("css-tree")` inside the compiler resolves against the
+ * framework's own node_modules and never finds it -- even when the user's
+ * project has it installed. Resolving from the project root makes the user's
+ * install the one that counts, and still fails cleanly when they have none.
+ */
+export function projectCssTreeLoader(rootDir: string): (() => Promise<any>) | undefined {
+  try {
+    const req = createRequire(join(rootDir, "package.json"));
+    const resolved = req.resolve("css-tree");
+    return () => import(pathToFileURL(resolved).href);
+  } catch {
+    return undefined; // not installed -- validateCssValues reports `skipped`
+  }
 }
 
 function collectFiles(dir: string, ext: string, results: string[]): void {

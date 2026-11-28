@@ -175,6 +175,10 @@ export const ERROR_CODES: Record<ErrorCode, { message: string; severity: Diagnos
   // A warning, not an error: no at-rule list can be complete (Tailwind v4's
   // @theme/@utility/@variant, and whatever ships next), so this points at a
   // likely typo without failing a build on a valid stylesheet.
+  // Warning, never an error: value grammar comes from a scanner, and a scanner
+  // that guesses will flag something valid eventually. Only emitted when the
+  // optional css-tree is installed (see codegen/css-values.ts).
+  TW310: { message: "A declaration value does not match the property's grammar", severity: "warning", category: "semantic" },
   TW308: { message: "Unrecognized at-rule in a stylesheet", severity: "warning", category: "syntax" },
   TW306: { message: "A declaration in a .css file has no colon", severity: "error", category: "syntax" },
   TW000: { message: "Generic error with no specific code", severity: "error", category: "syntax" },
